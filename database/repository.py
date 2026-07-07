@@ -598,9 +598,10 @@ def calculate_game_bonus_for_deposit(amount, available_bonus=None):
     if amount_int <= 0 or available_bonus_int <= 0:
         return 0
     settings = get_bot_settings() or {}
-    if not settings.get('game_bonus_enabled', True):
+    enabled = True if settings.get('game_bonus_enabled') is None else bool(settings.get('game_bonus_enabled'))
+    if not enabled:
         return 0
-    pct = float(settings.get('game_bonus_apply_percent') or 0)
+    pct = float(10 if settings.get('game_bonus_apply_percent') is None else settings.get('game_bonus_apply_percent'))
     if pct <= 0:
         return 0
     bonus = int(amount_int * (pct / 100.0))
@@ -1374,10 +1375,11 @@ def get_bot_settings():
     
     # 🆕 قيم افتراضية لإعدادات التدوير (Rollover)
     if settings_dict:
-        settings_dict['bonus_rollover_multiplier'] = settings_dict.get('bonus_rollover_multiplier', 5.0)
-        settings_dict['turnover_field_name'] = settings_dict.get('turnover_field_name', 'totalBet')
-        settings_dict['game_bonus_enabled'] = settings_dict.get('game_bonus_enabled', True)
-        settings_dict['game_bonus_apply_percent'] = settings_dict.get('game_bonus_apply_percent', 10)
+        settings_dict['bonus_rollover_multiplier'] = settings_dict.get('bonus_rollover_multiplier') or 5.0
+        settings_dict['turnover_field_name'] = settings_dict.get('turnover_field_name') or 'totalBet'
+        # مهم للمشاريع القائمة: إذا أُضيفت الأعمدة لاحقاً وكانت NULL نعتبرها مفعلة و10% افتراضياً.
+        settings_dict['game_bonus_enabled'] = True if settings_dict.get('game_bonus_enabled') is None else bool(settings_dict.get('game_bonus_enabled'))
+        settings_dict['game_bonus_apply_percent'] = 10 if settings_dict.get('game_bonus_apply_percent') is None else settings_dict.get('game_bonus_apply_percent')
         
     return settings_dict
 

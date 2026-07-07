@@ -514,6 +514,13 @@ class DatabaseManager:
         ON CONFLICT (id) DO NOTHING;
         """
 
+        update_game_bonus_defaults = """
+        UPDATE bot_settings
+        SET game_bonus_enabled = COALESCE(game_bonus_enabled, TRUE),
+            game_bonus_apply_percent = COALESCE(game_bonus_apply_percent, 10)
+        WHERE id = 1;
+        """
+
         table_queries = [
             users_table,
             referrals_table,
@@ -560,6 +567,7 @@ class DatabaseManager:
             alter_users_total_deposits,
             alter_users_vip_tier,
             insert_default_settings,
+            update_game_bonus_defaults,
             pending_rejections_table,
             broadcasts_table,
             support_tickets_table,
