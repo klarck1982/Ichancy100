@@ -2259,6 +2259,14 @@ async def process_game_deposit_amount(message: Message, state: FSMContext):
     bonus_line = ""
     if bonus_to_apply > 0:
         bonus_line = f"🎁 بونص اللعب المرفق: <code>{bonus_to_apply:,} NSP</code>\n"
+    elif bonus_available > 0:
+        settings = repo.get_bot_settings()
+        if not settings.get('game_bonus_enabled', True) or float(settings.get('game_bonus_apply_percent') or 0) <= 0:
+            bonus_line = "🎁 لديك بونص متاح، لكن إرفاق بونص اللعب متوقف حالياً من الإدارة.\n"
+        else:
+            bonus_line = "🎁 لديك بونص متاح، لكن لم تنطبق شروط إرفاقه على هذا الشحن.\n"
+    else:
+        bonus_line = "🎁 لا يوجد بونص لعب متاح حالياً لهذا الشحن.\n"
 
     confirm_text = (
         f"📋 <b>تأكيد شحن حساب اللعبة</b>\n\n"

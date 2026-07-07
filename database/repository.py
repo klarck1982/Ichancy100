@@ -398,7 +398,7 @@ def credit_referral_commission_if_applicable(referrer_id, referred_id, transacti
             return {'credited': False, 'reason': 'referrer_not_found'}
 
         cursor.execute(
-            "UPDATE users SET bonus_balance = bonus_balance + %s WHERE telegram_id = %s",
+            "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
             (commission, referrer_id)
         )
         cursor.execute(
@@ -637,9 +637,9 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
         cursor.execute(
             """
             UPDATE users
-            SET bot_balance = bot_balance - %s,
-                bonus_balance = bonus_balance - %s
-            WHERE telegram_id = %s AND bot_balance >= %s AND bonus_balance >= %s
+            SET bot_balance = COALESCE(bot_balance, 0) - %s,
+                bonus_balance = COALESCE(bonus_balance, 0) - %s
+            WHERE telegram_id = %s AND COALESCE(bot_balance, 0) >= %s AND COALESCE(bonus_balance, 0) >= %s
             RETURNING bot_balance, bonus_balance
             """,
             (cash_amount, bonus_amount, tid, cash_amount, bonus_amount)
@@ -779,20 +779,20 @@ def revert_game_transaction(tx_id):
                 cash_refund = int(float(original_amount or amount or 0))
                 bonus_refund = int(float(converted_amount_syp or 0))
                 cursor.execute(
-                    "UPDATE users SET bot_balance = bot_balance + %s, bonus_balance = bonus_balance + %s WHERE telegram_id = %s",
+                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
                     (cash_refund, bonus_refund, str(user_telegram_id))
                 )
             elif tx_type == 'bonus_to_game':
                 bonus_refund = int(float(amount or 0))
                 cursor.execute(
-                    "UPDATE users SET bonus_balance = bonus_balance + %s, game_bonus_amount = GREATEST(0, COALESCE(game_bonus_amount, 0) - %s) WHERE telegram_id = %s",
+                    "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s, game_bonus_amount = GREATEST(0, COALESCE(game_bonus_amount, 0) - %s) WHERE telegram_id = %s",
                     (bonus_refund, bonus_refund, str(user_telegram_id))
                 )
             else:
                 amount_int = int(float(amount or 0))
                 if amount_int > 0:
                     cursor.execute(
-                        "UPDATE users SET bot_balance = bot_balance + %s WHERE telegram_id = %s",
+                        "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s WHERE telegram_id = %s",
                         (amount_int, str(user_telegram_id))
                     )
         cursor.execute(
@@ -953,8 +953,8 @@ def approve_deposit_atomic(telegram_id, deposit_amount, bonus_amount, tx_id, rev
         # 3) إضافة ذرّية: الإيداع النقدي → bot_balance ، والبونص → bonus_balance (مقيّد)
         cursor.execute(
             """UPDATE users
-               SET bot_balance = bot_balance + %s,
-                   bonus_balance = bonus_balance + %s
+               SET bot_balance = COALESCE(bot_balance, 0) + %s,
+                   bonus_balance = COALESCE(bonus_balance, 0) + %s
                WHERE telegram_id = %s
                RETURNING bot_balance, bonus_balance""",
             (deposit_added, bonus_added, tid)
@@ -2827,7 +2827,7 @@ def transfer_bonus_to_game_atomic(telegram_id, amount, player_id):
             return {'success': False, 'reason': 'insufficient_bonus', 'current_bonus': current_bonus}
 
         cursor.execute(
-            "UPDATE users SET bonus_balance = bonus_balance - %s WHERE telegram_id = %s RETURNING bonus_balance",
+            "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) - %s WHERE telegram_id = %s RETURNING bonus_balance",
             (amount_int, tid)
         )
         new_bonus = int(cursor.fetchone()[0] or 0)
@@ -3019,7 +3019,7 @@ def spin_wheel_atomic(telegram_id, deposit_tx_id, deposit_amount):
         # إضافة الجائزة لرصيد المكافآت
         if reward_amount > 0:
             cursor.execute(
-                "UPDATE users SET bonus_balance = bonus_balance + %s WHERE telegram_id = %s",
+                "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
                 (reward_amount, tid)
             )
 
@@ -3294,7 +3294,7 @@ def process_weekly_cashback_for_user(telegram_id, current_game_balance=None):
             conn.rollback()
             return {'ok': False, 'reason': 'user_not_found'}
         cursor.execute(
-            "UPDATE users SET bonus_balance = bonus_balance + %s WHERE telegram_id = %s",
+            "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
             (cashback, tid)
         )
         cursor.execute(
