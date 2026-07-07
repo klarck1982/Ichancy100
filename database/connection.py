@@ -215,7 +215,11 @@ class DatabaseManager:
             ichancy_cookie TEXT,
             agent_balance BIGINT DEFAULT 0,
             game_min_deposit_syp BIGINT DEFAULT 20000,
-            agent_revenue_percent NUMERIC(7, 2) DEFAULT 30
+            agent_revenue_percent NUMERIC(7, 2) DEFAULT 30,
+            game_bonus_enabled BOOLEAN DEFAULT TRUE,
+            game_bonus_apply_percent NUMERIC(7, 2) DEFAULT 10,
+            bonus_rollover_multiplier NUMERIC(7, 2) DEFAULT 5,
+            turnover_field_name VARCHAR(80) DEFAULT 'totalBet'
         );
         """
 
@@ -433,6 +437,12 @@ class DatabaseManager:
         alter_settings_referrals_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS referrals_enabled BOOLEAN DEFAULT TRUE;"
         alter_settings_game_min_deposit = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_min_deposit_syp BIGINT DEFAULT 20000;"
         alter_settings_agent_revenue = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_revenue_percent NUMERIC(7, 2) DEFAULT 30;"
+        # 🎁 إعدادات إرفاق بونص اللعب عند شحن حساب iChancy (معزولة عن Flash Bonus)
+        alter_settings_game_bonus_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_bonus_enabled BOOLEAN DEFAULT TRUE;"
+        alter_settings_game_bonus_apply_percent = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_bonus_apply_percent NUMERIC(7, 2) DEFAULT 10;"
+        # أعمدة قديمة للتوافق فقط — لم نعد نعتمد على التدوير في نظام البونص الجديد
+        alter_settings_bonus_rollover = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS bonus_rollover_multiplier NUMERIC(7, 2) DEFAULT 5;"
+        alter_settings_turnover_field = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS turnover_field_name VARCHAR(80) DEFAULT 'totalBet';"
         # 🆕 حدود الإيداع والسحب الدنيا — يمكن للمشرف تعديلها من Dashboard
         alter_settings_min_deposit_syp = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_deposit_syp BIGINT DEFAULT 20000;"
         alter_settings_min_deposit_usd = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_deposit_usd INT DEFAULT 5;"
@@ -521,6 +531,10 @@ class DatabaseManager:
             alter_settings_referrals_enabled,
             alter_settings_game_min_deposit,
             alter_settings_agent_revenue,
+            alter_settings_game_bonus_enabled,
+            alter_settings_game_bonus_apply_percent,
+            alter_settings_bonus_rollover,
+            alter_settings_turnover_field,
             alter_settings_min_deposit_syp,
             alter_settings_min_deposit_usd,
             alter_settings_min_withdraw_syp,

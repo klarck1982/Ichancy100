@@ -745,6 +745,8 @@ async def admin_settings_get_handler(request):
             'withdraw_commission': float(bot_settings.get('withdraw_commission') or 0),
             'game_min_deposit_syp': int(bot_settings.get('game_min_deposit_syp') or 20000),
             'agent_revenue_percent': float(bot_settings.get('agent_revenue_percent') or 30),
+            'game_bonus_enabled': bool(bot_settings.get('game_bonus_enabled', True)),
+            'game_bonus_apply_percent': float(bot_settings.get('game_bonus_apply_percent') or 10),
             'min_deposit_syp': int(bot_settings.get('min_deposit_syp') or 20000),
             'min_deposit_usd': int(bot_settings.get('min_deposit_usd') or 5),
             'min_withdraw_syp': int(bot_settings.get('min_withdraw_syp') or 25000),
@@ -775,6 +777,9 @@ async def admin_settings_post_handler(request):
             withdraw_commission = float(str(payload.get('withdraw_commission', '')).replace('%', '').replace(',', ''))
             game_min_deposit_syp = int(str(payload.get('game_min_deposit_syp', '')).replace(',', ''))
             agent_revenue_percent = float(str(payload.get('agent_revenue_percent', '30')).replace('%', '').replace(',', ''))
+            game_bonus_enabled_raw = payload.get('game_bonus_enabled', True)
+            game_bonus_enabled = str(game_bonus_enabled_raw).lower() in ('1', 'true', 'yes', 'on') if not isinstance(game_bonus_enabled_raw, bool) else game_bonus_enabled_raw
+            game_bonus_apply_percent = float(str(payload.get('game_bonus_apply_percent', '10')).replace('%', '').replace(',', '.'))
             # 🆕 حدود الإيداع والسحب الدنيا
             min_deposit_syp = int(str(payload.get('min_deposit_syp', '')).replace(',', ''))
             min_deposit_usd = int(str(payload.get('min_deposit_usd', '')).replace(',', ''))
@@ -785,8 +790,10 @@ async def admin_settings_post_handler(request):
                 syp_version = 'old'
             referrals_enabled_raw = payload.get('referrals_enabled', True)
             referrals_enabled = str(referrals_enabled_raw).lower() in ('1', 'true', 'yes', 'on') if not isinstance(referrals_enabled_raw, bool) else referrals_enabled_raw
-            if exchange_rate <= 0 or usd_buy_rate <= 0 or usd_sell_rate <= 0 or withdraw_commission < 0 or game_min_deposit_syp < 1 or agent_revenue_percent < 0 or min_deposit_syp < 1 or min_deposit_usd < 1 or min_withdraw_syp < 1 or min_withdraw_usd < 1:
+            if exchange_rate <= 0 or usd_buy_rate <= 0 or usd_sell_rate <= 0 or withdraw_commission < 0 or game_min_deposit_syp < 1 or agent_revenue_percent < 0 or game_bonus_apply_percent < 0 or min_deposit_syp < 1 or min_deposit_usd < 1 or min_withdraw_syp < 1 or min_withdraw_usd < 1:
                 return web.json_response({'error': 'قيم غير صالحة'}, status=400)
+            if game_bonus_apply_percent > withdraw_commission:
+                return web.json_response({'error': f'⚠️ نسبة إرفاق بونص اللعبة ({game_bonus_apply_percent}%) يجب ألا تتجاوز عمولة السحب ({withdraw_commission}%).'}, status=400)
             # 🔒 حماية السبريد (Update 9): سعر الإيداع يجب أن يكون أقل من سعر السحب
             # لمنع المراجحة المالية (المستخدم يودع دولار ثم يسحبه بربح).
             if usd_buy_rate >= usd_sell_rate:
@@ -798,6 +805,8 @@ async def admin_settings_post_handler(request):
                 withdraw_commission=withdraw_commission,
                 game_min_deposit_syp=game_min_deposit_syp,
                 agent_revenue_percent=agent_revenue_percent,
+                game_bonus_enabled=game_bonus_enabled,
+                game_bonus_apply_percent=game_bonus_apply_percent,
                 referrals_enabled=referrals_enabled,
                 min_deposit_syp=min_deposit_syp,
                 min_deposit_usd=min_deposit_usd,
@@ -2306,6 +2315,7 @@ async def user_me_api_handler(request):
             'username': user.get('telegram_username'),
             'bot_balance': bot_balance,
             'bonus_balance': bonus_balance,
+            'active_game_bonus': int(user.get('game_bonus_amount') or 0),
             'game_balance': game_balance,
             'recent_transactions': recent_transactions,
             'active_offers': active_offers,
@@ -2353,60 +2363,13 @@ async def user_checkin_handler(request):
 
 
 async def user_bonus_to_game_handler(request):
-    """🆕 (Update 14) شحن رصيد المكافآت للعبة."""
+    """تم تعطيل تحويل البونص المستقل: البونص يُرفق تلقائياً عند شحن اللعبة فقط."""
     user_obj = _verify_telegram_init_data(request.headers.get('X-Telegram-Init-Data', ''))
     if not user_obj:
         return web.json_response({'error': 'غير مصرّح'}, status=403)
-    telegram_id = str(user_obj.get('id', ''))
-    try:
-        user = repo.get_user(telegram_id)
-        if not user:
-            return web.json_response({'error': 'المستخدم غير موجود'}, status=404)
-        player_id = user.get('player_id')
-        if not player_id:
-            return web.json_response({'error': 'ليس لديك حساب iChancy مرتبط'}, status=400)
-
-        payload = await request.json()
-        amount = int(float(payload.get('amount') or 0))
-
-        # فحص شروط المكافآت
-        elig = repo.check_bonus_eligibility(telegram_id)
-        if not elig.get('eligible'):
-            return web.json_response({'error': f'يجب أن يكون إجمالي إيداعاتك في آخر {elig["days"]} يوماً لا يقل عن {elig["threshold"]:,} ل.س لفتح رصيد المكافآت.'}, status=403)
-
-        feat = repo.get_user_features_settings()
-        min_transfer = feat.get('bonus_min_transfer', 20000)
-        if amount < min_transfer:
-            return web.json_response({'error': f'الحد الأدنى لشحن المكافآت هو {min_transfer:,} ل.س'}, status=400)
-
-        # حجز المبلغ
-        reserve = repo.transfer_bonus_to_game_atomic(telegram_id, amount, player_id)
-        if not reserve.get('success'):
-            return web.json_response({'error': 'رصيد المكافآت غير كافٍ'}, status=400)
-
-        tx_id = reserve['tx_id']
-
-        # استدعاء iChancy API
-        deposit_result = await ichancy_api_client.deposit_to_player(
-            player_id=player_id,
-            amount=int(amount)
-        )
-
-        if not deposit_result or not deposit_result.get('success'):
-            # إعادة الرصيد للمكافآت عند الفشل
-            repo.revert_game_transaction(tx_id)
-            return web.json_response({'error': 'فشل الاتصال بـ iChancy، تم إعادة رصيد المكافآت'}, status=500)
-
-        repo.confirm_game_transaction(tx_id)
-        
-        # تحديث رصيد اللعبة محلياً
-        cached_game_balance = repo.get_user_game_balance(telegram_id)
-        repo.update_user_game_balance(telegram_id, cached_game_balance + int(amount))
-
-        return web.json_response({'ok': True, 'amount': amount, 'new_bonus_balance': reserve.get('new_bonus_balance', 0)})
-    except Exception as e:
-        logger.error(f"user_bonus_to_game error: {e}", exc_info=True)
-        return web.json_response({'error': 'خطأ داخلي'}, status=500)
+    return web.json_response({
+        'error': 'تم تحديث نظام البونص: لا يمكن تحويل البونص وحده. سيتم إرفاق بونص اللعب تلقائياً عند شحن حساب اللعبة من رصيدك.'
+    }, status=400)
 
 
 async def admin_flash_handler(request):

@@ -587,33 +587,41 @@ def create_withdraw_transaction_atomic(telegram_id, amount, payment_method=None,
             DatabaseManager.put_connection(conn)
 
 
-def reserve_game_deposit_atomic(telegram_id, amount, player_id):
-    """خصم مبلغ من رصيد البوت بشكل ذري وآمن قبل استدعاء iChancy API (شحن اللعبة).
+def calculate_game_bonus_for_deposit(amount, available_bonus=None):
+    """حساب بونص اللعب المرفق عند شحن حساب iChancy.
 
-    هذه الدالة تحلّ مشكلتين خطيرتين في عمليات شحن اللعبة:
-    1) انقطاع الاتصال: نخصم المبلغ مسبقاً ونسجّل العملية pending، فلو فشل الـ API
-       نُعيد الرصيد عبر revert_game_transaction. لا يضيع المبلغ ولا يتضاعف.
-    2) الضغط المزدوج: قفل الصف (FOR UPDATE) يمنع طلبين متزامنين من رؤية نفس الرصيد.
-
-    تعيد dict:
-    {'success': True, 'tx_id': int, 'old_balance': int, 'new_balance': int}
-    أو {'success': False, 'reason': 'invalid_amount'|'not_found'|'insufficient'|'error', 'message': str}
+    هذا النظام معزول عن Flash Bonus: يستخدم فقط رصيد bonus_balance المحفوظ مسبقاً،
+    ويرفق نسبة من مبلغ شحن اللعبة حسب إعداد game_bonus_apply_percent.
     """
+    amount_int = int(float(amount or 0))
+    available_bonus_int = int(float(available_bonus or 0)) if available_bonus is not None else 0
+    if amount_int <= 0 or available_bonus_int <= 0:
+        return 0
+    settings = get_bot_settings() or {}
+    if not settings.get('game_bonus_enabled', True):
+        return 0
+    pct = float(settings.get('game_bonus_apply_percent') or 0)
+    if pct <= 0:
+        return 0
+    bonus = int(amount_int * (pct / 100.0))
+    return max(0, min(available_bonus_int, bonus))
+
+
+def reserve_game_deposit_atomic(telegram_id, amount, player_id):
+    """حجز شحن لعبة ذري مع إرفاق بونص اللعب تلقائياً."""
     conn = None
     cursor = None
     tid = str(telegram_id)
-    amount_int = int(float(amount))
+    cash_amount = int(float(amount))
 
-    if amount_int <= 0:
+    if cash_amount <= 0:
         return {'success': False, 'reason': 'invalid_amount', 'message': 'Invalid amount'}
 
     try:
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
-
-        # قفل صف المستخدم لمنع أي عملية متزامنة على نفس الرصيد
         cursor.execute(
-            "SELECT bot_balance FROM users WHERE telegram_id = %s FOR UPDATE",
+            "SELECT bot_balance, bonus_balance FROM users WHERE telegram_id = %s FOR UPDATE",
             (tid,)
         )
         user_row = cursor.fetchone()
@@ -622,16 +630,19 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             return {'success': False, 'reason': 'not_found', 'message': 'User not found'}
 
         old_balance = int(user_row[0] or 0)
+        old_bonus_balance = int(user_row[1] or 0)
+        bonus_amount = calculate_game_bonus_for_deposit(cash_amount, old_bonus_balance)
+        total_to_game = cash_amount + bonus_amount
 
-        # التأكد من كفاية الرصيد مع خصم آمن
         cursor.execute(
             """
             UPDATE users
-            SET bot_balance = bot_balance - %s
-            WHERE telegram_id = %s AND bot_balance >= %s
-            RETURNING bot_balance
+            SET bot_balance = bot_balance - %s,
+                bonus_balance = bonus_balance - %s
+            WHERE telegram_id = %s AND bot_balance >= %s AND bonus_balance >= %s
+            RETURNING bot_balance, bonus_balance
             """,
-            (amount_int, tid, amount_int)
+            (cash_amount, bonus_amount, tid, cash_amount, bonus_amount)
         )
         updated = cursor.fetchone()
         if not updated:
@@ -641,35 +652,90 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
                 'reason': 'insufficient',
                 'message': 'Insufficient balance',
                 'old_balance': old_balance,
+                'old_bonus_balance': old_bonus_balance,
             }
 
         new_balance = int(updated[0] or 0)
-
-        # تسجيل المعاملة بحالة pending كدليل على الحجز المسبق
+        new_bonus_balance = int(updated[1] or 0)
         cursor.execute(
             """
-            INSERT INTO transactions (user_telegram_id, type, payment_method, amount, transfer_number, status)
-            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending')
+            INSERT INTO transactions (
+                user_telegram_id, type, payment_method, amount, transfer_number, status,
+                original_amount, original_currency, converted_amount_syp
+            )
+            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s)
             RETURNING id
             """,
-            (tid, amount_int, f'Reserve game deposit for player {player_id}')
+            (
+                tid,
+                total_to_game,
+                f'Game deposit for player {player_id} | cash={cash_amount} | bonus={bonus_amount} | total={total_to_game}',
+                cash_amount,
+                bonus_amount,
+            )
         )
-        tx_row = cursor.fetchone()
-        tx_id = tx_row[0]
-
+        tx_id = cursor.fetchone()[0]
         conn.commit()
         return {
             'success': True,
             'tx_id': tx_id,
             'old_balance': old_balance,
             'new_balance': new_balance,
-            'amount': amount_int,
+            'old_bonus_balance': old_bonus_balance,
+            'new_bonus_balance': new_bonus_balance,
+            'cash_amount': cash_amount,
+            'bonus_amount': bonus_amount,
+            'total_to_game': total_to_game,
+            'amount': cash_amount,
         }
     except Exception as e:
         if conn:
             conn.rollback()
         logger.error(f"reserve_game_deposit_atomic error: {e}")
         return {'success': False, 'reason': 'error', 'message': str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
+def confirm_reserved_game_deposit(tx_id):
+    """تأكيد شحن اللعبة بعد نجاح API، وتفعيل البونص المرفق كبونص نشط داخل اللعبة."""
+    conn = None
+    cursor = None
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_telegram_id, status, COALESCE(converted_amount_syp, 0) FROM transactions WHERE id = %s FOR UPDATE",
+            (int(tx_id),)
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return False
+        user_telegram_id, status, bonus_amount = row
+        if status != 'pending':
+            conn.rollback()
+            return True
+        bonus_int = int(float(bonus_amount or 0))
+        if bonus_int > 0:
+            cursor.execute(
+                "UPDATE users SET game_bonus_amount = COALESCE(game_bonus_amount, 0) + %s WHERE telegram_id = %s",
+                (bonus_int, str(user_telegram_id))
+            )
+        cursor.execute(
+            "UPDATE transactions SET status = 'completed', reviewed_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (int(tx_id),)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"confirm_reserved_game_deposit error: {e}")
+        return False
     finally:
         if cursor:
             cursor.close()
@@ -691,33 +757,44 @@ def confirm_game_transaction(tx_id):
 
 
 def revert_game_transaction(tx_id):
-    """إرجاع رصيد المستخدم بعد فشل iChancy API: إعادة المبلغ + تحديث الحالة إلى failed.
-
-    تتم داخل معاملة ذرية واحدة لضمان أن المبلغ يُعاد دائماً عند الفشل.
-    """
+    """إرجاع أرصدة عملية لعبة فاشلة حسب نوعها بدون تحويل البونص إلى كاش."""
     conn = None
     cursor = None
     try:
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
-
-        # قفل سجل المعاملة للقراءة
-        cursor.execute("SELECT user_telegram_id, amount, status FROM transactions WHERE id = %s FOR UPDATE", (int(tx_id),))
+        cursor.execute(
+            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp
+               FROM transactions WHERE id = %s FOR UPDATE""",
+            (int(tx_id),)
+        )
         tx_row = cursor.fetchone()
         if not tx_row:
             conn.rollback()
             return False
 
-        user_telegram_id, amount, status = tx_row
-        amount_int = int(amount or 0)
-
-        # نُرجع الرصيد فقط إن كانت المعاملة لا تزال pending (لم تُرجَع سابقاً)
-        if status == 'pending' and amount_int > 0:
-            cursor.execute(
-                "UPDATE users SET bot_balance = bot_balance + %s WHERE telegram_id = %s",
-                (amount_int, str(user_telegram_id))
-            )
-
+        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp = tx_row
+        if status == 'pending':
+            if tx_type == 'deposit_to_game':
+                cash_refund = int(float(original_amount or amount or 0))
+                bonus_refund = int(float(converted_amount_syp or 0))
+                cursor.execute(
+                    "UPDATE users SET bot_balance = bot_balance + %s, bonus_balance = bonus_balance + %s WHERE telegram_id = %s",
+                    (cash_refund, bonus_refund, str(user_telegram_id))
+                )
+            elif tx_type == 'bonus_to_game':
+                bonus_refund = int(float(amount or 0))
+                cursor.execute(
+                    "UPDATE users SET bonus_balance = bonus_balance + %s, game_bonus_amount = GREATEST(0, COALESCE(game_bonus_amount, 0) - %s) WHERE telegram_id = %s",
+                    (bonus_refund, bonus_refund, str(user_telegram_id))
+                )
+            else:
+                amount_int = int(float(amount or 0))
+                if amount_int > 0:
+                    cursor.execute(
+                        "UPDATE users SET bot_balance = bot_balance + %s WHERE telegram_id = %s",
+                        (amount_int, str(user_telegram_id))
+                    )
         cursor.execute(
             "UPDATE transactions SET status = 'failed', rejection_reason = 'iChancy API failed - balance refunded', reviewed_at = CURRENT_TIMESTAMP WHERE id = %s",
             (int(tx_id),)
@@ -767,6 +844,64 @@ def credit_balance_atomic(telegram_id, amount):
             conn.rollback()
         logger.error(f"credit_balance_atomic error: {e}")
         return None
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
+def settle_game_withdraw_with_active_bonus(telegram_id, withdraw_amount, tx_id=None):
+    """تسوية سحب اللعبة: خصم بونص اللعبة النشط أولاً، ثم إضافة الصافي إلى bot_balance."""
+    conn = None
+    cursor = None
+    tid = str(telegram_id)
+    amount_int = int(float(withdraw_amount or 0))
+    if amount_int <= 0:
+        return {'ok': False, 'reason': 'invalid_amount'}
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT bot_balance, game_bonus_amount FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return {'ok': False, 'reason': 'user_not_found'}
+        old_balance = int(row[0] or 0)
+        active_bonus = int(row[1] or 0)
+        consumed_bonus = min(active_bonus, amount_int)
+        cash_to_credit = max(0, amount_int - consumed_bonus)
+        remaining_bonus = max(0, active_bonus - consumed_bonus)
+        cursor.execute(
+            "UPDATE users SET bot_balance = bot_balance + %s, game_bonus_amount = %s WHERE telegram_id = %s RETURNING bot_balance",
+            (cash_to_credit, remaining_bonus, tid)
+        )
+        new_balance = int(cursor.fetchone()[0] or 0)
+        if tx_id:
+            cursor.execute(
+                """UPDATE transactions
+                   SET status = 'completed', reviewed_at = CURRENT_TIMESTAMP,
+                       original_amount = %s, converted_amount_syp = %s,
+                       transfer_number = COALESCE(transfer_number, '') || %s
+                   WHERE id = %s""",
+                (amount_int, cash_to_credit, f' | active_bonus_deducted={consumed_bonus} | credited={cash_to_credit}', int(tx_id))
+            )
+        conn.commit()
+        return {
+            'ok': True,
+            'withdraw_amount': amount_int,
+            'active_bonus_before': active_bonus,
+            'bonus_deducted': consumed_bonus,
+            'active_bonus_after': remaining_bonus,
+            'cash_credited': cash_to_credit,
+            'old_balance': old_balance,
+            'new_balance': new_balance,
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"settle_game_withdraw_with_active_bonus error: {e}")
+        return {'ok': False, 'reason': 'error', 'message': str(e)}
     finally:
         if cursor:
             cursor.close()
@@ -1241,11 +1376,13 @@ def get_bot_settings():
     if settings_dict:
         settings_dict['bonus_rollover_multiplier'] = settings_dict.get('bonus_rollover_multiplier', 5.0)
         settings_dict['turnover_field_name'] = settings_dict.get('turnover_field_name', 'totalBet')
+        settings_dict['game_bonus_enabled'] = settings_dict.get('game_bonus_enabled', True)
+        settings_dict['game_bonus_apply_percent'] = settings_dict.get('game_bonus_apply_percent', 10)
         
     return settings_dict
 
 
-def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None):
+def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None, game_bonus_enabled=None, game_bonus_apply_percent=None):
     settings_dict = get_bot_settings()
     if not settings_dict:
         DatabaseManager.execute_query("INSERT INTO bot_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;")
@@ -1267,10 +1404,12 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
     new_syp_version = syp_version if syp_version is not None else settings_dict.get('syp_version', 'old')
     new_rollover = bonus_rollover_multiplier if bonus_rollover_multiplier is not None else settings_dict.get('bonus_rollover_multiplier', 5.0)
     new_field = turnover_field_name if turnover_field_name is not None else settings_dict.get('turnover_field_name', 'totalBet')
+    new_game_bonus_enabled = game_bonus_enabled if game_bonus_enabled is not None else settings_dict.get('game_bonus_enabled', True)
+    new_game_bonus_apply_percent = game_bonus_apply_percent if game_bonus_apply_percent is not None else settings_dict.get('game_bonus_apply_percent', 10)
 
     query = """
     UPDATE bot_settings
-    SET exchange_rate = %s, usd_buy_rate = %s, usd_sell_rate = %s, withdraw_commission = %s, ichancy_cookie = %s, agent_balance = %s, referrals_enabled = %s, game_min_deposit_syp = %s, agent_revenue_percent = %s, min_deposit_syp = %s, min_deposit_usd = %s, min_withdraw_syp = %s, min_withdraw_usd = %s, syp_version = %s, bonus_rollover_multiplier = %s, turnover_field_name = %s
+    SET exchange_rate = %s, usd_buy_rate = %s, usd_sell_rate = %s, withdraw_commission = %s, ichancy_cookie = %s, agent_balance = %s, referrals_enabled = %s, game_min_deposit_syp = %s, agent_revenue_percent = %s, min_deposit_syp = %s, min_deposit_usd = %s, min_withdraw_syp = %s, min_withdraw_usd = %s, syp_version = %s, bonus_rollover_multiplier = %s, turnover_field_name = %s, game_bonus_enabled = %s, game_bonus_apply_percent = %s
     WHERE id = 1
     """
     DatabaseManager.execute_query(
@@ -1291,7 +1430,9 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
             int(new_min_withdraw_usd),
             str(new_syp_version),
             float(new_rollover),
-            str(new_field)
+            str(new_field),
+            bool(new_game_bonus_enabled),
+            float(new_game_bonus_apply_percent)
         )
     )
 
