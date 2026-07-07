@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>👑 لوحة تحكم القيصر - النسخة المحسّنة</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, 'Segoe UI', Tahoma, sans-serif; }
+  
+  :root {
+    --bg: #0f1923;
+    --card: #1a2735;
+    --text: #e8e8e8;
+    --hint: #7a8a9a;
+    --gold: #ffd700;
+    --green: #4caf50;
+    --red: #f44336;
+    --blue: #6ab2f2;
+    --orange: #ff9800;
+    --line: rgba(255,255,255,0.08);
+  }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 70px;
+  }
+  
+  /* ===== الشريط العلوي ===== */
+  .top-bar {
+    background: linear-gradient(135deg, #1a2735 0%, #0f1923 100%);
+    padding: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 1px solid var(--line);
+  }
+  
+  .top-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  
+  .top-bar h1 {
+    color: var(--gold);
+    font-size: 18px;
+  }
+  
+  .top-bar .time {
+    color: var(--hint);
+    font-size: 12px;
+  }
+  
+  /* ===== شريط البحث ===== */
+  .search-bar {
+    display: flex;
+    gap: 8px;
+  }
+  
+  .search-bar input {
+    flex: 1;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    outline: none;
+  }
+  
+  .search-bar input:focus {
+    border-color: var(--blue);
+  }
+  
+  .search-bar button {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  
+  /* ===== شريط التنبيهات ===== */
+  .alerts-bar {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  
+  .alerts-bar::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .alert-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .alert-chip:hover {
+    background: rgba(106,178,242,0.15);
+    border-color: var(--blue);
+  }
+  
+  .alert-chip.warning {
+    background: rgba(255,152,0,0.15);
+    border-color: var(--orange);
+    color: var(--orange);
+  }
+  
+  .alert-chip.danger {
+    background: rgba(244,67,54,0.15);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  
+  .alert-chip .badge {
+    background: var(--red);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 900;
+  }
+  
+  /* ===== المحتوى الرئيسي ===== */
+  .content {
+    padding: 12px 16px;
+  }
+  
+  /* ===== البطاقات ===== */
+  .card {
+    background: var(--card);
+    border: 1px solid rgba(106,178,242,0.08);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  }
+  
+  .card-title {
+    color: var(--blue);
+    font-size: 14px;
+    font-weight: 900;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .card-title .see-all {
+    color: var(--hint);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  
+  /* ===== شبكة الإحصائيات ===== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  
+  .stat-box {
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+  }
+  
+  .stat-box .icon {
+    font-size: 24px;
+    margin-bottom: 6px;
+  }
+  
+  .stat-box .label {
+    font-size: 11px;
+    color: var(--hint);
+    margin-bottom: 4px;
+  }
+  
+  .stat-box .value {
+    font-size: 20px;
+    font-weight: 900;
+  }
+  
+  .stat-box .change {
+    font-size: 11px;
+    margin-top: 4px;
+  }
+  
+  .stat-box .change.up {
+    color: var(--green);
+  }
+  
+  .stat-box .change.down {
+    color: var(--red);
+  }
+  
+  /* ===== شريط الحالة ===== */
+  .status-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  
+  .status-item .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  
+  .status-item .dot.green { background: var(--green); }
+  .status-item .dot.red { background: var(--red); }
+  .status-item .dot.orange { background: var(--orange); }
+  
+  /* ===== قائمة الطلبات ===== */
+  .request-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .request-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .request-item:hover {
+    background: rgba(106,178,242,0.1);
+  }
+  
+  .request-item .icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  
+  .request-item .icon.deposit { background: rgba(76,175,80,0.2); }
+  .request-item .icon.withdraw { background: rgba(244,67,54,0.2); }
+  
+  .request-item .info {
+    flex: 1;
+  }
+  
+  .request-item .info .title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  
+  .request-item .info .subtitle {
+    font-size: 11px;
+    color: var(--hint);
+  }
+  
+  .request-item .amount {
+    text-align: left;
+    direction: ltr;
+  }
+  
+  .request-item .amount .value {
+    font-size: 14px;
+    font-weight: 900;
+  }
+  
+  .request-item .amount .time {
+    font-size: 10px;
+    color: var(--hint);
+  }
+  
+  .request-item .actions {
+    display: flex;
+    gap: 6px;
+  }
+  
+  .request-item .actions button {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .request-item .actions .accept {
+    background: rgba(76,175,80,0.2);
+    color: var(--green);
+  }
+  
+  .request-item .actions .reject {
+    background: rgba(244,67,54,0.2);
+    color: var(--red);
+  }
+  
+  /* ===== الأزرار السريعة ===== */
+  .quick-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  
+  .action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .action-btn:hover {
+    background: rgba(106,178,242,0.15);
+    border-color: var(--blue);
+  }
+  
+  .action-btn .icon {
+    font-size: 24px;
+  }
+  
+  .action-btn .label {
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+  }
+  
+  /* ===== شريط التنقل السفلي ===== */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--card);
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0;
+    z-index: 100;
+  }
+  
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+    color: var(--hint);
+    font-size: 10px;
+    font-weight: 700;
+    transition: all 0.2s;
+  }
+  
+  .nav-item.active {
+    color: var(--blue);
+  }
+  
+  .nav-item .icon {
+    font-size: 20px;
+  }
+  
+  .nav-item .badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background: var(--red);
+    color: #fff;
+    padding: 1px 5px;
+    border-radius: 10px;
+    font-size: 9px;
+    font-weight: 900;
+  }
+  
+  /* ===== قسم الرسائل الأخيرة ===== */
+  .message-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .message-item {
+    display: flex;
+    gap: 10px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  
+  .message-item .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(106,178,242,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  
+  .message-item .content {
+    flex: 1;
+  }
+  
+  .message-item .content .name {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  
+  .message-item .content .text {
+    font-size: 11px;
+    color: var(--hint);
+  }
+  
+  .message-item .time {
+    font-size: 10px;
+    color: var(--hint);
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== الشريط العلوي ===== -->
+<div class="top-bar">
+  <div class="top-bar-header">
+    <h1>👑 لوحة تحكم القيصر</h1>
+    <span class="time">آخر تحديث: 14:30</span>
+  </div>
+  <div class="search-bar">
+    <input type="text" placeholder="🔍 بحث عن مستخدم أو طلب...">
+    <button>بحث</button>
+  </div>
+</div>
+
+<!-- ===== شريط التنبيهات ===== -->
+<div class="alerts-bar">
+  <div class="alert-chip danger">
+    <span>📥</span>
+    <span>5 طلبات إيداع معلقة</span>
+    <span class="badge">5</span>
+  </div>
+  <div class="alert-chip warning">
+    <span>📤</span>
+    <span>2 طلبات سحب معلقة</span>
+    <span class="badge">2</span>
+  </div>
+  <div class="alert-chip">
+    <span>📩</span>
+    <span>3 رسائل دعم جديدة</span>
+    <span class="badge">3</span>
+  </div>
+  <div class="alert-chip">
+    <span>👑</span>
+    <span>مسابقة جديدة تحتاج مراجعة</span>
+  </div>
+</div>
+
+<!-- ===== المحتوى الرئيسي ===== -->
+<div class="content">
+  
+  <!-- ===== إحصائيات اليوم ===== -->
+  <div class="card">
+    <div class="card-title">
+      <span>📊 إحصائيات اليوم</span>
+      <span class="see-all">عرض الكل →</span>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="icon">👥</div>
+        <div class="label">المستخدمون الجدد</div>
+        <div class="value" style="color: var(--green)">15</div>
+        <div class="change up">↑ +20% من الأمس</div>
+      </div>
+      <div class="stat-box">
+        <div class="icon">💰</div>
+        <div class="label">إجمالي الإيداعات</div>
+        <div class="value" style="color: var(--gold)">1.2M</div>
+        <div class="change up">↑ SYP</div>
+      </div>
+      <div class="stat-box">
+        <div class="icon">📤</div>
+        <div class="label">إجمالي السحوبات</div>
+        <div class="value" style="color: var(--red)">450K</div>
+        <div class="change down">↓ SYP</div>
+      </div>
+      <div class="stat-box">
+        <div class="icon">📈</div>
+        <div class="label">صافي الربح</div>
+        <div class="value" style="color: var(--green)">750K</div>
+        <div class="change up">↑ SYP</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ===== حالة النظام ===== -->
+  <div class="card">
+    <div class="card-title">
+      <span>🩺 حالة النظام</span>
+      <span class="see-all">تفاصيل →</span>
+    </div>
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="dot green"></div>
+        <span>🍪 الكوكيز نشطة</span>
+      </div>
+      <div class="status-item">
+        <div class="dot green"></div>
+        <span>🗄️ Neon متصل</span>
+      </div>
+      <div class="status-item">
+        <div class="dot green"></div>
+        <span>🌐 Webhook يعمل</span>
+      </div>
+      <div class="status-item">
+        <div class="dot green"></div>
+        <span>🎮 iChancy متصل</span>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ===== الطلبات المعلقة ===== -->
+  <div class="card">
+    <div class="card-title">
+      <span>⏳ الطلبات المعلقة</span>
+      <span class="see-all">عرض الكل →</span>
+    </div>
+    <div class="request-list">
+      <div class="request-item">
+        <div class="icon deposit">📥</div>
+        <div class="info">
+          <div class="title">إيداع - Syriatel Cash</div>
+          <div class="subtitle">@ahmad_123 • #1234</div>
+        </div>
+        <div class="amount">
+          <div class="value" style="color: var(--green)">50,000 SYP</div>
+          <div class="time">منذ 5 دقائق</div>
+        </div>
+        <div class="actions">
+          <button class="accept">✓</button>
+          <button class="reject">✕</button>
+        </div>
+      </div>
+      
+      <div class="request-item">
+        <div class="icon deposit">📥</div>
+        <div class="info">
+          <div class="title">إيداع - USDT TRC20</div>
+          <div class="subtitle">@sara_456 • #1235</div>
+        </div>
+        <div class="amount">
+          <div class="value" style="color: var(--green)">100 USDT</div>
+          <div class="time">منذ 12 دقيقة</div>
+        </div>
+        <div class="actions">
+          <button class="accept">✓</button>
+          <button class="reject">✕</button>
+        </div>
+      </div>
+      
+      <div class="request-item">
+        <div class="icon withdraw">📤</div>
+        <div class="info">
+          <div class="title">سحب - MTN Cash</div>
+          <div class="subtitle">@mohammad_789 • #1236</div>
+        </div>
+        <div class="amount">
+          <div class="value" style="color: var(--red)">30,000 SYP</div>
+          <div class="time">منذ 20 دقيقة</div>
+        </div>
+        <div class="actions">
+          <button class="accept">✓</button>
+          <button class="reject">✕</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ===== آخر الرسائل ===== -->
+  <div class="card">
+    <div class="card-title">
+      <span>📩 آخر الرسائل</span>
+      <span class="see-all">عرض الكل →</span>
+    </div>
+    <div class="message-list">
+      <div class="message-item">
+        <div class="avatar">👤</div>
+        <div class="content">
+          <div class="name">@ahmad_123</div>
+          <div class="text">متى سيتم قبول طلب الإيداع الخاص بي؟</div>
+        </div>
+        <div class="time">14:25</div>
+      </div>
+      
+      <div class="message-item">
+        <div class="avatar">👤</div>
+        <div class="content">
+          <div class="name">@sara_456</div>
+          <div class="text">شكراً على السرعة في المعالجة! 🎉</div>
+        </div>
+        <div class="time">14:20</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- ===== الأزرار السريعة ===== -->
+  <div class="card">
+    <div class="card-title">
+      <span>⚡ أدوات سريعة</span>
+    </div>
+    <div class="quick-actions">
+      <div class="action-btn">
+        <div class="icon">👥</div>
+        <div class="label">المستخدمون</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">📥</div>
+        <div class="label">الطلبات</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">📩</div>
+        <div class="label">الدعم</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">💸</div>
+        <div class="label">الوكيل</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">🎁</div>
+        <div class="label">البونصات</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">📢</div>
+        <div class="label">إرسال</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">👑</div>
+        <div class="label">المسابقات</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">🎫</div>
+        <div class="label">التوقعات</div>
+      </div>
+      <div class="action-btn">
+        <div class="icon">⚙️</div>
+        <div class="label">الإعدادات</div>
+      </div>
+    </div>
+  </div>
+  
+</div>
+
+<!-- ===== شريط التنقل السفلي ===== -->
+<div class="bottom-nav">
+  <div class="nav-item active">
+    <div class="icon">🏠</div>
+    <span>الرئيسية</span>
+  </div>
+  <div class="nav-item" style="position:relative">
+    <div class="icon">📥</div>
+    <span>الطلبات</span>
+    <span class="badge">7</span>
+  </div>
+  <div class="nav-item" style="position:relative">
+    <div class="icon">📩</div>
+    <span>الدعم</span>
+    <span class="badge">3</span>
+  </div>
+  <div class="nav-item">
+    <div class="icon">👥</div>
+    <span>المستخدمون</span>
+  </div>
+  <div class="nav-item">
+    <div class="icon">⚙️</div>
+    <span>الإعدادات</span>
+  </div>
+</div>
+
+</body>
+</html>

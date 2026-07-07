@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>👑 لوحة القيصر</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-family:-apple-system,'Segoe UI',Tahoma,sans-serif}
+  :root{
+    --bg:#0a0e1a;
+    --bg2:#111827;
+    --card:rgba(255,255,255,0.04);
+    --card-border:rgba(255,215,0,0.12);
+    --text:#f0f0f0;
+    --hint:#7a8a9a;
+    --gold:#ffd700;
+    --gold-dim:rgba(255,215,0,0.15);
+    --green:#00d68f;
+    --red:#ff5252;
+    --blue:#4a9eff;
+    --purple:#a855f7;
+  }
+  body{background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:90px;overflow-x:hidden}
+
+  /* خلفية متوهّجة */
+  body::before{
+    content:'';position:fixed;top:-100px;right:-100px;width:400px;height:400px;
+    background:radial-gradient(circle,rgba(255,215,0,0.08) 0%,transparent 70%);
+    pointer-events:none;z-index:0
+  }
+  body::after{
+    content:'';position:fixed;bottom:-100px;left:-100px;width:350px;height:350px;
+    background:radial-gradient(circle,rgba(74,158,255,0.06) 0%,transparent 70%);
+    pointer-events:none;z-index:0
+  }
+
+  .container{padding:16px;position:relative;z-index:1}
+
+  /* ===== الترويسة ===== */
+  .header{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:20px;padding-top:10px
+  }
+  .header .logo{font-size:22px;font-weight:900;color:var(--gold);display:flex;align-items:center;gap:8px}
+  .header .logo .crown{filter:drop-shadow(0 0 8px rgba(255,215,0,0.5))}
+  .header .refresh-btn{
+    background:var(--card);border:1px solid var(--card-border);color:var(--hint);
+    width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:16px;cursor:pointer;transition:all 0.3s
+  }
+  .header .refresh-btn:active{transform:rotate(180deg)}
+
+  /* ===== بطاقة الرصيد المتوهّجة ===== */
+  .balance-card{
+    background:linear-gradient(135deg,rgba(255,215,0,0.08) 0%,rgba(255,215,0,0.02) 100%);
+    border:1px solid var(--card-border);
+    border-radius:24px;padding:24px;margin-bottom:16px;
+    position:relative;overflow:hidden;
+    box-shadow:0 8px 32px rgba(255,215,0,0.08),inset 0 1px 0 rgba(255,255,255,0.05)
+  }
+  .balance-card::before{
+    content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;
+    background:linear-gradient(45deg,transparent 30%,rgba(255,215,0,0.03) 50%,transparent 70%);
+    animation:shimmer 4s linear infinite;pointer-events:none
+  }
+  @keyframes shimmer{0%{transform:translateX(-50%)}100%{transform:translateX(50%)}}
+
+  .balance-card .label{color:var(--hint);font-size:12px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .balance-card .amount{font-size:38px;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.1;margin-bottom:4px}
+  .balance-card .amount-new{font-size:14px;color:var(--gold);font-weight:700;opacity:0.85}
+  .balance-card .divider{height:1px;background:rgba(255,255,255,0.06);margin:16px 0}
+  .balance-card .game-balance{display:flex;justify-content:space-between;align-items:center}
+  .balance-card .game-balance .g-label{color:var(--hint);font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
+  .balance-card .game-balance .g-value{color:var(--green);font-size:18px;font-weight:900}
+
+  /* ===== شبكة الإجراءات السريعة ===== */
+  .quick-grid{
+    display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px
+  }
+  .quick-btn{
+    background:var(--card);border:1px solid rgba(255,255,255,0.05);
+    border-radius:16px;padding:16px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;
+    cursor:pointer;transition:all 0.25s;text-decoration:none
+  }
+  .quick-btn:active{transform:scale(0.95);background:var(--gold-dim)}
+  .quick-btn .icon{font-size:24px}
+  .quick-btn .text{font-size:11px;font-weight:700;color:var(--text)}
+  .quick-btn.deposit .icon{color:var(--green)}
+  .quick-btn.withdraw .icon{color:var(--red)}
+  .quick-btn.gift .icon{color:var(--gold)}
+  .quick-btn.referral .icon{color:var(--purple)}
+
+  /* ===== بطاقة معلومات ===== */
+  .info-card{
+    background:var(--card);border:1px solid rgba(255,255,255,0.04);
+    border-radius:20px;padding:16px;margin-bottom:16px
+  }
+  .info-card .title{
+    font-size:14px;font-weight:900;color:var(--text);margin-bottom:14px;
+    display:flex;align-items:center;justify-content:space-between
+  }
+  .info-card .title .badge{
+    background:var(--gold-dim);color:var(--gold);padding:3px 10px;border-radius:20px;
+    font-size:11px;font-weight:800
+  }
+
+  /* ===== قائمة المعاملات ===== */
+  .tx-list{display:flex;flex-direction:column;gap:8px}
+  .tx-item{
+    display:flex;align-items:center;gap:12px;
+    background:rgba(255,255,255,0.02);border-radius:14px;padding:12px;
+    border-right:3px solid transparent;transition:all 0.2s
+  }
+  .tx-item.deposit{border-right-color:var(--green)}
+  .tx-item.withdraw{border-right-color:var(--red)}
+  .tx-item.game{border-right-color:var(--blue)}
+  .tx-item.bonus{border-right-color:var(--gold)}
+
+  .tx-item .tx-icon{
+    width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    font-size:18px;flex-shrink:0
+  }
+  .tx-item.deposit .tx-icon{background:rgba(0,214,143,0.12)}
+  .tx-item.withdraw .tx-icon{background:rgba(255,82,82,0.12)}
+  .tx-item.game .tx-icon{background:rgba(74,158,255,0.12)}
+  .tx-item.bonus .tx-icon{background:var(--gold-dim)}
+
+  .tx-item .tx-info{flex:1;min-width:0}
+  .tx-item .tx-info .tx-type{font-size:13px;font-weight:700;color:var(--text)}
+  .tx-item .tx-info .tx-date{font-size:11px;color:var(--hint);margin-top:2px}
+  .tx-item .tx-amount{text-align:left;direction:ltr;font-size:15px;font-weight:900;white-space:nowrap}
+  .tx-item .tx-amount.in{color:var(--green)}
+  .tx-item .tx-amount.out{color:var(--red)}
+
+  .tx-status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:4px}
+  .tx-status.approved{background:var(--green)}
+  .tx-status.pending{background:var(--gold)}
+  .tx-status.rejected{background:var(--red)}
+  .tx-status.completed{background:var(--green)}
+
+  .empty{text-align:center;color:var(--hint);padding:24px;font-size:13px}
+
+  /* ===== بانر العروض ===== */
+  .offer-banner{
+    background:linear-gradient(135deg,rgba(255,215,0,0.12) 0%,rgba(168,85,247,0.08) 100%);
+    border:1px solid var(--card-border);
+    border-radius:20px;padding:16px;margin-bottom:16px;
+    display:flex;align-items:center;gap:14px;cursor:pointer;transition:all 0.25s
+  }
+  .offer-banner:active{transform:scale(0.98)}
+  .offer-banner .offer-icon{font-size:32px}
+  .offer-banner .offer-text{flex:1}
+  .offer-banner .offer-text .offer-title{font-size:14px;font-weight:900;color:var(--gold)}
+  .offer-banner .offer-text .offer-desc{font-size:12px;color:var(--hint);margin-top:2px}
+
+  /* ===== بانر المسابقات ===== */
+  .contest-banner{
+    background:linear-gradient(135deg,rgba(168,85,247,0.12) 0%,rgba(74,158,255,0.08) 100%);
+    border:1px solid rgba(168,85,247,0.2);
+    border-radius:20px;padding:16px;margin-bottom:16px;
+    display:flex;align-items:center;gap:14px;cursor:pointer;transition:all 0.25s
+  }
+  .contest-banner:active{transform:scale(0.98)}
+  .contest-banner .contest-icon{font-size:32px}
+  .contest-banner .contest-text{flex:1}
+  .contest-banner .contest-text .contest-title{font-size:14px;font-weight:900;color:#c084fc}
+  .contest-banner .contest-text .contest-desc{font-size:12px;color:var(--hint);margin-top:2px}
+
+  /* ===== بطاقة الحضور اليومي ===== */
+  .checkin-card{
+    background:linear-gradient(135deg,rgba(0,214,143,0.08) 0%,rgba(0,214,143,0.02) 100%);
+    border:1px solid rgba(0,214,143,0.15);
+    border-radius:20px;padding:16px;margin-bottom:16px;text-align:center
+  }
+  .checkin-card .ck-title{font-size:14px;font-weight:900;color:var(--green);margin-bottom:10px}
+  .checkin-card .ck-streak{display:flex;justify-content:center;gap:4px;margin:10px 0}
+  .checkin-card .ck-day{
+    width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:900;background:rgba(255,255,255,0.04);color:var(--hint)
+  }
+  .checkin-card .ck-day.done{background:rgba(0,214,143,0.2);color:var(--green)}
+  .checkin-card .ck-day.today{background:var(--gold-dim);color:var(--gold);border:1px solid var(--gold)}
+  .checkin-btn{
+    width:100%;background:var(--green);color:#0a0e1a;border:none;padding:14px;border-radius:14px;
+    font-size:15px;font-weight:900;cursor:pointer;margin-top:10px;transition:all 0.2s
+  }
+  .checkin-btn:active{transform:scale(0.98)}
+  .checkin-btn:disabled{background:rgba(255,255,255,0.06);color:var(--hint);cursor:not-allowed}
+
+  /* ===== فلاش البونص ===== */
+  .flash-banner{
+    background:linear-gradient(135deg,rgba(255,82,82,0.15) 0%,rgba(255,152,0,0.12) 100%);
+    border:1px solid rgba(255,82,82,0.25);
+    border-radius:20px;padding:16px;margin-bottom:16px;text-align:center;position:relative;overflow:hidden
+  }
+  .flash-banner::before{
+    content:'⚡';position:absolute;top:-10px;left:-10px;font-size:60px;opacity:0.06
+  }
+  .flash-banner .fl-title{font-size:18px;font-weight:900;color:var(--red);margin-bottom:4px}
+  .flash-banner .fl-desc{font-size:13px;color:var(--hint);margin-bottom:10px}
+  .flash-banner .fl-timer{font-size:24px;font-weight:900;color:var(--gold);direction:ltr}
+
+  /* ===== لوحة الصدارة ===== */
+  .lb-item{
+    display:flex;align-items:center;gap:12px;
+    background:rgba(255,255,255,0.02);border-radius:12px;padding:10px 12px;margin-top:6px
+  }
+  .lb-item .lb-rank{
+    width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:900;flex-shrink:0;background:rgba(255,255,255,0.06)
+  }
+  .lb-item.r1 .lb-rank{background:rgba(255,215,0,0.2);color:var(--gold)}
+  .lb-item.r2 .lb-rank{background:rgba(192,192,192,0.2);color:#c0c0c0}
+  .lb-item.r3 .lb-rank{background:rgba(205,127,50,0.2);color:#cd7f32}
+  .lb-item .lb-name{flex:1;font-size:13px;font-weight:700}
+  .lb-item .lb-val{font-size:14px;font-weight:900;color:var(--gold);direction:ltr}
+  .lb-item.me{border:1px solid var(--gold);background:var(--gold-dim)}
+
+  /* ===== عجلة الحظ ===== */
+  .wheel-container{text-align:center;padding:10px 0;margin-bottom:12px}
+  .wheel-wrapper{position:relative;width:260px;height:260px;margin:0 auto 16px}
+  .wheel-svg{width:100%;height:100%;transition:transform 4s cubic-bezier(0.17,0.67,0.12,0.99);transform:rotate(0deg)}
+  .wheel-pointer{position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:20px solid var(--gold);z-index:10;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))}
+  .wheel-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--gold),#b8860b);display:flex;align-items:center;justify-content:center;font-size:24px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+  .spin-btn{width:100%;background:linear-gradient(135deg,var(--gold),#b8860b);color:#0a0e1a;border:none;padding:16px;border-radius:16px;font-size:18px;font-weight:900;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 16px rgba(255,215,0,0.2)}
+  .spin-btn:active{transform:scale(0.97)}
+  .spin-btn:disabled{background:rgba(255,255,255,0.06);color:var(--hint);cursor:not-allowed;box-shadow:none}
+  .wheel-result{font-size:16px;font-weight:900;margin-top:12px;padding:12px;border-radius:12px;animation:fadeIn 0.4s}
+  .wheel-result.win{background:var(--gold-dim);color:var(--gold)}
+  .wheel-result.lose{background:rgba(255,255,255,0.04);color:var(--hint)}
+
+  /* ===== شريط التنقّل السفلي ===== */
+  .bottom-nav{
+    position:fixed;bottom:0;left:0;right:0;
+    background:rgba(10,14,26,0.95);backdrop-filter:blur(20px);
+    border-top:1px solid rgba(255,255,255,0.06);
+    display:flex;justify-content:space-around;padding:10px 0 14px;z-index:100
+  }
+  .nav-item{
+    display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+    color:var(--hint);font-size:10px;font-weight:700;transition:all 0.2s;background:none;border:none
+  }
+  .nav-item.active{color:var(--gold)}
+  .nav-item .nav-icon{font-size:20px}
+
+  /* ===== الحالات ===== */
+  .loader{text-align:center;padding:60px 20px;color:var(--hint)}
+  .spinner{width:36px;height:36px;border:3px solid rgba(255,215,0,0.15);border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .error-box{background:rgba(255,82,82,0.08);border:1px solid var(--red);color:var(--red);border-radius:16px;padding:20px;text-align:center;font-size:13px;line-height:1.7}
+
+  /* ===== صفحات (tabs) ===== */
+  .page{display:none;animation:fadeIn 0.3s ease}
+  .page.active{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- الترويسة -->
+  <div class="header">
+    <div class="logo"><span class="crown">👑</span> القيصر</div>
+    <button class="refresh-btn" onclick="loadAll()">🔄</button>
+  </div>
+
+  <div id="errorBox"></div>
+
+  <!-- ===== الصفحة الرئيسية ===== -->
+  <div class="page active" id="pageHome">
+    <!-- بطاقة الرصيد -->
+    <div id="balanceCard">
+      <div class="loader"><div class="spinner"></div>جارٍ التحميل...</div>
+    </div>
+
+    <!-- بطاقة VIP -->
+    <div id="vipCard"></div>
+
+    <!-- الكاش باك -->
+    <div id="cashbackCard"></div>
+
+    <!-- بانر العروض (يظهر فقط لو يوجد عرض) -->
+    <div id="offerBanner"></div>
+
+    <!-- بانر المسابقات (يظهر فقط لو يوجد مسابقة مفتوحة) -->
+    <div id="contestBanner"></div>
+
+    <!-- فلاش البونص (يظهر فقط لو نشط) -->
+    <div id="flashBanner"></div>
+
+    <!-- عجلة الحظ (تظهر فقط لو مفعّلة ولديه لفة متاحة) -->
+    <div id="wheelCard"></div>
+
+    <!-- الحضور اليومي -->
+    <div id="checkinCard"></div>
+
+    <!-- شبكة الإجراءات السريعة -->
+    <div class="quick-grid">
+      <a class="quick-btn deposit" href="#" onclick="closeApp()">
+        <div class="icon">📥</div><div class="text">شحن</div>
+      </a>
+      <a class="quick-btn withdraw" href="#" onclick="closeApp()">
+        <div class="icon">📤</div><div class="text">سحب</div>
+      </a>
+      <a class="quick-btn gift" href="#" onclick="closeApp()">
+        <div class="icon">🎁</div><div class="text">إهداء</div>
+      </a>
+      <a class="quick-btn referral" href="#" onclick="showPage('referral')">
+        <div class="icon">💰</div><div class="text">إحالات</div>
+      </a>
+    </div>
+
+    <!-- آخر المعاملات -->
+    <div class="info-card">
+      <div class="title">
+        <span>🕒 آخر العمليات</span>
+        <span class="badge" id="txCount">0</span>
+      </div>
+      <div id="txList" class="tx-list">
+        <div class="loader"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== صفحة السجل الكامل ===== -->
+  <div class="page" id="pageHistory">
+    <div class="info-card">
+      <div class="title"><span>📋 سجل المعاملات الكامل</span></div>
+      <div id="fullTxList" class="tx-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== صفحة الإحالات ===== -->
+  <div class="page" id="pageReferral">
+    <div id="referralContent"></div>
+  </div>
+
+  <!-- ===== صفحة المزايا ===== -->
+  <div class="page" id="pagePerks">
+    <div id="perksContent"></div>
+  </div>
+</div>
+
+<!-- شريط التنقّل السفلي -->
+<div class="bottom-nav">
+  <button class="nav-item active" id="navHome" onclick="showPage('home')">
+    <div class="nav-icon">🏠</div><span>الرئيسية</span>
+  </button>
+  <button class="nav-item" id="navHistory" onclick="showPage('history')">
+    <div class="nav-icon">📋</div><span>السجل</span>
+  </button>
+  <button class="nav-item" id="navReferral" onclick="showPage('referral')">
+    <div class="nav-icon">💰</div><span>الإحالات</span>
+  </button>
+  <button class="nav-item" id="navPerks" onclick="showPage('perks')">
+    <div class="nav-icon">🏆</div><span>المزايا</span>
+  </button>
+</div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp ? Telegram.WebApp : {initData:'',ready(){},expand(){},close(){}};
+let initData = tg.initData || '';
+tg.ready();
+tg.expand();
+tg.setHeaderColor('#0a0e1a');
+tg.setBackgroundColor('#0a0e1a');
+
+const API = window.location.origin + '/api/user/me';
+
+function fmt(n){return new Intl.NumberFormat('en-US').format(Number(n||0));}
+function closeApp(){tg.close();}
+
+function showPage(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const map = {home:'pageHome',history:'pageHistory',referral:'pageReferral',perks:'pagePerks'};
+  const navMap = {home:'navHome',history:'navHistory',referral:'navReferral',perks:'navPerks'};
+  document.getElementById(map[page]).classList.add('active');
+  document.getElementById(navMap[page]).classList.add('active');
+  if(page==='history') loadFullHistory();
+  if(page==='referral') loadReferral();
+  if(page==='perks') loadPerks();
+}
+
+async function apiGet(url){
+  const res = await fetch(url, {headers:{'X-Telegram-Init-Data':initData}});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return await res.json();
+}
+
+async function loadAll(){
+  document.getElementById('errorBox').innerHTML='';
+  try{
+    const d = await apiGet(API);
+    renderBalance(d);
+    renderVIP(d);
+    renderCashback(d);
+    renderOffers(d);
+    renderContests(d);
+    renderFlash(d);
+    renderCheckin(d);
+    renderWheel(d);
+    // حفظ قطاعات العجلة
+    if(d.features&&d.features.wheel_segments){
+      wheelSegments=d.features.wheel_segments;
+    }
+    renderRecentTx(d.recent_transactions||[]);
+  }catch(e){
+    document.getElementById('errorBox').innerHTML='<div class="error-box">⚠️ تعذّر تحميل البيانات.<br>تأكد من فتح اللوحة من زر البوت.</div>';
+    document.getElementById('balanceCard').innerHTML='';
+  }
+}
+
+// 🏆 (Update 16) نظام VIP
+function renderVIP(d){
+  const feat=d.features||{};
+  const box=document.getElementById('vipCard');
+  if(feat.vip_enabled===false){box.innerHTML='';return}
+  const vip=d.vip||{};
+  if(!vip.tier_name){box.innerHTML='';return}
+  
+  const total=vip.total_deposits||0;
+  const next=vip.next_tier;
+  const names=vip.tier_names||['🥉 مواطن','🥈 فارس','🥇 نبيل','👑 قيصر'];
+  const colors=['var(--hint)','#c0c0c0','#ffd700','#b8860b'];
+  const tierColor=colors[vip.tier_index||0];
+  
+  let progressBar='';
+  let nextText='';
+  if(next){
+    const currentThreshold=vip.tier_index>0?[0,500000,2000000,5000000][vip.tier_index]:0;
+    const range=next.threshold-currentThreshold;
+    const done=total-currentThreshold;
+    const pct=Math.min((done/range)*100,100);
+    progressBar=`<div style="background:rgba(255,255,255,0.05);border-radius:10px;height:12px;overflow:hidden;margin:10px 0"><div style="width:${pct}%;height:100%;background:linear-gradient(90deg,${tierColor},var(--gold));border-radius:10px;transition:width 0.5s"></div></div>`;
+    nextText=`<div style="font-size:11px;color:var(--hint);margin-top:4px">باقي <b style="color:var(--text)">${fmt(next.remaining)}</b> ل.س للترقية إلى ${names[next.index]}</div>`;
+  }
+
+  box.innerHTML=`
+    <div class="info-card" style="background:linear-gradient(135deg,${tierColor}15 0%,rgba(255,255,255,0.02) 100%);border-color:${tierColor}30">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:18px;font-weight:900;color:${tierColor}">${vip.tier_name}</div>
+        ${vip.current_bonus_pct>0?`<div class="pill" style="background:${tierColor}20;color:${tierColor}">+${vip.current_bonus_pct}% بونص</div>`:''}
+      </div>
+      <div style="font-size:12px;color:var(--hint)">إجمالي إيداعاتك: <b style="color:var(--text)">${fmt(total)}</b> ل.س</div>
+      ${progressBar}
+      ${nextText}
+    </div>
+  `;
+}
+
+// 💸 (Update 17) الكاش باك
+function renderCashback(d){
+  const cb=d.cashback||{};
+  const box=document.getElementById('cashbackCard');
+  if(!cb.enabled){box.innerHTML='';return}
+  const loss=cb.week_net_loss||0;
+  const expected=cb.expected_cashback||0;
+  const pct=cb.pct||5;
+  const minLoss=cb.min_loss||50000;
+  
+  let statusText='';
+  let statusColor='var(--hint)';
+  if(cb.already_paid){
+    statusText='✅ تم صرف كاش باك هذا الأسبوع';
+    statusColor='var(--green)';
+  }else if(loss>=minLoss){
+    statusText=`🎁 كاش باك متوقع: ${fmt(expected)} ل.س`;
+    statusColor='var(--gold)';
+  }else{
+    statusText=`الحد الأدنى للخسارة: ${fmt(minLoss)} ل.س`;
+  }
+  
+  box.innerHTML=`
+    <div class="info-card" style="background:linear-gradient(135deg,rgba(0,214,143,0.06) 0%,rgba(74,158,255,0.04) 100%);border-color:rgba(0,214,143,0.1)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:900;color:var(--green)">💸 الكاش باك الأسبوعي</div>
+        <div class="pill" style="background:rgba(0,214,143,0.15);color:var(--green)">${pct}%</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">
+        <div style="text-align:center;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px">
+          <div style="font-size:10px;color:var(--hint)">شحنات الأسبوع</div>
+          <div style="font-size:14px;font-weight:900;color:var(--blue)">${fmt(cb.week_deposited||0)}</div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px">
+          <div style="font-size:10px;color:var(--hint)">سحوبات الأسبوع</div>
+          <div style="font-size:14px;font-weight:900;color:var(--green)">${fmt(cb.week_withdrawn||0)}</div>
+        </div>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:${statusColor};text-align:center;padding:6px">${statusText}</div>
+      <div style="font-size:10px;color:var(--hint);text-align:center">صافي خسارة الأسبوع: ${fmt(loss)} ل.س — يُصرف كل يوم اثنين تلقائياً</div>
+    </div>
+  `;
+}
+
+function renderBalance(d){
+  const botBal = Number(d.bot_balance||0);
+  const botBalNew = botBal/100;
+  const newStr = botBalNew==Math.floor(botBalNew)?fmt(Math.floor(botBalNew)):botBalNew.toLocaleString('en-US',{maximumFractionDigits:2});
+  const gameBal = Number(d.game_balance||0);
+  const bonusBal = Number(d.bonus_balance||0);
+  const bonusNew = bonusBal/100;
+  const bonusNewStr = bonusNew==Math.floor(bonusNew)?fmt(Math.floor(bonusNew)):bonusNew.toLocaleString('en-US',{maximumFractionDigits:2});
+
+  let bonusHtml = '';
+  if(bonusBal > 0){
+    bonusHtml = `
+      <div class="divider"></div>
+      <div class="game-balance">
+        <div class="g-label" style="color:var(--gold)">🎁 رصيد المكافآت (للّعب فقط)</div>
+        <div class="g-value" style="color:var(--gold)">${fmt(bonusBal)} ل.س</div>
+      </div>
+      <div style="font-size:11px;color:var(--hint);margin-top:2px;text-align:left">≈ ${bonusNewStr} ل.س جديدة — غير قابل للسحب</div>
+    `;
+  }
+
+  document.getElementById('balanceCard').innerHTML=`
+    <div class="balance-card">
+      <div class="label">💎 رصيدك الحالي (قابل للسحب)</div>
+      <div class="amount">${fmt(botBal)} <span style="font-size:18px;color:var(--hint)">ل.س</span></div>
+      <div class="amount-new">≈ ${newStr} ل.س جديدة</div>
+      ${bonusHtml}
+      <div class="divider"></div>
+      <div class="game-balance">
+        <div class="g-label">🎮 رصيد اللعبة (iChancy)</div>
+        <div class="g-value">${fmt(gameBal)} NSP</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderOffers(d){
+  const offers = d.active_offers||[];
+  const box = document.getElementById('offerBanner');
+  if(!offers.length){box.innerHTML='';return;}
+  const best = offers[0];
+  box.innerHTML=`
+    <div class="offer-banner" onclick="closeApp()">
+      <div class="offer-icon">🔥</div>
+      <div class="offer-text">
+        <div class="offer-title">${best.title}</div>
+        <div class="offer-desc">بونص ${best.percent}% ${best.payment_method=='all'?'على كل الإيداعات':'على '+best.method_label}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderContests(d){
+  const contests = d.open_contests||[];
+  const box = document.getElementById('contestBanner');
+  if(!contests.length){box.innerHTML='';return;}
+  const c = contests[0];
+  const rewardTxt = c.reward_type==='bot_balance' ? `${fmt(c.reward_amount)} ل.س` : c.reward_type==='gift_code' ? 'كود هدية' : 'جائزة';
+  box.innerHTML=`
+    <div class="contest-banner" onclick="closeApp()">
+      <div class="contest-icon">👑</div>
+      <div class="contest-text">
+        <div class="contest-title">${c.title}</div>
+        <div class="contest-desc">جائزة: ${rewardTxt} — شارك الآن!</div>
+      </div>
+    </div>
+  `;
+}
+
+function txTypeLabel(t){
+  const m={'deposit_bot':'إيداع','withdraw_bot':'سحب','deposit_to_game':'شحن لعبة','withdraw_from_game':'سحب من لعبة','gift':'هدية'};
+  return m[t]||t||'—';
+}
+function txClass(t){
+  if(t&&t.includes('deposit'))return 'deposit';
+  if(t&&t.includes('withdraw'))return 'withdraw';
+  if(t&&t.includes('game'))return 'game';
+  return 'bonus';
+}
+function txIcon(t){
+  if(t&&t.includes('deposit'))return '📥';
+  if(t&&t.includes('withdraw'))return '📤';
+  if(t&&t.includes('game'))return '🎮';
+  return '🎁';
+}
+function txSign(t){
+  if(t&&t.includes('withdraw'))return '-';
+  return '+';
+}
+
+function renderRecentTx(txs){
+  const el = document.getElementById('txList');
+  document.getElementById('txCount').textContent = txs.length;
+  if(!txs.length){el.innerHTML='<div class="empty">لا توجد عمليات بعد</div>';return;}
+  el.innerHTML = txs.slice(0,5).map(t=>{
+    const cls=txClass(t.type);
+    const sign=txSign(t.type);
+    const statusDot = t.status?`<span class="tx-status ${t.status}"></span>`:'';
+    // 🎰 زر العجلة على الإيداعات المؤهلة
+    let wheelBtn='';
+    if(t.can_spin_wheel){
+      wheelBtn=`<button class="btn gold" style="margin-top:8px;font-size:12px;padding:8px" onclick="openWheel(${t.id},${t.amount})">🎰 دوّر العجلة!</button>`;
+    }
+    return `
+      <div class="tx-item ${cls}" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="tx-icon">${txIcon(t.type)}</div>
+          <div class="tx-info">
+            <div class="tx-type">${txTypeLabel(t.type)} ${statusDot}</div>
+            <div class="tx-date">${t.created_at||'—'}</div>
+          </div>
+          <div class="tx-amount ${sign==='+'?'in':'out'}">${sign}${fmt(t.amount)}</div>
+        </div>
+        ${wheelBtn}
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadFullHistory(){
+  const el = document.getElementById('fullTxList');
+  el.innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const d = await apiGet(API);
+    const txs = d.recent_transactions||[];
+    if(!txs.length){el.innerHTML='<div class="empty">لا توجد عمليات بعد</div>';return;}
+    el.innerHTML = txs.map(t=>{
+      const cls=txClass(t.type);
+      const sign=txSign(t.type);
+      const statusDot = t.status?`<span class="tx-status ${t.status}"></span>`:'';
+      const method = t.payment_method?` • ${t.payment_method}`:'';
+      return `
+        <div class="tx-item ${cls}">
+          <div class="tx-icon">${txIcon(t.type)}</div>
+          <div class="tx-info">
+            <div class="tx-type">${txTypeLabel(t.type)} ${statusDot}</div>
+            <div class="tx-date">${t.created_at||'—'}${method}</div>
+          </div>
+          <div class="tx-amount ${sign==='+'?'in':'out'}">${sign}${fmt(t.amount)}</div>
+        </div>
+      `;
+    }).join('');
+  }catch(e){
+    el.innerHTML='<div class="error-box">تعذّر تحميل السجل</div>';
+  }
+}
+
+async function loadReferral(){
+  const el = document.getElementById('referralContent');
+  el.innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const d = await apiGet(API);
+    const ref = d.referral||{};
+    const active = ref.active_referrals||0;
+    const total = ref.total_referrals||0;
+    const percent = ref.percent||0;
+    const earnings = ref.total_earnings||0;
+    const link = ref.ref_link||'';
+    const levels = [[3,3,'🥉'],[5,5,'🥈'],[10,10,'🥇']];
+    let progressBars = levels.map(([need,pct,medal])=>{
+      const filled = Math.min(active/need,1)*100;
+      return `
+        <div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+            <span>${medal} ${pct}% (${active}/${need})</span>
+            <span style="color:var(--hint)">${active>=need?'✅ مكتمل':'متبقي '+(need-active)}</span>
+          </div>
+          <div style="background:rgba(255,255,255,0.05);border-radius:10px;height:10px;overflow:hidden">
+            <div style="width:${filled}%;height:100%;background:linear-gradient(90deg,var(--gold),var(--purple));border-radius:10px;transition:width 0.5s"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    el.innerHTML=`
+      <div class="balance-card">
+        <div class="label">💰 أرباح الإحالات</div>
+        <div class="amount">${fmt(earnings)} <span style="font-size:18px;color:var(--hint)">ل.س</span></div>
+        <div class="divider"></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px">
+          <div><span style="color:var(--hint)">إحالات نشطة:</span> <b>${active}</b></div>
+          <div><span style="color:var(--hint)">نسبتك:</span> <b style="color:var(--gold)">${percent}%</b></div>
+        </div>
+      </div>
+      <div class="info-card">
+        <div class="title"><span>🏆 مستويات الإحالات</span></div>
+        ${progressBars}
+      </div>
+      <div class="info-card">
+        <div class="title"><span>🔗 رابطك الخاص</span></div>
+        <div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:14px;text-align:center;word-break:break-all;font-size:13px;color:var(--blue)">${link||'غير متوفر'}</div>
+      </div>
+    `;
+  }catch(e){
+    el.innerHTML='<div class="error-box">تعذّر تحميل الإحالات</div>';
+  }
+}
+
+// ===== الحضور اليومي =====
+function renderCheckin(d){
+  const feat=d.features||{};
+  const box=document.getElementById('checkinCard');
+  if(feat.checkin_enabled===false){box.innerHTML='';return}
+  const ck=d.checkin||{};
+  if(!ck.can_checkin && ck.current_streak===0){
+    box.innerHTML=`<div class="info-card"><div class="title"><span>📅 الحضور اليومي</span></div><div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">عُد غداً للمكافأة التالية</div></div>`;
+    return;
+  }
+  const streak=ck.current_streak||0;
+  const todayCycle=((streak)%7)+1;
+  let days='';
+  for(let i=1;i<=7;i++){
+    let cls='';
+    let icon=i;
+    if(i===7)icon='💥';
+    if(i<=streak%7)cls='done';
+    else if(i===todayCycle && ck.can_checkin)cls='today';
+    days+=`<div class="ck-day ${cls}">${icon}</div>`;
+  }
+  const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">🎁 سجّل حضور اليوم (+${[500,1000,1500,2000,2500,3000,10000][todayCycle-1]||500} ل.س)</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم — عُد غداً!</div>`;
+  box.innerHTML=`
+    <div class="checkin-card">
+      <div class="ck-title">📅 الحضور اليومي — سلسلتك: ${streak} يوم</div>
+      <div class="ck-streak">${days}</div>
+      <div style="font-size:11px;color:var(--hint);margin-bottom:6px">يوم 7 = جائزة كبرى 10,000 ل.س 💥</div>
+      ${btn}
+      <div style="font-size:11px;color:var(--hint);margin-top:8px">إجمالي مكافآتك: ${fmt(ck.total_rewards||0)} ل.س</div>
+    </div>
+  `;
+}
+
+async function doCheckin(){
+  try{
+    const res=await fetch(API.replace('/me','/checkin'),{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData}});
+    const data=await res.json();
+    if(!res.ok){tg.showAlert(data.error||'تعذّر تسجيل الحضور');return}
+    const rewardTable=[0,500,1000,1500,2000,2500,3000,10000];
+    const r=data;
+    tg.showAlert(`🎉 أحسنت! سلسلتك: ${r.streak} يوم\n💰 مكافأة اليوم: +${fmt(r.reward)} ل.س`);
+    loadAll();
+  }catch(e){tg.showAlert('خطأ في الاتصال')}
+}
+
+// ===== عجلة الحظ =====
+let isSpinning=false;
+let currentRotation=0;
+
+function renderWheel(d){
+  const feat=d.features||{};
+  const box=document.getElementById('wheelCard');
+  if(feat.wheel_enabled===false){box.innerHTML='';return}
+  
+  // البحث عن إيداعات مؤهلة للعجلة (مقبولة + لم تُدوّر بعد)
+  const txs=d.recent_transactions||[];
+  const eligible=txs.filter(t=>t.can_spin_wheel===true);
+  
+  if(eligible.length===0){box.innerHTML='';return}
+  
+  // عرض بطاقة العجلة البارزة
+  const best=eligible[0]; // أول إيداع مؤهل
+  box.innerHTML=`
+    <div class="checkin-card" style="background:linear-gradient(135deg,rgba(255,215,0,0.12) 0%,rgba(255,152,0,0.06) 100%);border:1px solid var(--card-border)">
+      <div class="ck-title" style="color:var(--gold)">🎰 عجلة الحظ</div>
+      <div style="font-size:13px;color:var(--text);margin-bottom:4px">لديك <b>${eligible.length}</b> لفة مجانية!</div>
+      <div style="font-size:11px;color:var(--hint);margin-bottom:12px">إيداع #${best.id} — ${fmt(best.amount)} ل.س</div>
+      <button class="spin-btn" onclick="openWheel(${best.id},${best.amount})">🎰 دوّر العجلة!</button>
+    </div>
+  `;
+}
+
+let wheelSegments=[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]];
+function openWheel(depositTxId, depositAmount){
+  showWheelModal(depositTxId, depositAmount, wheelSegments);
+}
+
+function buildWheelSVG(segments){
+  const colors=['#ff5252','#4caf50','#ff9800','#4a9eff','#a855f7','#00d68f','#ffd700','#e91e63'];
+  const n=segments.length;
+  const angle=360/n;
+  let paths='';
+  let labels='';
+  for(let i=0;i<n;i++){
+    const startAngle=i*angle-90;
+    const endAngle=(i+1)*angle-90;
+    const r=120;
+    const cx=130,cy=130;
+    const x1=cx+r*Math.cos(startAngle*Math.PI/180);
+    const y1=cy+r*Math.sin(startAngle*Math.PI/180);
+    const x2=cx+r*Math.cos(endAngle*Math.PI/180);
+    const y2=cy+r*Math.sin(endAngle*Math.PI/180);
+    const largeArc=angle>180?1:0;
+    paths+=`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${colors[i%8]}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>`;
+    // نص القطاع
+    const midAngle=startAngle+angle/2;
+    const tx=cx+(r*0.65)*Math.cos(midAngle*Math.PI/180);
+    const ty=cy+(r*0.65)*Math.sin(midAngle*Math.PI/180);
+    const pct=segments[i][0];
+    const label=pct===0?'💔':pct>=25?'💎+25%':`+${pct}%`;
+    labels+=`<text x="${tx}" y="${ty}" fill="white" font-size="${pct>=15?'14':'11'}" font-weight="900" text-anchor="middle" dominant-baseline="middle" transform="rotate(${midAngle+90},${tx},${ty})">${label}</text>`;
+  }
+  return `<svg class="wheel-svg" id="wheelSVG" viewBox="0 0 260 260">${paths}${labels}<circle cx="130" cy="130" r="130" fill="none" stroke="rgba(255,215,0,0.3)" stroke-width="3"/></svg>`;
+}
+
+function showWheelModal(depositTxId,depositAmount,segments){
+  const segCount=segments.length;
+  const segAngle=360/segCount;
+  const html=`
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px" id="wheelOverlay">
+      <h2 style="color:var(--gold);margin-bottom:6px;font-size:20px">🎰 عجلة الحظ</h2>
+      <p style="color:var(--hint);font-size:12px;margin-bottom:16px">إيداعك: ${fmt(depositAmount)} ل.س</p>
+      <div class="wheel-wrapper">
+        <div class="wheel-pointer"></div>
+        ${buildWheelSVG(segments)}
+        <div class="wheel-center">👑</div>
+      </div>
+      <div id="wheelResultBox"></div>
+      <button class="spin-btn" id="spinBtn" onclick="doSpin(${depositTxId})">🎰 دوّر العجلة!</button>
+      <button class="spin-btn" style="background:transparent;color:var(--hint);margin-top:8px;font-size:13px;padding:8px" onclick="closeWheel()">تخطّي</button>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function closeWheel(){
+  const ov=document.getElementById('wheelOverlay');
+  if(ov)ov.remove();
+}
+
+async function doSpin(depositTxId){
+  if(isSpinning)return;
+  isSpinning=true;
+  const btn=document.getElementById('spinBtn');
+  btn.disabled=true;
+  btn.textContent='...دوّر';
+
+  try{
+    const res=await fetch(API.replace('/me','/spin-wheel'),{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData},
+      body:JSON.stringify({deposit_tx_id:depositTxId})
+    });
+    const data=await res.json();
+    if(!res.ok){tg.showAlert(data.error||'خطأ');btn.disabled=false;btn.textContent='🎰 دوّر العجلة!';isSpinning=false;return}
+
+    // 🎯 (Update 15 Fix) مزامنة العجلة مع الخادم بدقة 100%
+    // كل قطاع يأخذ زاوية (360 / عدد القطاعات)
+    const segCount = 8; 
+    const segAngle = 360 / segCount;
+    const targetIndex = data.segment_index;
+
+    // لحساب الزاوية: المؤشر ثابت في الأعلى. قطاع 0 يبدأ من المنتصف العلوي.
+    // لإحضار قطاع معين (i) إلى المؤشر، العجلة تدور عكس عقارب الساعة بمقدار (i * segAngle).
+    // نضيف دورات كاملة (360 * 5) للإبهار البصري، ونستخدم علامة سالبة للدوران.
+    const extraSpins = 5; 
+    const targetRotation = -(extraSpins * 360 + (targetIndex * segAngle));
+    
+    // ضمان أن العجلة تكمل الدوران للأمام ولا تعود للخلف بصرياً
+    const currentMod = currentRotation % 360;
+    const finalRotation = currentRotation - currentMod + targetRotation;
+    currentRotation = finalRotation; // تحديث المرجع للدوران القادم
+
+    const wheel=document.getElementById('wheelSVG');
+    wheel.style.transition='transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99)';
+    wheel.style.transform=`rotate(${finalRotation}deg)`;
+
+    // نتيجة بعد 4 ثوانٍ
+    setTimeout(()=>{
+      const box=document.getElementById('wheelResultBox');
+      if(data.reward_amount>0){
+        box.innerHTML=`<div class="wheel-result win">🎉 مبروك! ربحت +${data.reward_percent}% = ${fmt(data.reward_amount)} ل.س<br><span style="font-size:11px">أُضيفت لرصيد المكافآت 🎁</span></div>`;
+      }else{
+        box.innerHTML=`<div class="wheel-result lose">💔 حظ أوفر! حاول مرة أخرى في الإيداع القادم</div>`;
+      }
+      btn.textContent='✅ تم';
+      btn.style.background='var(--green)';
+      isSpinning=false;
+      // تحديث البيانات
+      setTimeout(()=>{closeWheel();loadAll()},2000);
+    },4200);
+
+  }catch(e){
+    tg.showAlert('خطأ في الاتصال');
+    btn.disabled=false;
+    btn.textContent='🎰 دوّر العجلة!';
+    isSpinning=false;
+  }
+}
+
+// ===== فلاش البونص =====
+let flashInterval=null;
+function renderFlash(d){
+  const fb=d.flash_bonus;
+  const box=document.getElementById('flashBanner');
+  if(!fb){box.innerHTML='';if(flashInterval){clearInterval(flashInterval);flashInterval=null}return}
+  const endsAt=new Date(fb.ends_at);
+  function update(){
+    const now=new Date();
+    const diff=endsAt-now;
+    if(diff<=0){box.innerHTML='';if(flashInterval)clearInterval(flashInterval);return}
+    const m=Math.floor(diff/60000);
+    const s=Math.floor((diff%60000)/1000);
+    box.innerHTML=`
+      <div class="flash-banner">
+        <div class="fl-title">⚡ فلاش بونص ${fb.percent}%!</div>
+        <div class="fl-desc">بونص إضافي على كل إيداع — لوقت محدود</div>
+        <div class="fl-timer">⏰ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}</div>
+      </div>`;
+  }
+  update();
+  if(flashInterval)clearInterval(flashInterval);
+  flashInterval=setInterval(update,1000);
+}
+
+// ===== لوحة الصدارة + صفحة المزايا =====
+async function loadPerks(){
+  const el=document.getElementById('perksContent');
+  el.innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const d=await apiGet(API);
+    const feat=d.features||{};
+    const lb=d.leaderboard||{};
+    const top=lb.top||[];
+    const myRank=lb.my_rank;
+    const myBal=lb.my_balance||0;
+
+    const topHtml=top.map(u=>{
+      const rc=u.rank<=3?'r'+u.rank:'';
+      const medal=u.rank===1?'🥇':u.rank===2?'🥈':u.rank===3?'🥉':u.rank;
+      return `<div class="lb-item ${rc}"><div class="lb-rank">${medal}</div><div class="lb-name">${u.username}</div><div class="lb-val">${fmt(u.balance)}</div></div>`;
+    }).join('');
+
+    const myHtml=myRank?`<div class="lb-item me"><div class="lb-rank">${myRank}</div><div class="lb-name">أنت</div><div class="lb-val">${fmt(myBal)}</div></div>`:'';
+
+    // الحضور في صفحة المزايا أيضاً
+    const ck=d.checkin||{};
+    const streak=ck.current_streak||0;
+    const todayCycle=((streak)%7)+1;
+    const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">🎁 سجّل حضور اليوم</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم</div>`;
+
+    const checkinHtml=feat.checkin_enabled!==false?`
+      <div class="info-card">
+        <div class="title"><span>📅 الحضور اليومي</span><span class="badge">سلسلة ${streak} يوم</span></div>
+        <div style="font-size:12px;color:var(--hint);margin-bottom:10px">كل يوم تحضر فيه تحصل على مكافأة متزايدة. يوم 7 = جائزة كبرى 💥</div>
+        ${btn}
+        <div style="font-size:11px;color:var(--hint);margin-top:8px">إجمالي مكافآتك: ${fmt(ck.total_rewards||0)} ل.س | إجمالي أيام الحضور: ${ck.total_checkins||0}</div>
+      </div>`:'';
+
+    const lbHtml=feat.leaderboard_enabled!==false?`
+      <div class="info-card">
+        <div class="title"><span>🏆 لوحة الصدارة</span></div>
+        ${topHtml||'<div class="empty">لا يوجد لاعبون بعد</div>'}
+        ${myHtml}
+      </div>`:'';
+
+    el.innerHTML=checkinHtml+lbHtml;
+  }catch(e){el.innerHTML='<div class="error-box">تعذّر التحميل</div>'}
+}
+
+// بدء التشغيل
+loadAll();
+</script>
+</body>
+</html>

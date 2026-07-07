@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ألعاب iChancy</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,Segoe UI,Tahoma,sans-serif;background:#0e1621;color:#fff;padding:18px}
+.card{max-width:640px;margin:0 auto;background:#182533;border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.2)}
+h1{margin:0 0 10px;color:#ffd700;font-size:24px}p{color:#b7c1cc;line-height:1.8}.btn{display:block;width:100%;text-align:center;text-decoration:none;background:#2b5278;color:#fff;padding:14px;border-radius:12px;font-weight:800;margin-top:14px}.sub{font-size:13px;color:#8ea0b4;margin-top:8px}.logo{font-size:44px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="logo">🎮</div>
+<h1>ألعاب iChancy</h1>
+<p>من هنا يمكنك فتح صفحة الألعاب بسرعة داخل تجربة Mini App مرتبة وأنيقة. إذا لم يعمل الفتح الداخلي، يمكنك نسخ الرابط أو فتحه من المتصفح.</p>
+<a id="openBtn" class="btn" href="#" target="_blank" rel="noopener">▶️ فتح ألعاب iChancy</a>
+<div class="sub" id="linkText"></div>
+</div>
+<script>
+const tg=window.Telegram&&Telegram.WebApp?Telegram.WebApp:{ready(){},expand(){}};tg.ready();tg.expand();
+fetch(window.location.origin+'/api/public/links').then(r=>r.json()).then(d=>{const url=(d.games_url||'').trim();document.getElementById('openBtn').href=url||'#';document.getElementById('linkText').textContent=url||'الرابط غير متوفر حالياً';}).catch(()=>{document.getElementById('linkText').textContent='تعذر تحميل الرابط';});
+</script>
+</body>
+</html>

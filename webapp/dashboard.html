@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>👑 لوحة تحكم القيصر</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;font-family:-apple-system,'Segoe UI',Tahoma,sans-serif}
+  :root{
+    --bg:#070a12;
+    --bg2:#0d111c;
+    --text:#f5f5f5;
+    --hint:#8b95a7;
+    --link:#5b9bf5;
+    --card:rgba(255,255,255,0.03);
+    --gold:#ffd700;
+    --gold-2:#ffb700;
+    --green:#00d68f;
+    --green-bg:rgba(0,214,143,0.08);
+    --red:#ff4757;
+    --red-bg:rgba(255,71,87,0.08);
+    --orange:#ffa502;
+    --blue:#4a9eff;
+    --blue-bg:rgba(74,158,255,0.08);
+    --purple:#a55eea;
+    --line:rgba(255,255,255,0.06);
+    --shadow:0 8px 32px rgba(0,0,0,0.4);
+    --radius:20px;
+  }
+  body{background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:90px;overflow-x:hidden}
+
+  /* خلفية متوهّجة */
+  body::before{
+    content:'';position:fixed;top:-150px;right:-100px;width:500px;height:500px;
+    background:radial-gradient(circle,rgba(255,215,0,0.06) 0%,transparent 70%);
+    pointer-events:none;z-index:0
+  }
+  body::after{
+    content:'';position:fixed;bottom:-150px;left:-100px;width:400px;height:400px;
+    background:radial-gradient(circle,rgba(74,158,255,0.05) 0%,transparent 70%);
+    pointer-events:none;z-index:0
+  }
+
+  /* ===== الشريط العلوي ===== */
+  .top-bar{
+    background:rgba(7,10,18,0.85);backdrop-filter:blur(20px);
+    padding:16px 20px;position:sticky;top:0;z-index:100;
+    border-bottom:1px solid var(--line)
+  }
+  .top-bar-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .top-bar h1{
+    font-size:20px;font-weight:900;
+    background:linear-gradient(135deg,var(--gold),var(--gold-2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    letter-spacing:-0.5px
+  }
+  .top-bar .time{color:var(--hint);font-size:11px}
+  .search-bar{display:flex;gap:8px}
+  .search-bar input{
+    flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--line);
+    color:var(--text);border-radius:14px;padding:10px 16px;font-size:14px;outline:none;
+    transition:all 0.2s
+  }
+  .search-bar input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,215,0,0.1)}
+  .search-bar button{
+    background:linear-gradient(135deg,var(--gold),var(--gold-2));
+    color:#070a12;border:none;border-radius:14px;padding:10px 18px;
+    font-size:13px;font-weight:900;cursor:pointer;transition:all 0.2s
+  }
+  .search-bar button:active{transform:scale(0.96)}
+
+  /* ===== شريط التنبيهات ===== */
+  .alerts-bar{display:flex;gap:8px;padding:12px 20px;overflow-x:auto;scrollbar-width:none}
+  .alerts-bar::-webkit-scrollbar{display:none}
+  .alert-chip{
+    display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);
+    border:1px solid var(--line);border-radius:24px;padding:8px 14px;
+    font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer;transition:all 0.2s
+  }
+  .alert-chip:active{transform:scale(0.96)}
+  .alert-chip.warning{background:rgba(255,165,2,0.12);border-color:rgba(255,165,2,0.3);color:var(--orange)}
+  .alert-chip.danger{background:rgba(255,71,87,0.12);border-color:rgba(255,71,87,0.3);color:var(--red)}
+  .alert-chip .badge{
+    background:var(--red);color:#fff;padding:2px 8px;border-radius:12px;
+    font-size:10px;font-weight:900
+  }
+
+  /* ===== المحتوى ===== */
+  .content{padding:16px 20px;position:relative;z-index:1}
+
+  /* ===== البطاقات ===== */
+  .card{
+    background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px;margin-bottom:16px;
+    box-shadow:var(--shadow);backdrop-filter:blur(10px);
+    transition:all 0.3s
+  }
+  .card-title{
+    font-size:15px;font-weight:900;color:var(--text);margin-bottom:14px;
+    display:flex;align-items:center;justify-content:space-between
+  }
+  .card-title .see-all{
+    color:var(--hint);font-size:12px;font-weight:600;cursor:pointer;
+    background:rgba(255,255,255,0.05);padding:4px 12px;border-radius:12px;
+    transition:all 0.2s
+  }
+  .card-title .see-all:active{transform:scale(0.95)}
+  .sub{color:var(--hint);font-size:13px;line-height:1.6;margin-bottom:10px}
+
+  /* ===== شبكة الإحصائيات ===== */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat-box{
+    background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.03);
+    border-radius:16px;padding:14px;text-align:center;transition:all 0.2s
+  }
+  .stat-box .icon{font-size:24px;margin-bottom:6px}
+  .stat-label{font-size:11px;color:var(--hint);font-weight:600}
+  .stat-value{font-size:20px;font-weight:900;margin-top:4px;letter-spacing:-0.5px}
+  .gold{color:var(--gold)}
+  .green{color:var(--green)}
+  .red{color:var(--red)}
+  .blue{color:var(--blue)}
+  .pill{display:inline-block;background:var(--blue-bg);color:var(--blue);padding:4px 10px;border-radius:999px;font-size:10px;font-weight:800}
+  .pill.green{background:var(--green-bg);color:var(--green)}
+  .pill.gold{background:rgba(255,215,0,0.1);color:var(--gold)}
+
+  /* ===== شريط الحالة ===== */
+  .status-bar{display:flex;gap:8px;flex-wrap:wrap}
+  .status-item{
+    display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.03);
+    border-radius:12px;padding:8px 12px;font-size:12px
+  }
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .dot.ok{background:var(--green);box-shadow:0 0 8px rgba(0,214,143,0.4)}
+  .dot.bad{background:var(--red);box-shadow:0 0 8px rgba(255,71,87,0.4)}
+  .dot.warn{background:var(--orange);box-shadow:0 0 8px rgba(255,165,2,0.4)}
+
+  /* ===== الطلبات ===== */
+  .row{
+    display:flex;justify-content:space-between;gap:10px;align-items:center;
+    padding:10px 0;border-bottom:1px solid var(--line);font-size:14px
+  }
+  .row:last-child{border:none}
+  .label{color:var(--hint);font-weight:600}
+  .value{font-weight:800;text-align:left;direction:ltr}
+  .badge{background:var(--red);color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:900}
+  .badge.green{background:var(--green)}
+  .pending-item{
+    background:var(--red-bg);border-right:3px solid var(--red);
+    border-radius:12px;padding:10px 12px;margin-top:8px;font-size:13px
+  }
+  .tx-id{color:var(--link);font-weight:900}
+  .empty{text-align:center;color:var(--hint);padding:24px;font-size:14px}
+  .recent-list{font-size:13px}
+  .recent-list .item{
+    display:flex;justify-content:space-between;padding:8px 0;
+    border-bottom:1px solid var(--line)
+  }
+  .recent-list .item:last-child{border:none}
+
+  /* ===== الطلبات المحسّنة ===== */
+  .request-item{
+    display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.03);
+    border:1px solid var(--line);border-radius:16px;padding:12px;margin-top:8px;
+    transition:all 0.2s
+  }
+  .request-item:active{transform:scale(0.98);background:rgba(255,255,255,0.05)}
+  .request-item .req-icon{
+    width:40px;height:40px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+    font-size:18px;flex-shrink:0
+  }
+  .request-item .req-icon.deposit{background:var(--green-bg)}
+  .request-item .req-icon.withdraw{background:var(--red-bg)}
+  .request-item .req-info{flex:1;min-width:0}
+  .request-item .req-info .req-title{font-size:13px;font-weight:700}
+  .request-item .req-info .req-sub{font-size:11px;color:var(--hint);margin-top:2px}
+  .request-item .req-amount{text-align:left;direction:ltr}
+  .request-item .req-amount .req-value{font-size:15px;font-weight:900}
+  .request-item .req-amount .req-time{font-size:11px;color:var(--hint)}
+  .request-item .req-actions{display:flex;gap:5px}
+  .request-item .req-actions button{
+    width:36px;height:36px;border-radius:12px;border:none;font-size:16px;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s
+  }
+  .request-item .req-actions .accept{background:var(--green-bg);color:var(--green)}
+  .request-item .req-actions .reject{background:var(--red-bg);color:var(--red)}
+
+  /* ===== الرسائل ===== */
+  .message-item{
+    display:flex;gap:12px;background:rgba(255,255,255,0.03);
+    border-radius:14px;padding:12px;margin-top:8px
+  }
+  .message-item .avatar{
+    width:36px;height:36px;border-radius:50%;background:var(--blue-bg);
+    display:flex;align-items:center;justify-content:center;font-size:16px
+  }
+  .message-item .msg-content{flex:1}
+  .message-item .msg-content .msg-name{font-size:12px;font-weight:700}
+  .message-item .msg-content .msg-text{font-size:11px;color:var(--hint);margin-top:2px}
+  .message-item .msg-time{font-size:11px;color:var(--hint)}
+
+  /* ===== الأزرار ===== */
+  .btn{
+    width:100%;background:linear-gradient(135deg,var(--gold),var(--gold-2));
+    color:#070a12;border:none;padding:14px;border-radius:16px;
+    font-size:15px;font-weight:900;cursor:pointer;margin-top:8px;
+    transition:all 0.2s;box-shadow:0 4px 16px rgba(255,215,0,0.15)
+  }
+  .btn:active{transform:scale(0.98)}
+  .btn.outline{background:transparent;border:1px solid var(--gold);color:var(--gold);box-shadow:none}
+  .btn.danger{background:var(--red-bg);color:var(--red);border:1px solid rgba(255,71,87,0.3);box-shadow:none}
+  .btn.green{background:var(--green-bg);color:var(--green);border:1px solid rgba(0,214,143,0.3);box-shadow:none}
+  .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .btn-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+  /* ===== الأزرار السريعة ===== */
+  .quick-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .action-btn{
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    background:rgba(255,255,255,0.03);border:1px solid var(--line);
+    border-radius:16px;padding:16px 8px;cursor:pointer;transition:all 0.2s
+  }
+  .action-btn:active{transform:scale(0.95);background:rgba(255,215,0,0.08);border-color:rgba(255,215,0,0.2)}
+  .action-btn .action-icon{font-size:26px}
+  .action-btn .action-label{font-size:11px;font-weight:700;text-align:center}
+
+  /* ===== الإدخال ===== */
+  input,textarea,select{
+    width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--line);
+    color:var(--text);border-radius:14px;padding:12px 16px;font-size:14px;
+    outline:none;margin-top:6px;transition:all 0.2s
+  }
+  textarea{min-height:80px;resize:vertical;direction:ltr;text-align:left}
+  input:focus,textarea:focus,select:focus{
+    border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,215,0,0.08)
+  }
+  .field{margin-bottom:12px}
+  .field label{font-size:12px;color:var(--hint);font-weight:800}
+  .hint{font-size:11px;color:var(--hint);margin-top:4px;line-height:1.5}
+  .cookie-status{display:inline-flex;align-items:center;gap:6px;font-weight:900;font-size:14px}
+  .cookie-status.ok{color:var(--green)}.cookie-status.bad{color:var(--red)}.cookie-status.warn{color:var(--orange)}
+
+  /* ===== التنبيهات ===== */
+  .loader{text-align:center;padding:60px 20px;color:var(--hint)}
+  .spinner{
+    width:40px;height:40px;border:3px solid rgba(255,215,0,0.15);
+    border-top-color:var(--gold);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 14px
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .error-box{
+    background:var(--red-bg);border:1px solid rgba(255,71,87,0.2);color:var(--red);
+    border-radius:16px;padding:16px;text-align:center;font-size:14px;line-height:1.7
+  }
+  .success-box{
+    background:var(--green-bg);border:1px solid rgba(0,214,143,0.2);color:var(--green);
+    border-radius:16px;padding:12px;text-align:center;font-size:13px;margin-bottom:10px;font-weight:900
+  }
+  .warn-box{
+    background:rgba(255,165,2,0.08);border:1px solid rgba(255,165,2,0.2);color:var(--orange);
+    border-radius:16px;padding:12px;font-size:12px;line-height:1.7;margin-bottom:10px
+  }
+
+  /* ===== شريط التنقّل السفلي ===== */
+  .bottom-nav{
+    position:fixed;bottom:0;left:0;right:0;
+    background:rgba(7,10,18,0.95);backdrop-filter:blur(20px);
+    border-top:1px solid var(--line);
+    display:flex;justify-content:space-around;padding:8px 0 16px;z-index:100
+  }
+  .nav-item{
+    display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+    color:var(--hint);font-size:10px;font-weight:700;transition:all 0.2s;background:none;border:none
+  }
+  .nav-item.active{color:var(--gold)}
+  .nav-item .nav-icon{font-size:22px}
+  .nav-item .nav-badge{position:absolute;top:-2px;right:2px;background:var(--red);color:#fff;padding:1px 5px;border-radius:12px;font-size:9px;font-weight:900}
+
+</style>
+</head>
+<body>
+
+<!-- ===== الشريط العلوي ===== -->
+<div class="top-bar">
+  <div class="top-bar-header">
+    <h1>👑 لوحة تحكم القيصر</h1>
+    <span class="time" id="lastUpdate">جارٍ التحميل...</span>
+  </div>
+  <div class="search-bar">
+    <input type="text" id="globalSearch" placeholder="🔍 بحث عن مستخدم أو طلب...">
+    <button onclick="doGlobalSearch()">بحث</button>
+  </div>
+</div>
+
+<!-- ===== شريط التنبيهات ===== -->
+<div class="alerts-bar" id="alertsBar"></div>
+
+<!-- ===== المحتوى الرئيسي ===== -->
+<div id="notice"></div>
+<div class="content" id="content">
+  <div class="loader"><div class="spinner"></div>جارٍ تحميل البيانات...</div>
+</div>
+
+<!-- ===== شريط التنقل السفلي ===== -->
+<div class="bottom-nav">
+  <div class="nav-item active" id="navDash" onclick="showTab('dashboard')">
+    <div class="nav-icon">🏠</div>
+    <span>الرئيسية</span>
+  </div>
+  <div class="nav-item" id="navRequests" onclick="showTab('requests')" style="position:relative">
+    <div class="nav-icon">📥</div>
+    <span>الطلبات</span>
+    <span class="nav-badge" id="pendingBadge" style="display:none">0</span>
+  </div>
+  <div class="nav-item" id="navSupport" onclick="showTab('support')" style="position:relative">
+    <div class="nav-icon">📩</div>
+    <span>الدعم</span>
+  </div>
+  <div class="nav-item" id="navUsers" onclick="showTab('users')">
+    <div class="nav-icon">👥</div>
+    <span>المستخدمون</span>
+  </div>
+  <div class="nav-item" id="navMore" onclick="showTab('more')">
+    <div class="nav-icon">⚙️</div>
+    <span>المزيد</span>
+  </div>
+</div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp ? Telegram.WebApp : {initData:'',ready(){},expand(){},showPopup(o){alert(o.message||o.title)},showConfirm(m,cb){cb(confirm(m))}};
+const API = window.location.origin;
+const DASH_API = API + '/api/dashboard';
+const SETTINGS_API = API + '/api/admin/settings';
+const FINANCE_API = API + '/api/admin/agent-finance';
+const HEALTH_API = API + '/api/admin/health';
+const NEON_API = API + '/api/admin/neon';
+const RENDER_API = API + '/api/admin/render';
+const BROADCAST_API = API + '/api/admin/broadcast';
+const BROADCASTS_API = API + '/api/admin/broadcasts';
+const USERS_API = API + '/api/admin/users';
+const REQUESTS_API = API + '/api/admin/requests';
+const SUPPORT_API = API + '/api/admin/support';
+const BONUSES_API = API + '/api/admin/bonuses';
+const PREDICTIONS_API = API + '/api/admin/predictions';
+const CONTESTS_API = API + '/api/admin/contests';
+
+let initData = tg.initData || '';
+let currentTab = 'dashboard';
+let dashboardData = null;
+let settingsData = null;
+tg.ready(); tg.expand();
+
+function fmt(n){return new Intl.NumberFormat('en-US').format(Number(n||0));}
+function val(id){return document.getElementById(id)?.value || '';}
+function setNotice(msg,type='success'){const el=document.getElementById('notice');el.innerHTML=msg?`<div class="${type==='error'?'error-box':'success-box'}">${msg}</div>`:''; if(msg)setTimeout(()=>{el.innerHTML=''},3500)}
+function statusEmoji(s){return s==='approved'?'🟢':s==='pending'?'🟡':'🔴'}
+
+// ===== التنقل =====
+function setNavActive(tab){
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+  const map={dashboard:'navDash',requests:'navRequests',support:'navSupport',users:'navUsers'};
+  const navId=map[tab]||'navMore';
+  document.getElementById(navId)?.classList.add('active');
+}
+
+function showTab(tab){
+  currentTab=tab;
+  setNavActive(tab);
+  document.getElementById('notice').innerHTML='';
+  if(tab==='dashboard')loadDashboard();
+  else if(tab==='users')loadUsers();
+  else if(tab==='requests')loadRequests();
+  else if(tab==='support')loadSupport();
+  else if(tab==='finance')loadFinance();
+  else if(tab==='health')loadHealth();
+  else if(tab==='broadcast')loadBroadcast();
+  else if(tab==='bonuses')loadBonuses();
+  else if(tab==='predictions')loadPredictions();
+  else if(tab==='contests')loadContests();
+  else if(tab==='features')loadFeatures();
+  else if(tab==='more')loadMoreMenu();
+  else loadSettings(tab);
+}
+
+function reloadCurrent(){showTab(currentTab);}
+
+// ===== API =====
+async function apiGet(url){const res=await fetch(url,{headers:{'X-Telegram-Init-Data':initData}});if(!res.ok)throw new Error('HTTP '+res.status);return await res.json();}
+async function apiPost(url,payload){const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData},body:JSON.stringify(payload)});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||('HTTP '+res.status));return data;}
+
+// ===== البحث العام =====
+function doGlobalSearch(){
+  const q=document.getElementById('globalSearch').value.trim();
+  if(!q)return;
+  showTab('users');
+  setTimeout(()=>{
+    document.getElementById('user_search_q').value=q;
+    searchUsers();
+  },300);
+}
+
+// ===== تحديث شريط التنبيهات =====
+function updateAlertsBar(d){
+  const bar=document.getElementById('alertsBar');
+  let html='';
+  const dep=d.pending_deposits?.length||0;
+  const wit=d.pending_withdraws?.length||0;
+  if(dep>0)html+=`<div class="alert-chip danger" onclick="showTab('requests')"><span>📥</span><span>${dep} طلبات إيداع</span><span class="badge">${dep}</span></div>`;
+  if(wit>0)html+=`<div class="alert-chip warning" onclick="showTab('requests')"><span>📤</span><span>${wit} طلبات سحب</span><span class="badge">${wit}</span></div>`;
+  html+=`<div class="alert-chip" onclick="showTab('support')"><span>📩</span><span>الدعم</span></div>`;
+  html+=`<div class="alert-chip" onclick="showTab('contests')"><span>👑</span><span>المسابقات</span></div>`;
+  html+=`<div class="alert-chip" onclick="showTab('predictions')"><span>🎫</span><span>التوقعات</span></div>`;
+  bar.innerHTML=html;
+  
+  // تحديث شارة الطلبات المعلقة
+  const total=dep+wit;
+  const badge=document.getElementById('pendingBadge');
+  if(total>0){badge.textContent=total;badge.style.display='block';}
+  else{badge.style.display='none';}
+}
+
+// ===== الرئيسية =====
+async function loadDashboard(){
+  currentTab='dashboard';setNavActive('dashboard');
+  const el=document.getElementById('content');
+  el.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل البيانات...</div>';
+  try{
+    dashboardData=await apiGet(DASH_API);
+    renderDashboard(dashboardData);
+    document.getElementById('lastUpdate').textContent='آخر تحديث: '+new Date().toLocaleTimeString('ar-EG');
+  }catch(e){
+    el.innerHTML='<div class="error-box">⚠️ تعذّر تحميل البيانات.<br>تأكد من أنك فتحت اللوحة من زر الأدمن في البوت.</div>';
+  }
+}
+
+function renderDashboard(d){
+  const cookieAge=d.cookie_age_minutes;
+  let cookieAgeText='—';let cookieClass='ok';
+  if(cookieAge===null){cookieClass='warn';cookieAgeText='لم يُحدّث بعد'}
+  else if(cookieAge<60)cookieAgeText=cookieAge+' دقيقة';
+  else if(cookieAge<1440)cookieAgeText=Math.floor(cookieAge/60)+' ساعة';
+  else{cookieAgeText=Math.floor(cookieAge/1440)+' يوم';cookieClass='warn'}
+  
+  const cookieStatus=d.is_cookie_alive?'🟢 نشطة':'🔴 منتهية';
+  const cookieStatusClass=d.is_cookie_alive?(cookieAge!==null&&cookieAge>=720?'warn':'ok'):'bad';
+  
+  updateAlertsBar(d);
+  
+  // 🆕 (Update 19) مركز الإنذار
+  let alertsHtml='';
+  const pendingCount=d.pending_count||0;
+  if(pendingCount>0){
+    alertsHtml+=`<div class="alert-chip danger" onclick="showTab('requests')"><span>📥</span><span>${pendingCount} طلب معلّق</span></div>`;
+  }
+  if(d.agent_balance_alert){
+    alertsHtml+=`<div class="alert-chip warning"><span>⚠️</span><span>رصيد الكاشيرة منخفض</span></div>`;
+  }
+  if(!d.is_cookie_alive){
+    alertsHtml+=`<div class="alert-chip danger"><span>🍪</span><span>جلسة iChancy منتهية</span></div>`;
+  }
+  if(d.inactive_users>0){
+    alertsHtml+=`<div class="alert-chip" onclick="showTab('broadcast')"><span>💤</span><span>${fmt(d.inactive_users)} مستخدم خامل</span></div>`;
+  }
+  
+  // 🆕 صافي الربح
+  const netProfit=d.net_profit||0;
+  const profitClass=netProfit>=0?'gold':'red';
+  const profitSign=netProfit>=0?'+':'';
+  
+  document.getElementById('content').innerHTML=`
+    ${alertsHtml?`<div class="card" style="background:rgba(255,82,82,0.05);border-color:rgba(255,82,82,0.1)"><div class="card-title"><span>🚨 التنبيهات</span></div>${alertsHtml}</div>`:''}
+    
+    <!-- 📊 لوحة الماليات الحية -->
+    <div class="card" style="background:linear-gradient(135deg,rgba(255,215,0,0.08) 0%,rgba(255,215,0,0.02) 100%);border-color:var(--card-border)">
+      <div class="card-title"><span>📊 الماليات اليوم</span></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="icon">📥</div><div class="stat-label">إيداعات اليوم</div><div class="stat-value green">${fmt(d.today_deposits||0)}</div></div>
+        <div class="stat-box"><div class="icon">📤</div><div class="stat-label">سحوبات اليوم</div><div class="stat-value red">${fmt(d.today_withdraws||0)}</div></div>
+        <div class="stat-box"><div class="icon">🔥</div><div class="stat-label">الحرق المقدّر</div><div class="stat-value gold">${fmt(d.estimated_burn||0)}</div></div>
+        <div class="stat-box"><div class="icon">💎</div><div class="stat-label">صافي الربح</div><div class="stat-value ${profitClass}">${profitSign}${fmt(netProfit)}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--hint);margin-top:8px;text-align:center">الأرباح المقدّرة: ${fmt(d.estimated_revenue||0)} | المكافآت المدفوعة: ${fmt(d.today_bonus_paid||0)}</div>
+    </div>
+    
+    <!-- 📈 رسم بياني مبسط (Sparkline) -->
+    ${(d.chart_deposits&&d.chart_deposits.length)?renderSparkline(d.chart_deposits,d.chart_withdraws,d.chart_labels):''}
+    
+    <!-- 👥 إحصائيات سريعة -->
+    <div class="card">
+      <div class="card-title"><span>📊 نظرة عامة</span></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="icon">👥</div><div class="stat-label">إجمالي المستخدمين</div><div class="stat-value blue">${fmt(d.total_users)}</div></div>
+        <div class="stat-box"><div class="icon">🆕</div><div class="stat-label">جدد اليوم</div><div class="stat-value green">${d.new_users_today}</div></div>
+        <div class="stat-box"><div class="icon">🔄</div><div class="stat-label">معاملات اليوم</div><div class="stat-value">${d.today_tx_count}</div></div>
+        <div class="stat-box"><div class="icon">✅</div><div class="stat-label">إجمالي الإيداعات</div><div class="stat-value gold">${fmt(d.approved_volume)}</div></div>
+      </div>
+    </div>
+    
+    <!-- 🩺 حالة النظام -->
+    <div class="card">
+      <div class="card-title"><span>🩺 حالة النظام</span><span class="see-all" onclick="showTab('health')">تفاصيل →</span></div>
+      <div class="status-bar">
+        <div class="status-item"><div class="dot ${cookieStatusClass}"></div><span>🍪 ${cookieStatus}</span></div>
+        <div class="status-item"><div class="dot ok"></div><span>🗄️ Neon</span></div>
+        <div class="status-item"><div class="dot ok"></div><span>🌐 Webhook</span></div>
+      </div>
+      <div class="row" style="margin-top:8px"><span class="label">🕐 آخر تحديث للجلسة</span><span class="value">${cookieAgeText}</span></div>
+    </div>
+    
+    <!-- 💰 الأرصدة -->
+    <div class="card">
+      <div class="card-title">💰 الأرصدة</div>
+      <div class="row"><span class="label">💎 رصيد البوت</span><span class="value gold">${fmt(d.total_bot_balance)} SYP</span></div>
+      <div class="row"><span class="label">🎮 محفظة الوكيل</span><span class="value green">${fmt(d.agent_balance)} NSP</span></div>
+    </div>
+    
+    <!-- ⏳ الطلبات المعلقة -->
+    <div class="card">
+      <div class="card-title"><span>⏳ الطلبات المعلقة</span><span class="see-all" onclick="showTab('requests')">عرض الكل →</span></div>
+      ${d.pending_deposits.map(t=>`
+        <div class="request-item">
+          <div class="req-icon deposit">📥</div>
+          <div class="req-info">
+            <div class="req-title">إيداع #${t.id}</div>
+            <div class="req-sub">${t.created_at_str}</div>
+          </div>
+          <div class="req-amount">
+            <div class="req-value" style="color:var(--green)">${fmt(t.amount)} SYP</div>
+          </div>
+        </div>
+      `).join('')}
+      ${d.pending_withdraws.map(t=>`
+        <div class="request-item">
+          <div class="req-icon withdraw">📤</div>
+          <div class="req-info">
+            <div class="req-title">سحب #${t.id}</div>
+            <div class="req-sub">${t.created_at_str}</div>
+          </div>
+          <div class="req-amount">
+            <div class="req-value" style="color:var(--red)">${fmt(t.amount)} SYP</div>
+          </div>
+        </div>
+      `).join('')}
+      ${(!d.pending_deposits.length && !d.pending_withdraws.length)?'<div class="empty">✅ لا توجد طلبات معلقة</div>':''}
+    </div>
+    
+    <!-- 🕒 آخر العمليات -->
+    <div class="card">
+      <div class="card-title">🕒 آخر العمليات</div>
+      <div class="recent-list">
+        ${(d.recent_transactions||[]).map(t=>`<div class="item"><span>${statusEmoji(t.status)} #${t.id} ${t.type}</span><span class="label">${fmt(t.amount)}</span></div>`).join('')||'<div class="empty">لا توجد عمليات بعد</div>'}
+      </div>
+    </div>
+    
+    <!-- ⚡ أدوات سريعة -->
+    <div class="card">
+      <div class="card-title">⚡ أدوات سريعة</div>
+      <div class="quick-actions">
+        <div class="action-btn" onclick="showTab('users')"><div class="action-icon">👥</div><div class="action-label">المستخدمون</div></div>
+        <div class="action-btn" onclick="showTab('requests')"><div class="action-icon">📥</div><div class="action-label">الطلبات</div></div>
+        <div class="action-btn" onclick="showTab('support')"><div class="action-icon">📩</div><div class="action-label">الدعم</div></div>
+        <div class="action-btn" onclick="showTab('finance')"><div class="action-icon">💸</div><div class="action-label">الوكيل</div></div>
+        <div class="action-btn" onclick="showTab('bonuses')"><div class="action-icon">🎁</div><div class="action-label">البونصات</div></div>
+        <div class="action-btn" onclick="showTab('broadcast')"><div class="action-icon">📢</div><div class="action-label">إرسال</div></div>
+        <div class="action-btn" onclick="showTab('contests')"><div class="action-icon">👑</div><div class="action-label">المسابقات</div></div>
+        <div class="action-btn" onclick="showTab('predictions')"><div class="action-icon">🎫</div><div class="action-label">التوقعات</div></div>
+        <div class="action-btn" onclick="showTab('features')"><div class="action-icon">✨</div><div class="action-label">المزايا</div></div>
+        <div class="action-btn" onclick="showTab('settings')"><div class="action-icon">⚙️</div><div class="action-label">الإعدادات</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// 🆕 (Update 19) رسم بياني مبسط (Sparkline)
+function renderSparkline(deposits,withdraws,labels){
+  const max=Math.max(...deposits,...withdraws,1);
+  const w=300,h=80,pad=10;
+  const n=deposits.length;
+  const step=(w-pad*2)/(n-1);
+  
+  function points(arr){
+    return arr.map((v,i)=>`${pad+i*step},${h-pad-(v/max)*(h-pad*2)}`).join(' ');
+  }
+  
+  return `
+    <div class="card">
+      <div class="card-title"><span>📈 حركة 7 أيام</span></div>
+      <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto">
+        <polyline points="${points(deposits)}" fill="none" stroke="var(--green)" stroke-width="2"/>
+        <polyline points="${points(withdraws)}" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="4"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--hint);margin-top:4px">
+        <span>🟢 إيداعات</span>
+        <span>🔴 سحوبات</span>
+      </div>
+    </div>
+  `;
+}
+
+// ===== قائمة المزيد =====
+function loadMoreMenu(){
+  currentTab='more';setNavActive('more');
+  document.getElementById('content').innerHTML=`
+    <div class="card">
+      <div class="card-title">⚙️ المزيد من الأدوات</div>
+      <div class="quick-actions">
+        <div class="action-btn" onclick="showTab('settings')"><div class="action-icon">💱</div><div class="action-label">الأسعار</div></div>
+        <div class="action-btn" onclick="showTab('payments')"><div class="action-icon">💳</div><div class="action-label">عناوين الإيداع</div></div>
+        <div class="action-btn" onclick="showTab('buttons')"><div class="action-icon">🔗</div><div class="action-label">تعيين الأزرار</div></div>
+        <div class="action-btn" onclick="showTab('finance')"><div class="action-icon">💸</div><div class="action-label">حركة الوكيل</div></div>
+        <div class="action-btn" onclick="showTab('health')"><div class="action-icon">🩺</div><div class="action-label">حالة النظام</div></div>
+        <div class="action-btn" onclick="showTab('broadcast')"><div class="action-icon">📢</div><div class="action-label">البث الجماعي</div></div>
+        <div class="action-btn" onclick="showTab('bonuses')"><div class="action-icon">🎁</div><div class="action-label">البونصات</div></div>
+        <div class="action-btn" onclick="showTab('predictions')"><div class="action-icon">🎫</div><div class="action-label">التوقعات</div></div>
+        <div class="action-btn" onclick="showTab('contests')"><div class="action-icon">👑</div><div class="action-label">المسابقات</div></div>
+        <div class="action-btn" onclick="showTab('features')"><div class="action-icon">✨</div><div class="action-label">ميزات المستخدمين</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ===== الإعدادات =====
+async function loadSettings(tab=currentTab,force=false){
+  currentTab=tab;setNavActive('more');
+  const el=document.getElementById('content');
+  el.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل الإعدادات...</div>';
+  try{
+    settingsData=await apiGet(SETTINGS_API);
+    if(tab==='settings')renderSettings(settingsData);
+    else if(tab==='payments')renderPayments(settingsData);
+    else renderButtonLinks(settingsData);
+    document.getElementById('lastUpdate').textContent='آخر تحديث: '+new Date().toLocaleTimeString('ar-EG');
+  }catch(e){el.innerHTML='<div class="error-box">⚠️ تعذّر تحميل الإعدادات.<br>'+e.message+'</div>';}
+}
+
+function renderSettings(d){
+  document.getElementById('content').innerHTML=`
+    <div class="warn-box">هذه الإعدادات تُحفظ فوراً في قاعدة البيانات وتظهر للمستخدمين بدون ديبلوي.</div>
+    <div class="card">
+      <div class="card-title">💱 الأسعار والعمولات</div>
+      <div class="field"><label>🎮 سعر اللعبة NSP</label><input id="exchange_rate" inputmode="numeric" value="${d.exchange_rate}"><div class="hint">حالياً: 1 NSP = ${fmt(d.exchange_rate)} SYP</div></div>
+      <div class="field"><label>📈 سعر الإيداع (شراء $ من المستخدم) — يجب أن يكون أقل</label><input id="usd_buy_rate" inputmode="decimal" value="${d.usd_buy_rate}"><div class="hint">🔒 لحماية البوت: هذا السعر يجب أن يكون أقل من سعر السحب</div></div>
+      <div class="field"><label>📉 سعر السحب (بيع $ للمستخدم) — يجب أن يكون أعلى</label><input id="usd_sell_rate" inputmode="decimal" value="${d.usd_sell_rate}"><div class="hint">🔒 الفرق بين السعرين = هامش ربح البوت (Spread)</div></div>
+      <div class="field"><label>🏷️ عمولة السحب %</label><input id="withdraw_commission" inputmode="decimal" value="${d.withdraw_commission}"></div>
+      <div class="field"><label>🎮 الحد الأدنى لشحن حساب اللعبة SYP</label><input id="game_min_deposit_syp" inputmode="numeric" value="${d.game_min_deposit_syp||20000}"></div>
+      <div class="field"><label>🏷️ أدنى إيداع بالليرة السورية</label><input id="min_deposit_syp" inputmode="numeric" value="${d.min_deposit_syp||20000}"><div class="hint">المستخدم لا يستطيع الإيداع بأقل من هذا المبلغ</div></div>
+      <div class="field"><label>💵 أدنى إيداع بالدولار</label><input id="min_deposit_usd" inputmode="numeric" value="${d.min_deposit_usd||5}"><div class="hint">المستخدم لا يستطيع الإيداع بأقل من هذا المبلغ</div></div>
+      <div class="field"><label>📤 أدنى سحب بالليرة السورية</label><input id="min_withdraw_syp" inputmode="numeric" value="${d.min_withdraw_syp||25000}"><div class="hint">المستخدم لا يستطيع سحب أقل من هذا المبلغ</div></div>
+      <div class="field"><label>💲 أدنى سحب بالدولار</label><input id="min_withdraw_usd" inputmode="numeric" value="${d.min_withdraw_usd||10}"><div class="hint">حد احتياطي (السحب بالدولار يُحسب من الليرة)</div></div>
+      <div class="field"><label>🔁 نسخة الليرة ببوابات الدفع</label><select id="syp_version"><option value="old" ${d.syp_version==='old'?'selected':''}>🏛️ قديمة (25,000)</option><option value="new" ${d.syp_version==='new'?'selected':''}>🆕 جديدة (250)</option></select><div class="hint">يحدد أي قيمة تظهر للمشرف في أزرار النسخ عند تأكيد التحويلات</div></div>
+      <div class="field"><label>👑 نسبة Revenue من الحرق %</label><input id="agent_revenue_percent" inputmode="decimal" value="${d.agent_revenue_percent||30}"></div>
+      <button class="btn green" onclick="saveRates()">✅ حفظ الأسعار والإعدادات</button>
+      <button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>
+    </div>`;
+}
+
+async function saveRates(){
+  try{await apiPost(SETTINGS_API,{action:'update_rates',exchange_rate:val('exchange_rate'),usd_buy_rate:val('usd_buy_rate'),usd_sell_rate:val('usd_sell_rate'),withdraw_commission:val('withdraw_commission'),game_min_deposit_syp:val('game_min_deposit_syp'),agent_revenue_percent:val('agent_revenue_percent'),min_deposit_syp:val('min_deposit_syp'),min_deposit_usd:val('min_deposit_usd'),min_withdraw_syp:val('min_withdraw_syp'),min_withdraw_usd:val('min_withdraw_usd'),syp_version:document.getElementById('syp_version').value});setNotice('✅ تم حفظ الإعدادات بنجاح');loadSettings('settings')}catch(e){setNotice('❌ '+e.message,'error')}
+}
+
+// ===== عناوين الإيداع =====
+function renderPayments(d){
+  const rows=(d.payment_addresses||[]).map(item=>{
+    const source=item.source==='database'?'لوحة الأدمن':'Render';
+    const sourceClass=item.source==='database'?'gold':'blue';
+    return `<div class="card"><div class="card-title">${item.label} <span class="pill ${sourceClass}">${source}</span></div><div class="field"><label>العنوان/الأرقام</label><textarea id="pay_${item.method}">${(item.address||'').replaceAll('&','&').replaceAll('<','<')}</textarea><div class="hint">قيمة Render: ${(item.fallback||'غير محددة').replaceAll('<','<')}</div></div><div class="btn-row"><button class="btn green" onclick="savePayment('${item.method}')">✅ حفظ</button><button class="btn outline" onclick="resetPayment('${item.method}')">♻️ Render</button></div></div>`;
+  }).join('');
+  document.getElementById('content').innerHTML=`<div class="warn-box">قيمة لوحة الأدمن أولاً، وإذا لم توجد يستخدم البوت قيمة Render تلقائياً.</div>${rows||'<div class="empty">لا توجد طرق دفع</div>'}<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;
+}
+
+async function savePayment(method){try{await apiPost(SETTINGS_API,{action:'update_payment_address',method,address:val('pay_'+method)});setNotice('✅ تم حفظ العنوان');loadSettings('payments')}catch(e){setNotice('❌ '+e.message,'error')}}
+async function resetPayment(method){tg.showConfirm('إعادة إلى قيمة Render؟',async(ok)=>{if(!ok)return;try{await apiPost(SETTINGS_API,{action:'reset_payment_address',method});setNotice('✅ تم الرجوع لقيمة Render');loadSettings('payments')}catch(e){setNotice('❌ '+e.message,'error')}})}
+
+// ===== تعيين الأزرار =====
+function renderButtonLinks(d){
+  const rows=(d.button_links||[]).map(item=>{
+    const source=item.source==='database'?'لوحة الأدمن':'Render';
+    const sourceClass=item.source==='database'?'gold':'blue';
+    return `<div class="card"><div class="card-title">${item.label} <span class="pill ${sourceClass}">${source}</span></div><div class="field"><label>الرابط</label><input id="btn_${item.key}" value="${(item.url||'').replaceAll('&','&').replaceAll('<','<')}"><div class="hint">رابط Render: ${(item.fallback||'غير محدد').replaceAll('<','<')}</div></div><div class="btn-row"><button class="btn green" onclick="saveButtonLink('${item.key}')">✅ حفظ</button><button class="btn outline" onclick="resetButtonLink('${item.key}')">♻️ Render</button></div></div>`;
+  }).join('');
+  document.getElementById('content').innerHTML=`<div class="warn-box">من هنا يمكنك تعديل أزرار: فتح الموقع، تحميل التطبيق، صفحة الرهان، وألعاب iChancy.</div>${rows||'<div class="empty">لا توجد أزرار</div>'}<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;
+}
+
+async function saveButtonLink(key){try{await apiPost(SETTINGS_API,{action:'update_button_link',key,url:val('btn_'+key)});setNotice('✅ تم حفظ رابط الزر');loadSettings('buttons')}catch(e){setNotice('❌ '+e.message,'error')}}
+async function resetButtonLink(key){tg.showConfirm('إعادة إلى قيمة Render؟',async(ok)=>{if(!ok)return;try{await apiPost(SETTINGS_API,{action:'reset_button_link',key});setNotice('✅ تم الرجوع لقيمة Render');loadSettings('buttons')}catch(e){setNotice('❌ '+e.message,'error')}})}
+
+// ===== حركة الوكيل =====
+function defaultFinanceDates(){const now=new Date();const from=new Date(now.getFullYear(),now.getMonth(),1,0,0,0);const pad=n=>String(n).padStart(2,'0');const fmt=d=>`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;return{from:fmt(from),to:fmt(now)};}
+
+async function loadFinance(){currentTab='finance';setNavActive('more');const el=document.getElementById('content');const dates=defaultFinanceDates();el.innerHTML=`<div class="card"><div class="card-title">💸 حركة الوكيل / الكاشيرة</div><div class="field"><label>من تاريخ</label><input id="finance_from" value="${dates.from}"></div><div class="field"><label>إلى تاريخ</label><input id="finance_to" value="${dates.to}"></div><button class="btn green" onclick="fetchFinance()">🔄 جلب التقرير</button></div><button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;}
+
+async function fetchFinance(){const el=document.getElementById('content');const from=val('finance_from')||defaultFinanceDates().from;const to=val('finance_to')||defaultFinanceDates().to;el.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ جلب حركة الكاشيرة...</div>';try{const d=await apiPost(FINANCE_API,{from,to,limit:1000});renderFinance(d,from,to);document.getElementById('lastUpdate').textContent='آخر تحديث: '+new Date().toLocaleTimeString('ar-EG');}catch(e){el.innerHTML=`<div class="error-box">⚠️ تعذر جلب التقرير.<br>${e.message}</div><button class="btn outline" onclick="loadFinance()">🔙 رجوع</button>`}}
+
+function renderFinance(d,from,to){const s=d.summary||{};const players=(d.players||[]).slice(0,30);const latest=(d.latest_transactions||[]).slice(0,25);document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">💸 حركة الوكيل</div><div class="field"><label>من</label><input id="finance_from" value="${from}"></div><div class="field"><label>إلى</label><input id="finance_to" value="${to}"></div><button class="btn green" onclick="fetchFinance()">🔄 تحديث</button></div>
+<div class="warn-box">${d.note||''}<br>Revenue: <b>${d.agent_revenue_percent||30}%</b></div>
+<div class="card"><div class="card-title">📊 ملخص الفترة</div><div class="stat-grid"><div class="stat-box"><div class="stat-label">📤 شحن للّاعبين</div><div class="stat-value red">${fmt(s.total_deposit_to_players)} NSP</div></div><div class="stat-box"><div class="stat-label">📥 سحب من اللاعبين</div><div class="stat-value green">${fmt(s.total_withdraw_from_players)} NSP</div></div><div class="stat-box"><div class="stat-label">⚖️ صافي الحركة</div><div class="stat-value ${Number(s.net_movement)>=0?'green':'red'}">${fmt(s.net_movement)} NSP</div></div><div class="stat-box"><div class="stat-label">🔢 العمليات</div><div class="stat-value blue">${fmt(s.operations_count)}</div></div></div></div>
+<div class="card"><div class="card-title">🔥 الحرق و Revenue</div><div class="stat-grid"><div class="stat-box"><div class="stat-label">🔥 إجمالي الحرق</div><div class="stat-value gold">${fmt((d.burn_summary||{}).burn_positive_total)} NSP</div></div><div class="stat-box"><div class="stat-label">👑 Revenue</div><div class="stat-value green">${fmt((d.burn_summary||{}).estimated_revenue)} NSP</div></div><div class="stat-box"><div class="stat-label">🟢 ربح اللاعبين</div><div class="stat-value red">${fmt((d.burn_summary||{}).player_profit_total)} NSP</div></div><div class="stat-box"><div class="stat-label">🎮 أرصدة حالية</div><div class="stat-value blue">${fmt((d.burn_summary||{}).current_balance_total)} NSP</div></div></div></div>
+<div class="card"><div class="card-title">👥 أكثر اللاعبين حركة</div>${players.map(p=>`<div class="pending-item"><b>${p.toUserName}</b><br>📤 ${fmt(p.deposit_to_player)} | 📥 ${fmt(p.withdraw_from_player)} | ⚖️ <b class="${Number(p.net)>=0?'green':'red'}">${fmt(p.net)}</b><br>🔥 حرق: ${p.burn===null?'—':fmt(p.burn)} | 👑 Revenue: ${p.revenue===null?'—':fmt(p.revenue)}</div>`).join('')||'<div class="empty">لا توجد بيانات</div>'}</div>
+<div class="card"><div class="card-title">🧾 آخر العمليات</div><div class="recent-list">${latest.map(t=>`<div class="item"><span>${t.source==='bot'?'🤖':'🧑‍💼'} ${t.type}<br><span class="label">${t.toUserName} • ${t.date}</span></span><span class="${t.type.includes('شحن')?'red':'green'}">${fmt(t.amount)}</span></div>`).join('')||'<div class="empty">لا توجد عمليات</div>'}</div></div>
+<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`}
+
+// ===== حالة النظام =====
+async function loadHealth(){currentTab='health';setNavActive('more');const el=document.getElementById('content');el.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ فحص حالة النظام...</div>';try{const [hRes,nRes,rRes]=await Promise.allSettled([apiGet(HEALTH_API),apiGet(NEON_API),apiGet(RENDER_API)]);if(hRes.status!=='fulfilled')throw (hRes.reason||new Error('health failed'));const neon=(nRes.status==='fulfilled')?nRes.value:{ok:false,error:(nRes.reason&&nRes.reason.message)||'تعذر جلب مقاييس Neon'};const render=(rRes.status==='fulfilled')?rRes.value:{ok:false,error:(rRes.reason&&rRes.reason.message)||'تعذر جلب حالة Render'};renderHealth(hRes.value,neon,render);document.getElementById('lastUpdate').textContent='آخر فحص: '+new Date().toLocaleTimeString('ar-EG');}catch(e){el.innerHTML=`<div class="error-box">⚠️ تعذر فحص النظام.<br>${e.message}</div>`}}
+
+function okBadge(x){return x?'<span class="badge green">سليم</span>':'<span class="badge">مشكلة</span>'}
+// شريط نسبة استخدام Neon مع تلوّن حسب العتبة
+function neonBar(label,used,limit,unit,pct){pct=(typeof pct==='number')?pct:0;const color=pct>=90?'#e5484d':(pct>=70?'#e5a54d':'#30a46c');const w=Math.max(0,Math.min(100,pct));return `<div class="row"><span class="label">${label}</span><span class="value">${(used||0).toLocaleString('en-US',{maximumFractionDigits:3})} / ${limit} ${unit} <b style="color:${color}">${pct}%</b></span></div><div style="background:rgba(255,255,255,.08);border-radius:6px;height:8px;overflow:hidden;margin:4px 0 10px"><div style="height:100%;width:${w}%;background:${color};border-radius:6px;transition:width .4s"></div></div>`}
+function neonCard(n){
+  if(!n||n.ok===false){const reason=(n&&(n.error||n.refresh_error))||'غير متاح';const notConfigured=n&&n.configured===false;return `<div class="card"><div class="card-title">🗄️ Neon Database</div><div class="warn-box">${notConfigured?'⚙️ لم تُضبط متغيرات Neon (NEON_API_KEY / NEON_PROJECT_ID).':'⚠️ تعذّر جلب مقاييس Neon:'}<br>${reason}</div></div>`}
+  const p=n.usage_percent||{},lim=n.limits||{};const overall=p.overall||0;
+  const statusTxt=overall>=90?'🔴 قريب من الحد الأقصى':(overall>=70?'🟡 يقترب من الحد':'🟢 ضمن الحدود الآمنة');
+  const staleTag=(n.cache&&n.cache.stale)?'<span class="badge" style="margin-inline-start:6px">بيانات مخزّنة</span>':'';
+  const alert=overall>=70?`<div class="warn-box">⚠️ الاستخدام الكلي ${overall}% — يُنصح بالمراقبة${overall>=90?' أو الترقية':''}.</div>`:'';
+  return `<div class="card"><div class="card-title"><span>🗄️ Neon Database</span><span class="value" style="font-size:.8rem">${statusTxt}${staleTag}</span></div>
+  ${alert}
+  ${neonBar('🧮 Compute',n.compute_hours,lim.compute_cu_hours||100,'ساعة',p.compute)}
+  ${neonBar('💾 Storage',n.storage_gb,lim.storage_gb||0.5,'GB',p.storage)}
+  ${neonBar('🌐 Transfer',n.transfer_gb,lim.transfer_gb||5,'GB',p.transfer)}
+  <div class="row"><span class="label">🌿 عدد الفروع</span><span class="value">${(typeof n.branches_count==='number')?n.branches_count:'—'}</span></div>
+  <div class="row"><span class="label">🔄 دورة الاستهلاك منذ</span><span class="value">${n.hours_elapsed?Math.round(n.hours_elapsed)+' ساعة':'—'}</span></div>
+  </div>`
+}
+function renderRenderCard(r){
+  if(!r||r.ok===false){const reason=(r&&(r.error||r.refresh_error))||'غير متاح';const notConfigured=r&&r.configured===false;return `<div class="card"><div class="card-title">☁️ Render</div><div class="warn-box">${notConfigured?'⚙️ لم تُضبط متغيرات Render (RENDER_API_KEY / RENDER_SERVICE_ID).':'⚠️ تعذّر جلب حالة Render:'}<br>${reason}</div></div>`}
+  const suspended=r.suspended===true;
+  const statusBadge=suspended?'<span class="badge">🔴 معلّقة</span>':'<span class="badge green">🟢 نشطة</span>';
+  const dep=r.last_deploy||{};
+  const depColor=dep.status==='live'?'#30a46c':(dep.status&&dep.status.indexOf('fail')>=0?'#e5484d':'');
+  const staleTag=(r.cache&&r.cache.stale)?'<span class="badge" style="margin-inline-start:6px">بيانات مخزّنة</span>':'';
+  const suspendAlert=suspended?'<div class="warn-box">🔴 الخدمة معلّقة (قد تكون ساعات التشغيل المجانية نفدت). راجع لوحة Render.</div>':'';
+  const bw=(typeof r.bandwidth_24h_mb==='number')?`<div class="row"><span class="label">🌐 النطاق (24 ساعة)</span><span class="value">${r.bandwidth_24h_mb} MB</span></div>`:(r.bandwidth_note?`<div class="row"><span class="label">🌐 النطاق</span><span class="value" style="font-size:.8rem">${r.bandwidth_note}</span></div>`:'');
+  const probe=r.probe?`<div class="row"><span class="label">⚡ الاستجابة</span><span class="value">${r.probe.state==='cold_start'?'❄️ استيقاظ ('+r.probe.latency_ms+'ms)':(r.probe.state==='warm'?'✅ نشطة ('+r.probe.latency_ms+'ms)':'⚠️ غير متصلة')}</span></div>`:'';
+  return `<div class="card"><div class="card-title"><span>☁️ Render</span><span>${statusBadge}${staleTag}</span></div>
+  ${suspendAlert}
+  <div class="row"><span class="label">📛 الخدمة</span><span class="value">${r.name||'—'}</span></div>
+  <div class="row"><span class="label">💳 الخطة</span><span class="value">${r.plan||'—'}${r.region?' · '+r.region:''}</span></div>
+  <div class="row"><span class="label">🚀 آخر نشر</span><span class="value" style="color:${depColor}">${dep.status||'—'}</span></div>
+  ${dep.finished_at?`<div class="row"><span class="label">🕐 وقت النشر</span><span class="value">${dep.finished_at}</span></div>`:''}
+  ${bw}${probe}
+  <div class="row" style="opacity:.7"><span class="label" style="font-size:.75rem">ℹ️ الساعات المتبقية</span><span class="value" style="font-size:.72rem">تُراجع من لوحة Render (غير متاحة عبر API)</span></div>
+  </div>`
+}
+function renderHealth(d,neon,render){const wh=d.webhook||{},db=d.database||{},srv=d.server||{},ich=d.ichancy||{},cash=d.cashier||{},st=d.stats||{};document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">🩺 حالة النظام</div><div class="row"><span class="label">السيرفر</span><span>${okBadge(srv.ok)}</span></div><div class="row"><span class="label">⏱️ مدة التشغيل</span><span class="value">${srv.uptime_text||'—'}</span></div><div class="row"><span class="label">🕐 وقت السيرفر</span><span class="value">${srv.server_time||'—'}</span></div></div>
+<div class="card"><div class="card-title">🗄️ قاعدة البيانات</div><div class="row"><span class="label">الحالة</span><span>${okBadge(db.ok)}</span></div><div class="row"><span class="label">زمن الاستجابة</span><span class="value">${db.latency_ms||'—'} ms</span></div></div>
+${neonCard(neon)}
+${renderRenderCard(render)}
+<div class="card"><div class="card-title">🌐 Telegram Webhook</div><div class="row"><span class="label">الحالة</span><span>${okBadge(wh.ok)}</span></div><div class="row"><span class="label">Pending</span><span class="value">${wh.pending_update_count??'—'}</span></div></div>
+<div class="card"><div class="card-title">🎮 iChancy</div><div class="row"><span class="label">الجلسة</span><span>${okBadge(ich.ok)}</span></div><div class="row"><span class="label">عمر الكوكيز</span><span class="value">${ich.cookie_age_text||'—'}</span></div></div>
+<div class="card"><div class="card-title">📊 أرقام سريعة</div><div class="row"><span class="label">👥 المستخدمون</span><span class="value">${fmt(st.total_users)}</span></div><div class="row"><span class="label">⏳ الطلبات المعلقة</span><span class="value">${fmt(st.pending_requests)}</span></div><div class="row"><span class="label">🔄 معاملات اليوم</span><span class="value">${fmt(st.today_tx)}</span></div></div>
+<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`}
+
+// ===== البث الجماعي =====
+async function loadBroadcast(){currentTab='broadcast';setNavActive('more');document.getElementById('content').innerHTML=`
+<div class="warn-box">الإرسال الجماعي يتم تدريجياً. جرّب لنفسك أولاً.</div>
+<div class="card"><div class="card-title">📢 الإعلانات</div>
+<div class="field"><label>نوع الرسالة</label><select id="bc_type"><option value="announcement">📢 إعلان عام</option><option value="alert">⚠️ تنبيه</option><option value="maintenance">🛠️ صيانة</option><option value="offer">🎁 عرض</option><option value="update">✨ تحديث</option></select></div>
+<div class="field"><label>الجمهور</label><select id="bc_audience"><option value="all">كل المستخدمين</option><option value="accepted_terms">وافقوا على الشروط</option><option value="ichancy">لديهم حساب iChancy</option><option value="balance">لديهم رصيد</option></select></div>
+<div class="field"><label>العنوان</label><input id="bc_title" value="تنبيه من الإدارة"></div>
+<div class="field"><label>نص الرسالة</label><textarea id="bc_message" style="direction:rtl;text-align:right" placeholder="اكتب الرسالة..."></textarea></div>
+<div class="btn-row"><button class="btn outline" onclick="countBroadcastTargets()">👥 عدد المستلمين</button><button class="btn outline" onclick="sendBroadcastTest()">🧪 تجربة</button></div>
+<button class="btn danger" onclick="sendBroadcastAll()">🚀 إرسال للجميع</button>
+</div><div id="broadcastRecent"></div><button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;
+loadRecentBroadcasts();}
+
+function bcPayload(action){return{action,message_type:val('bc_type'),audience:val('bc_audience'),title:val('bc_title'),message:val('bc_message')}}
+async function countBroadcastTargets(){try{const r=await apiPost(BROADCAST_API,bcPayload('count'));setNotice(`👥 عدد المستلمين: ${fmt(r.count)}`)}catch(e){setNotice('❌ '+e.message,'error')}}
+async function sendBroadcastTest(){try{const r=await apiPost(BROADCAST_API,bcPayload('test'));setNotice(`✅ تجربة: ${r.sent} / فشل ${r.failed}`)}catch(e){setNotice('❌ '+e.message,'error')}}
+async function sendBroadcastAll(){if(!val('bc_message').trim()){setNotice('❌ نص الرسالة فارغ','error');return}tg.showConfirm('تأكيد الإرسال؟',async(ok)=>{if(!ok)return;try{setNotice('🚀 جاري الإرسال...');const r=await apiPost(BROADCAST_API,bcPayload('send'));setNotice(`✅ وصل ${r.sent} / فشل ${r.failed}`);loadRecentBroadcasts();}catch(e){setNotice('❌ '+e.message,'error')}})}
+async function loadRecentBroadcasts(){try{const d=await apiGet(BROADCASTS_API);const items=d.items||[];document.getElementById('broadcastRecent').innerHTML=`<div class="card"><div class="card-title">📜 آخر الإرسالات</div>${items.map(x=>`<div class="pending-item"><b>#${x.id} ${x.title||''}</b><br>✅ ${x.sent_count||0} / ❌ ${x.failed_count||0} / 🎯 ${x.total_targets||0}<br><span class="label">${x.created_at||''}</span></div>`).join('')||'<div class="empty">لا يوجد سجل</div>'}</div>`;}catch(e){}}
+
+// ===== مركز الدعم =====
+async function supportApi(payload){return apiPost(SUPPORT_API,payload);}
+function loadSupport(status='open'){currentTab='support';setNavActive('support');document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل تذاكر الدعم...</div>';supportApi({action:'list',status,limit:50}).then(d=>renderSupportList(d,status)).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`})}
+
+function renderSupportList(d,status){const tickets=d.tickets||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">📩 مركز الدعم</div><div class="btn-row-3"><button class="btn ${status==='open'?'green':'outline'}" onclick="loadSupport('open')">مفتوحة</button><button class="btn ${status==='closed'?'green':'outline'}" onclick="loadSupport('closed')">مغلقة</button><button class="btn ${status==='all'?'green':'outline'}" onclick="loadSupport('all')">الكل</button></div></div>
+<div class="card"><div class="card-title">🎫 التذاكر (${tickets.length})</div>${tickets.map(t=>`<div class="pending-item"><b>#${t.id} ${t.telegram_username||t.user_telegram_id}</b> • ${t.status==='open'?'🟢 مفتوحة':'🔒 مغلقة'}<br>🎮 ${t.ichancy_username||'—'} | 💎 ${fmt(t.bot_balance)} SYP<br>${t.last_message||''}<br><span class="label">${t.last_message_at||t.created_at||''}</span><button class="btn outline" onclick="loadSupportTicket(${t.id})">👁️ فتح</button></div>`).join('')||'<div class="empty">لا توجد تذاكر</div>'}</div>`;}
+
+function loadSupportTicket(id){document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل التذكرة...</div>';supportApi({action:'detail',ticket_id:id}).then(renderSupportTicket).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadSupport()">🔙 رجوع</button>`})}
+
+function renderSupportTicket(d){const t=d.ticket||{},u=d.user||{},msgs=d.messages||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">🎫 تذكرة #${t.id}</div><div class="row"><span class="label">المستخدم</span><span class="value">${u.telegram_username||t.user_telegram_id}</span></div><div class="row"><span class="label">iChancy</span><span class="value">${u.ichancy_username||'—'}</span></div><div class="row"><span class="label">الحالة</span><span>${t.status==='open'?'🟢 مفتوحة':'🔒 مغلقة'}</span></div><button class="btn outline" onclick="loadUserDetail('${t.user_telegram_id}')">👥 ملف المستخدم</button></div>
+<div class="card"><div class="card-title">💬 المحادثة</div>${msgs.map(m=>`<div class="pending-item" style="border-right-color:${m.sender_type==='admin'?'var(--green)':'var(--blue)'}"><b>${m.sender_type==='admin'?'👑 الإدارة':'👤 المستخدم'}</b><br>${m.message_text||'['+(m.content_type||'message')+']'}<br><span class="label">${m.created_at||''}</span></div>`).join('')||'<div class="empty">لا توجد رسائل</div>'}</div>
+<div class="card"><div class="card-title">↩️ رد الإدارة</div><textarea id="support_reply_text" style="direction:rtl;text-align:right" placeholder="اكتب الرد..."></textarea><button class="btn green" onclick="sendSupportReply(${t.id})">📩 إرسال الرد</button><button class="btn outline" onclick="closeSupportTicket(${t.id})">🔒 إغلاق</button><button class="btn outline" onclick="loadSupport()">🔙 رجوع</button></div>`}
+
+function sendSupportReply(id){const msg=val('support_reply_text');if(!msg.trim()){setNotice('❌ الرد فارغ','error');return}supportApi({action:'reply',ticket_id:id,message:msg}).then(()=>{setNotice('✅ تم إرسال الرد');loadSupportTicket(id)}).catch(e=>setNotice('❌ '+e.message,'error'))}
+function closeSupportTicket(id){tg.showConfirm('إغلاق التذكرة؟',ok=>{if(!ok)return;supportApi({action:'close',ticket_id:id}).then(()=>{setNotice('✅ تم الإغلاق');loadSupport('open')}).catch(e=>setNotice('❌ '+e.message,'error'))})}
+
+// ===== مركز الطلبات =====
+async function requestsApi(payload){return apiPost(REQUESTS_API,payload);}
+function typeLabel(t){return t==='deposit_bot'?'📥 إيداع':t==='withdraw_bot'?'📤 سحب':t==='deposit_to_game'?'🎮 شحن لعبة':t==='withdraw_from_game'?'↩️ سحب لعبة':t||'—'}
+function statusLabel(s){return s==='pending'?'🟡 معلّق':s==='approved'?'✅ مقبول':s==='rejected'?'❌ مرفوض':s==='completed'?'🟢 مكتمل':s||'—'}
+
+function loadRequests(){currentTab='requests';setNavActive('requests');document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل الطلبات...</div>';requestsApi({action:'list',limit:40}).then(renderRequests).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`})}
+
+function renderRequests(d){const sm=d.summary||{};const pending=d.pending||[];const recent=d.recent||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">📥 مركز الطلبات</div><div class="field"><label>بحث</label><input id="req_search_q" placeholder="رقم الطلب أو مستخدم"></div><button class="btn green" onclick="searchRequests()">🔎 بحث</button></div>
+<div class="card"><div class="card-title">📊 ملخص</div><div class="stat-grid"><div class="stat-box"><div class="stat-label">⏳ معلقة</div><div class="stat-value gold">${fmt(sm.pending_total)}</div></div><div class="stat-box"><div class="stat-label">📥 إيداع</div><div class="stat-value blue">${fmt(sm.pending_deposits)}</div></div><div class="stat-box"><div class="stat-label">📤 سحب</div><div class="stat-value red">${fmt(sm.pending_withdraws)}</div></div><div class="stat-box"><div class="stat-label">🔄 اليوم</div><div class="stat-value green">${fmt(sm.today_tx)}</div></div></div></div>
+<div class="card"><div class="card-title">🟡 الطلبات المعلقة</div>${pending.map(renderReqItem).join('')||'<div class="empty">لا توجد طلبات معلقة</div>'}</div>
+<div class="card"><div class="card-title">🕒 آخر الطلبات</div>${recent.map(renderReqItem).join('')||'<div class="empty">لا توجد طلبات</div>'}</div>`;}
+
+function renderReqItem(t){return `<div class="pending-item"><b>#${t.id} ${typeLabel(t.type)}</b> • ${statusLabel(t.status)}<br>👤 ${t.telegram_username||'—'} <span class="label">${t.user_telegram_id}</span><br>💰 <b>${fmt(t.amount)} SYP</b> | 💳 ${t.payment_method||'—'}<br><span class="label">${t.created_at||''}</span><button class="btn outline" onclick="loadRequestDetail(${t.id})">👁️ التفاصيل</button></div>`}
+
+function searchRequests(){const q=val('req_search_q').trim();if(!q){setNotice('أدخل قيمة','error');return}document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ البحث...</div>';requestsApi({action:'search',query:q}).then(d=>{document.getElementById('content').innerHTML=`<div class="card"><div class="card-title">🔎 النتائج</div><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button>${(d.items||[]).map(renderReqItem).join('')||'<div class="empty">لا توجد نتائج</div>'}</div>`}).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button>`})}
+
+function loadRequestDetail(id){document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل التفاصيل...</div>';requestsApi({action:'detail',tx_id:id}).then(renderRequestDetail).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button>`})}
+
+function renderRequestDetail(d){const t=d.transaction||{},u=d.user||{},h=d.history||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">📌 الطلب #${t.id}</div><div class="row"><span class="label">النوع</span><span class="value">${typeLabel(t.type)}</span></div><div class="row"><span class="label">الحالة</span><span>${statusLabel(t.status)}</span></div><div class="row"><span class="label">المبلغ</span><span class="value gold">${fmt(t.amount)} SYP</span></div><div class="row"><span class="label">الوسيلة</span><span class="value">${t.payment_method||'—'}</span></div><div class="row"><span class="label">التاريخ</span><span class="value">${t.created_at||'—'}</span></div><div class="hint">${t.transfer_number||''}</div></div>
+<div class="card"><div class="card-title">👤 المستخدم</div><div class="row"><span class="label">Telegram</span><span class="value">${u.telegram_id||t.user_telegram_id}</span></div><div class="row"><span class="label">Username</span><span class="value">${u.telegram_username||'—'}</span></div><div class="row"><span class="label">iChancy</span><span class="value">${u.ichancy_username||'—'}</span></div><div class="row"><span class="label">رصيد البوت</span><span class="value gold">${fmt(u.bot_balance)} SYP</span></div><button class="btn outline" onclick="promptRequestMessage('${u.telegram_id||t.user_telegram_id}',${t.id})">📩 رسالة للمستخدم</button><button class="btn outline" onclick="loadUserDetail('${u.telegram_id||t.user_telegram_id}')">👥 ملف المستخدم</button><div class="warn-box" style="margin-top:10px">⚠️ حذف الطلب نهائي يُزيله من كل السجلات. ${t.type==='withdraw_bot'||t.type==='deposit_to_game'?'هذا طلب سحب/شحن، رصيده <b>مخصوم من المستخدم</b>. يمكنك إعادته عند الحذف.':'هذا طلب إيداع، رصيده <b>لم يُضاف بعد</b>، لذا لا حاجة لإعادة.'}</div><button class="btn danger" onclick="deleteTransaction(${t.id},${t.type==='withdraw_bot'||t.type==='deposit_to_game'?'true':'false'})">🗑️ حذف الطلب نهائياً</button><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button></div>
+<div class="card"><div class="card-title">🕒 آخر معاملات</div>${h.map(x=>`<div class="pending-item"><b>#${x.id} ${x.type}</b> • ${x.status}<br>💰 ${fmt(x.amount)} | ${x.created_at}</div>`).join('')||'<div class="empty">لا يوجد سجل</div>'}</div>`}
+
+function promptRequestMessage(tid,id){const msg=prompt('رسالة للمستخدم بخصوص الطلب #'+id);if(!msg)return;requestsApi({action:'message_user',telegram_id:tid,message:msg}).then(()=>setNotice('✅ تم إرسال الرسالة')).catch(e=>setNotice('❌ '+e.message,'error'))}
+function deleteTransaction(id,refund){const msg=refund?'⚠️ حذف الطلب نهائياً مع إعادة الرصيد للمستخدم؟':'⚠️ حذف الطلب نهائياً (بدون إعادة رصيد)؟';tg.showConfirm(msg,async ok=>{if(!ok)return;try{const r=await requestsApi({action:'delete_transaction',tx_id:id,refund});if(r.refunded>0){setNotice('✅ تم حذف الطلب وإعادة '+fmt(r.refunded)+' SYP للمستخدم')}else{setNotice('🗑️ تم حذف الطلب')}loadRequests();}catch(e){setNotice('❌ '+e.message,'error')}})}
+
+// ===== مركز المستخدمين =====
+async function usersApi(payload){return apiPost(USERS_API,payload);}
+function loadUsers(){currentTab='users';setNavActive('users');document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">👥 مركز المستخدمين</div><div class="sub">ابحث بـ Telegram ID أو @username أو اسم iChancy أو Player ID.</div><div class="field"><label>بحث</label><input id="user_search_q" placeholder="مثال: 123456 أو username"></div><button class="btn green" onclick="searchUsers()">🔎 بحث</button></div><div id="usersResult"></div>`;}
+
+async function searchUsers(){const q=val('user_search_q').replace('@','').trim();const box=document.getElementById('usersResult');if(!q){box.innerHTML='<div class="error-box">أدخل قيمة</div>';return}box.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ البحث...</div>';try{const d=await usersApi({action:'search',query:q});const users=d.users||[];box.innerHTML=`<div class="card"><div class="card-title">🔎 النتائج (${users.length})</div>${users.map(u=>`<div class="pending-item"><b>${u.telegram_username||'بدون معرف'}</b> <span class="label">${u.telegram_id}</span><br>🎮 ${u.ichancy_username||'غير مرتبط'} | 🔑 ${u.player_id||'—'}<br>💎 ${fmt(u.bot_balance)} SYP | 🎮 ${fmt(u.game_balance)} NSP<button class="btn outline" onclick="loadUserDetail('${u.telegram_id}')">👁️ التفاصيل</button></div>`).join('')||'<div class="empty">لا توجد نتائج</div>'}</div>`;}catch(e){box.innerHTML=`<div class="error-box">${e.message}</div>`}}
+
+async function loadUserDetail(tid){const box=document.getElementById('usersResult');box.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل الملف...</div>';try{const d=await usersApi({action:'detail',telegram_id:tid});renderUserDetail(d);}catch(e){box.innerHTML=`<div class="error-box">${e.message}</div>`}}
+
+function renderUserDetail(d){const u=d.user||{},st=d.stats||{},h=d.history||[];document.getElementById('usersResult').innerHTML=`
+<div class="card"><div class="card-title">👤 ملف المستخدم</div><div class="row"><span class="label">Telegram ID</span><span class="value">${u.telegram_id}</span></div><div class="row"><span class="label">Username</span><span class="value">${u.telegram_username||'—'}</span></div><div class="row"><span class="label">iChancy</span><span class="value">${u.ichancy_username||'غير مرتبط'}</span></div><div class="row"><span class="label">Player ID</span><span class="value">${u.player_id||'—'}</span></div><div class="row"><span class="label">رصيد البوت</span><span class="value gold">${fmt(u.bot_balance)} SYP</span></div><div class="row"><span class="label">رصيد اللعبة</span><span class="value green">${fmt(u.game_balance)} NSP</span></div><div class="row"><span class="label">المعاملات</span><span class="value">${fmt(st.total)} | معلقة ${fmt(st.pending)} | مقبولة ${fmt(st.approved)}</span></div>
+<div class="btn-row"><button class="btn outline" onclick="refreshUserGameBalance('${u.telegram_id}')">🔄 رصيد اللعبة</button><button class="btn outline" onclick="promptAdjustBalance('${u.telegram_id}')">💎 تعديل الرصيد</button></div>
+<button class="btn outline" onclick="promptMessageUser('${u.telegram_id}')">📩 رسالة للمستخدم</button></div>
+<div class="card"><div class="card-title">🕒 آخر المعاملات</div>${h.map(t=>`<div class="pending-item"><b>#${t.id} ${t.type}</b> • ${t.status}<br>💰 ${fmt(t.amount)} | ${t.payment_method||'—'}<br><span class="label">${t.created_at}</span></div>`).join('')||'<div class="empty">لا توجد معاملات</div>'}</div>`}
+
+async function refreshUserGameBalance(tid){try{setNotice('جارٍ تحديث الرصيد...');const d=await usersApi({action:'refresh_game_balance',telegram_id:tid});setNotice(`✅ رصيد اللعبة: ${fmt(d.game_balance)} NSP`);loadUserDetail(tid);}catch(e){setNotice('❌ '+e.message,'error')}}
+function promptAdjustBalance(tid){const delta=prompt('أدخل قيمة الإضافة/الخصم. مثال: 5000 أو -3000');if(delta===null)return;usersApi({action:'adjust_balance',telegram_id:tid,delta}).then(()=>{setNotice('✅ تم تعديل الرصيد');loadUserDetail(tid)}).catch(e=>setNotice('❌ '+e.message,'error'))}
+function promptMessageUser(tid){const msg=prompt('اكتب الرسالة:');if(!msg)return;usersApi({action:'message',telegram_id:tid,message:msg}).then(()=>setNotice('✅ تم إرسال الرسالة')).catch(e=>setNotice('❌ '+e.message,'error'))}
+
+// ===== البونصات =====
+async function bonusesApi(payload){return apiPost(BONUSES_API,payload);}
+async function loadBonuses(){currentTab='bonuses';setNavActive('more');document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل البونصات...</div>';try{const d=await bonusesApi({action:'summary'});renderBonuses(d);}catch(e){document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`}}
+
+function renderBonuses(d){const bs=d.bonus_summary||{},rs=d.referral_summary||{},st=d.settings||{},rules=d.bonus_rules||[],top=d.top_referrers||[],recent=d.recent_commissions||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">🎁 البونصات والإحالات</div><div class="btn-row"><button class="btn ${st.referrals_enabled!==false?'danger':'green'}" onclick="toggleReferrals(${st.referrals_enabled!==false?'false':'true'})">${st.referrals_enabled!==false?'⛔ إيقاف الإحالات':'✅ تفعيل الإحالات'}</button><button class="btn outline" onclick="loadBonuses()">🔄 تحديث</button></div></div>
+<div class="card"><div class="card-title">📊 ملخص</div><div class="row"><span class="label">🎁 عروض البونص</span><span class="value">${fmt(bs.total_rules)} / النشطة ${fmt(bs.active_rules)}</span></div><div class="row"><span class="label">👥 الإحالات</span><span class="value">${fmt(rs.total_referrals)} مسجلة | ${fmt(rs.active_referrals)} نشطة</span></div><div class="row"><span class="label">💰 عمولات مدفوعة</span><span class="value gold">${fmt(rs.total_commissions_paid)} SYP</span></div></div>
+<div class="card"><div class="card-title">➕ إنشاء عرض بونص</div><div class="field"><label>اسم العرض</label><input id="bonus_title" placeholder="مثال: بونص العيد"></div><div class="field"><label>النسبة %</label><input id="bonus_percent" inputmode="decimal" placeholder="10"></div><div class="field"><label>طريقة الدفع</label><select id="bonus_method"><option value="all">كل الطرق</option><option value="syriatel">سيرياتيل</option><option value="mtn">MTN</option><option value="sham_syp">شام كاش SYP</option><option value="sham_usd">شام كاش USD</option><option value="usdt_trc">USDT TRC20</option><option value="usdt_bep">USDT BEP20</option></select></div><div class="field"><label>الحد الأدنى SYP</label><input id="bonus_min" inputmode="numeric" value="0"></div><div class="field"><label>الحد الأعلى SYP</label><input id="bonus_max" inputmode="numeric" value="0"></div><button class="btn green" onclick="createBonusRule()">✅ إنشاء</button></div>
+<div class="card"><div class="card-title">📋 العروض الحالية</div>${rules.map(r=>{const methodMap={'all':'كل الطرق','syriatel':'🟢 سيريتل كاش','mtn':'🟡 MTN كاش','sham_syp':'📱 شام كاش SYP','sham_usd':'💵 شام كاش USD','usdt_trc':'🪙 USDT TRC20','usdt_bep':'🪙 USDT BEP20'};const methodName=methodMap[r.payment_method]||r.payment_method;return `<div class="pending-item" style="border-right-color:${r.is_active?'var(--green)':'var(--red)'}"><b>#${r.id} ${r.title}</b> ${r.is_active?'<span class="pill green">فعّال</span>':'<span class="pill">متوقف</span>'}<br>📈 ${r.percent}% | 💳 ${methodName}<br>💰 حد أدنى: ${fmt(r.min_amount_syp)} | 🛡️ حد أعلى: ${fmt(r.max_bonus_syp)}<div class="btn-row-3">${r.is_active?`<button class="btn danger" onclick="disableBonusRule(${r.id})">🛑 إيقاف</button>`:`<button class="btn green" onclick="enableBonusRule(${r.id})">✅ تفعيل</button>`}<button class="btn outline" onclick="editBonusRule(${r.id},'${String(r.title).replace(/'/g,"\\'")}',${r.percent},'${r.payment_method}',${r.min_amount_syp},${r.max_bonus_syp})">✏️ تعديل</button><button class="btn danger" onclick="deleteBonusRule(${r.id})">🗑️ حذف</button></div></div>`}).join('')||'<div class="empty">لا توجد عروض</div>'}</div>
+<div id="bonusEditBox"></div>
+<div class="card"><div class="card-title">🏆 أفضل المُحيلين</div>${top.map(r=>`<div class="pending-item"><b>${r.telegram_username||r.referrer_telegram_id}</b><br>👥 ${fmt(r.total_referrals)} | ✅ ${fmt(r.active_referrals)} | 📈 ${r.current_percent}%<br>💰 ${fmt(r.total_earnings)} SYP</div>`).join('')||'<div class="empty">لا توجد بيانات</div>'}</div>
+<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;}
+
+async function createBonusRule(){try{await bonusesApi({action:'create_bonus',title:val('bonus_title'),percent:val('bonus_percent'),payment_method:val('bonus_method'),min_amount_syp:val('bonus_min'),max_bonus_syp:val('bonus_max')});setNotice('✅ تم إنشاء العرض');loadBonuses();}catch(e){setNotice('❌ '+e.message,'error')}}
+async function enableBonusRule(id){try{await bonusesApi({action:'enable_bonus',rule_id:id});setNotice('✅ تم تفعيل العرض');loadBonuses();}catch(e){setNotice('❌ '+e.message,'error')}}
+async function deleteBonusRule(id){tg.showConfirm('حذف العرض نهائياً؟',async ok=>{if(!ok)return;try{await bonusesApi({action:'delete_bonus',rule_id:id});setNotice('🗑️ تم حذف العرض');loadBonuses();}catch(e){setNotice('❌ '+e.message,'error')}})}
+function editBonusRule(id,title,percent,method,min,max){const methodMap={'all':'كل الطرق','syriatel':'سيريتل','mtn':'MTN','sham_syp':'شام SYP','sham_usd':'شام USD','usdt_trc':'USDT TRC20','usdt_bep':'USDT BEP20'};const opts=Object.entries(methodMap).map(([k,v])=>`<option value="${k}" ${k===method?'selected':''}>${v}</option>`).join('');document.getElementById('bonusEditBox').innerHTML=`<div class="card" style="border:2px solid var(--gold)"><div class="card-title">✏️ تعديل العرض #${id}</div><div class="field"><label>اسم العرض</label><input id="edit_title" value="${title}"></div><div class="field"><label>النسبة %</label><input id="edit_percent" inputmode="decimal" value="${percent}"></div><div class="field"><label>طريقة الدفع</label><select id="edit_method">${opts}</select></div><div class="field"><label>الحد الأدنى SYP</label><input id="edit_min" inputmode="numeric" value="${min}"></div><div class="field"><label>الحد الأعلى SYP</label><input id="edit_max" inputmode="numeric" value="${max}"></div><div class="btn-row"><button class="btn green" onclick="saveBonusEdit(${id})">💾 حفظ التعديل</button><button class="btn outline" onclick="document.getElementById('bonusEditBox').innerHTML=''">❌ إلغاء</button></div></div>`;document.getElementById('bonusEditBox').scrollIntoView({behavior:'smooth'})}
+async function saveBonusEdit(id){try{await bonusesApi({action:'update_bonus',rule_id:id,title:val('edit_title'),percent:val('edit_percent'),payment_method:document.getElementById('edit_method').value,min_amount_syp:val('edit_min'),max_bonus_syp:val('edit_max')});setNotice('✅ تم حفظ التعديل');loadBonuses();}catch(e){setNotice('❌ '+e.message,'error')}}
+async function disableBonusRule(id){try{await bonusesApi({action:'disable_bonus',rule_id:id});setNotice('✅ تم الإيقاف');loadBonuses();}catch(e){setNotice('❌ '+e.message,'error')}}
+function toggleReferrals(enabled){tg.showConfirm((enabled?'تفعيل':'إيقاف')+' الإحالات؟',async ok=>{if(!ok)return;try{await bonusesApi({action:'toggle_referrals',enabled});setNotice('✅ تم التحديث');loadBonuses();}catch(e){setNotice('❌ '+e.message,'error')}})}
+
+// ===== التوقعات =====
+async function predictionsApi(payload){return apiPost(PREDICTIONS_API,payload);}
+async function loadPredictions(status='all'){currentTab='predictions';setNavActive('more');document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل التوقعات...</div>';try{const d=await predictionsApi({action:'list',status});renderPredictionsList(d,status);}catch(e){document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`}}
+
+function renderPredictionsList(d,status='all'){const cards=d.cards||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">🎫 بطاقات التوقع</div><div class="btn-row-3"><button class="btn outline" onclick="loadPredictions('open')">🟢 المفتوحة</button><button class="btn outline" onclick="loadPredictions('closed')">🔒 المغلقة</button><button class="btn outline" onclick="loadPredictions('settled')">🏆 المسوّاة</button></div></div>
+<div class="card"><div class="card-title">➕ إنشاء بطاقة</div><div class="field"><label>العنوان</label><input id="pred_title" placeholder="توقع مباراة..."></div><div class="field"><label>الفريق الأول</label><input id="pred_team_a"></div><div class="field"><label>الفريق الثاني</label><input id="pred_team_b"></div><div class="field"><label>كود المباراة</label><input id="pred_match_code" placeholder="اختياري"></div><div class="field"><label>الخيارات</label><textarea id="pred_options" style="direction:rtl;text-align:right" placeholder="خيار في كل سطر"></textarea></div><div class="field"><label>عدد البطاقات</label><input id="pred_max_predictions" inputmode="numeric" value="0"><div class="hint">0 = بدون حد</div></div><div class="field"><label>الجائزة SYP</label><input id="pred_reward_syp" inputmode="numeric" value="0"></div><div class="field"><label>موعد الإغلاق</label><input id="pred_closes_at" placeholder="اختياري: 2026-07-01 20:00"></div><button class="btn green" onclick="createPredictionCard()">✅ إنشاء</button></div>
+<div class="card"><div class="card-title">📋 البطاقات (${cards.length})</div>${cards.map(c=>`<div class="pending-item" style="border-right-color:${c.status==='open'?'var(--green)':c.status==='settled'?'var(--gold)':'var(--orange)'}"><b>#${c.id} ${c.title}</b><br>⚽ ${c.team_a} × ${c.team_b} | 👥 ${fmt(c.entries_count)}<br>💰 ${fmt(c.reward_syp)} SYP | ${c.status==='open'?'🟢 مفتوحة':c.status==='closed'?'🔒 مغلقة':'🏆 مسوّاة'}<button class="btn outline" onclick="loadPredictionDetail(${c.id})">👁️</button></div>`).join('')||'<div class="empty">لا توجد بطاقات</div>'}</div>
+<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;}
+
+async function createPredictionCard(){try{await predictionsApi({action:'create',title:val('pred_title'),team_a:val('pred_team_a'),team_b:val('pred_team_b'),match_code:val('pred_match_code'),options:val('pred_options'),max_predictions:val('pred_max_predictions'),reward_syp:val('pred_reward_syp'),closes_at:val('pred_closes_at')});setNotice('✅ تم إنشاء البطاقة');loadPredictions();}catch(e){setNotice('❌ '+e.message,'error')}}
+
+async function loadPredictionDetail(id){document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل البطاقة...</div>';try{const d=await predictionsApi({action:'detail',card_id:id});renderPredictionDetail(d);}catch(e){document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadPredictions()">🔙 رجوع</button>`}}
+
+function renderPredictionDetail(d){const c=d.card||{},entries=d.entries||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">🎫 البطاقة #${c.id}</div><div class="row"><span class="label">العنوان</span><span class="value">${c.title||'—'}</span></div><div class="row"><span class="label">المباراة</span><span class="value">${c.team_a||'—'} × ${c.team_b||'—'}</span></div><div class="row"><span class="label">الحالة</span><span>${c.status==='open'?'🟢 مفتوحة':c.status==='closed'?'🔒 مغلقة':'🏆 مسوّاة'}</span></div><div class="row"><span class="label">الجائزة</span><span class="value gold">${fmt(c.reward_syp)} SYP</span></div></div>
+<div class="card"><div class="card-title">📊 التوزيع</div>${(c.summary||[]).map(s=>`<div class="row"><span class="label">${s.selected_option}</span><span class="value">${fmt(s.count)}</span></div>`).join('')||'<div class="empty">لا مشاركات</div>'}</div>
+<div class="card"><div class="card-title">⚙️ إدارة</div>${c.status==='open'?`<button class="btn outline" onclick="closePredictionCard(${c.id})">🔒 إغلاق</button>`:''}${c.status!=='settled'?`<div class="field"><label>النتيجة الصحيحة</label><select id="pred_win_option">${(c.options||[]).map(op=>`<option value="${String(op).replaceAll('"','"')}">${op}</option>`).join('')}</select></div><button class="btn gold" onclick="settlePredictionCard(${c.id})">🏆 تسوية</button>`:''}<button class="btn outline" onclick="loadPredictions()">🔙 رجوع</button></div>
+<div class="card"><div class="card-title">👥 المشاركون (${entries.length})</div>${entries.map(e=>`<div class="pending-item"><b>${e.telegram_username||e.user_telegram_id}</b><br>🎯 ${e.selected_option}${e.is_winner?` 🏆 ${fmt(e.reward_amount)} SYP`:''}<br><span class="label">${e.created_at}</span></div>`).join('')||'<div class="empty">لا مشاركون</div>'}</div>`;}
+
+async function closePredictionCard(id){try{await predictionsApi({action:'close',card_id:id});setNotice('✅ تم الإغلاق');loadPredictionDetail(id);}catch(e){setNotice('❌ '+e.message,'error')}}
+async function settlePredictionCard(id){const opt=val('pred_win_option');if(!opt){setNotice('اختر النتيجة','error');return}tg.showConfirm('تسوية وتوزيع الجوائز؟',async ok=>{if(!ok)return;try{await predictionsApi({action:'settle',card_id:id,winning_option:opt});setNotice('✅ تمت التسوية');loadPredictionDetail(id);}catch(e){setNotice('❌ '+e.message,'error')}})}
+
+// ===== المسابقات =====
+async function contestsApi(payload){return apiPost(CONTESTS_API,payload);}
+async function loadContests(status='all'){currentTab='contests';setNavActive('more');document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل المسابقات...</div>';try{const d=await contestsApi({action:'list',status});renderContestsList(d,status);}catch(e){document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`}}
+
+function renderContestsList(d,status='all'){const contests=d.contests||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">👑 مسابقات القيصر</div><div class="btn-row-3"><button class="btn outline" onclick="loadContests('open')">🟢 المفتوحة</button><button class="btn outline" onclick="loadContests('closed')">🔒 المغلقة</button><button class="btn outline" onclick="loadContests('all')">📋 الكل</button></div></div>
+<div class="card"><div class="card-title">➕ إنشاء مسابقة</div><div class="field"><label>العنوان</label><input id="contest_title" placeholder="مثال: انشر البوت واربح"></div><div class="field"><label>الوصف</label><textarea id="contest_description" style="direction:rtl;text-align:right"></textarea></div><div class="field"><label>النوع</label><select id="contest_type"><option value="first_approved">أول المقبولين</option><option value="manual_review">مراجعة يدوية</option><option value="random_draw">سحب عشوائي</option></select></div><div class="field"><label>نوع الجائزة</label><select id="contest_reward_type"><option value="gift_code">كود هدية</option><option value="bot_balance">رصيد بوت</option></select></div><div class="field"><label>قيمة الجائزة SYP</label><input id="contest_reward_amount" inputmode="numeric" value="0"></div><div class="field"><label>عدد الفائزين</label><input id="contest_winners_limit" inputmode="numeric" value="1"></div><div class="field"><label>يتطلب إثبات؟</label><select id="contest_requires_proof"><option value="true">نعم</option><option value="false">لا</option></select></div><button class="btn green" onclick="createContest()">✅ إنشاء</button></div>
+<div class="card"><div class="card-title">📋 المسابقات (${contests.length})</div>${contests.map(c=>`<div class="pending-item" style="border-right-color:${c.status==='open'?'var(--green)':'var(--red)'}"><b>#${c.id} ${c.title}</b><br>🏆 ${c.reward_type} | 💰 ${fmt(c.reward_amount)} SYP | 👥 ${fmt(c.winners_limit)}<br>${c.status==='open'?'🟢 مفتوحة':'🔒 مغلقة'}<button class="btn outline" onclick="loadContestDetail(${c.id})">👁️</button></div>`).join('')||'<div class="empty">لا توجد مسابقات</div>'}</div>
+<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;}
+
+async function createContest(){try{await contestsApi({action:'create',title:val('contest_title'),description:val('contest_description'),contest_type:val('contest_type'),reward_type:val('contest_reward_type'),reward_amount:val('contest_reward_amount'),winners_limit:val('contest_winners_limit'),requires_proof:val('contest_requires_proof')});setNotice('✅ تم إنشاء المسابقة');loadContests();}catch(e){setNotice('❌ '+e.message,'error')}}
+
+async function loadContestDetail(id){document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل...</div>';try{const d=await contestsApi({action:'detail',contest_id:id});renderContestDetail(d);}catch(e){document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadContests()">🔙 رجوع</button>`}}
+
+function renderContestDetail(d){const c=d.contest||{},entries=d.entries||[];document.getElementById('content').innerHTML=`
+<div class="card"><div class="card-title">👑 المسابقة #${c.id}</div><div class="row"><span class="label">العنوان</span><span class="value">${c.title||'—'}</span></div><div class="row"><span class="label">الحالة</span><span>${c.status==='open'?'🟢 مفتوحة':'🔒 مغلقة'}</span></div><div class="row"><span class="label">الجائزة</span><span class="value gold">${fmt(c.reward_amount)} SYP</span></div><div class="row"><span class="label">الفائزين</span><span class="value">${fmt(c.winners_limit)}</span></div><div class="hint">${c.description||''}</div>
+${c.contest_type==='random_draw'&&c.status==='open'?`<div class="btn-row"><button class="btn gold" onclick="pickRandomContestWinners(${c.id},${c.winners_limit||1})">🎲 سحب عشوائي</button><button class="btn danger" onclick="closeContest(${c.id})">🔒 إغلاق</button></div>`:c.status==='open'?`<button class="btn danger" onclick="closeContest(${c.id})">🔒 إغلاق</button>`:''}
+<button class="btn outline" onclick="loadContests()">🔙 رجوع</button></div>
+<div class="card"><div class="card-title">👥 المشاركات (${entries.length})</div>${entries.map(e=>`<div class="pending-item" style="border-right-color:${e.status==='approved'?'var(--green)':e.status==='rejected'?'var(--red)':'var(--orange)'}"><b>${e.telegram_username||e.user_telegram_id}</b><br>📝 ${e.proof_text||'—'} | 📎 ${e.proof_type||'text'}<br>📌 ${e.status==='approved'?'✅ معتمدة':e.status==='rejected'?'❌ مرفوضة':'⏳ معلقة'}${e.gift_code?` | 🎫 <code>${e.gift_code}</code>`:''}${e.status==='pending'?`<div class="btn-row"><button class="btn green" onclick="approveContestEntry(${e.id},${c.id})">✅ اعتماد</button><button class="btn danger" onclick="rejectContestEntry(${e.id},${c.id})">❌ رفض</button></div>`:''}</div>`).join('')||'<div class="empty">لا مشاركات</div>'}</div>`;}
+
+async function approveContestEntry(entryId,contestId){try{await contestsApi({action:'approve_entry',entry_id:entryId});setNotice('✅ تم الاعتماد');loadContestDetail(contestId);}catch(e){setNotice('❌ '+e.message,'error')}}
+async function rejectContestEntry(entryId,contestId){try{await contestsApi({action:'reject_entry',entry_id:entryId});setNotice('✅ تم الرفض');loadContestDetail(contestId);}catch(e){setNotice('❌ '+e.message,'error')}}
+async function pickRandomContestWinners(id,count){try{const d=await contestsApi({action:'random_pick',contest_id:id,winners_count:count});const winners=d.winners||[];if(!winners.length){setNotice('لا مشاركات كافية','error');return}setNotice('🎲 '+winners.map(w=>w.telegram_username||w.user_telegram_id).join(' | '));loadContestDetail(id);}catch(e){setNotice('❌ '+e.message,'error')}}
+async function closeContest(id){tg.showConfirm('إغلاق المسابقة؟',async ok=>{if(!ok)return;try{await contestsApi({action:'close',contest_id:id});setNotice('✅ تم الإغلاق');loadContestDetail(id);}catch(e){setNotice('❌ '+e.message,'error')}})}
+
+// ===== ميزات المستخدم (Update 13) =====
+const FEATURES_API = API + '/api/admin/features';
+const FLASH_API = API + '/api/admin/flash';
+
+async function loadFeatures(){
+  currentTab='features';setNavActive('more');
+  const el=document.getElementById('content');
+  el.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل الميزات...</div>';
+  try{
+    const d=await apiGet(FEATURES_API);
+    renderFeatures(d);
+  }catch(e){el.innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;}
+}
+
+function renderFeatures(d){
+  const s=d.settings||{},cs=d.checkin_stats||{},af=d.active_flash,rf=d.recent_flashes||[];
+  const rewards=s.checkin_rewards||[0,500,1000,1500,2000,2500,3000,10000];
+  const lbType=s.leaderboard_type||'all_time';
+  const wheelEn=s.wheel_enabled!==false;
+  const wheelSeg=s.wheel_segments||[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]];
+  const ws=d.wheel_stats||{};
+  const vipEn=s.vip_enabled!==false;
+  const vipTiers=s.vip_tiers||[[0,0,0],[500000,1,10000],[2000000,2,50000],[5000000,3,200000]];
+  const cbEn=s.cashback_enabled!==false;
+  const cbPct=s.cashback_pct||5;
+  const cbMin=s.cashback_min_loss||50000;
+  const cbs=d.cashback_stats||{};
+
+  document.getElementById('content').innerHTML=`
+    <div class="card"><div class="card-title">✨ ميزات المستخدمين</div><div class="sub">تحكّم كامل بالميزات التفاعلية التي يراها المستخدمون في Mini App.</div></div>
+
+    <!-- الحضور اليومي -->
+    <div class="card">
+      <div class="card-title">📅 الحضور اليومي <span class="pill ${s.checkin_enabled!==false?'green':''}">${s.checkin_enabled!==false?'مفعّل':'متوقف'}</span></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">حضروا اليوم</div><div class="stat-value gold">${fmt(cs.today_checkins)}</div></div>
+        <div class="stat-box"><div class="stat-label">إجمالي المسجّلين</div><div class="stat-value blue">${fmt(cs.total_checkin_users)}</div></div>
+        <div class="stat-box"><div class="stat-label">إجمالي المكافآت</div><div class="stat-value green">${fmt(cs.total_rewards_paid)}</div></div>
+        <div class="stat-box"><div class="stat-label">متوسط السلسلة</div><div class="stat-value">${cs.avg_streak}</div></div>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn ${s.checkin_enabled!==false?'danger':'green'}" onclick="toggleFeature('checkin_enabled',${s.checkin_enabled!==false?'false':'true'})">${s.checkin_enabled!==false?'⛔ إيقاف الحضور':'✅ تفعيل الحضور'}</button>
+        <button class="btn outline" onclick="loadFeatures()">🔄 تحديث</button>
+      </div>
+    </div>
+
+    <!-- تعديل قيم المكافآت -->
+    <div class="card">
+      <div class="card-title">💎 قيم مكافآت الحضور (ل.س)</div>
+      <div class="warn-box">عدّل قيم المكافآت لكل يوم من 1 إلى 7. اليوم 7 = الجائزة الكبرى.</div>
+      <div id="rewardsInputs">${rewards.slice(1).map((r,i)=>`<div class="field"><label>يوم ${i+1}${i===6?' 💥':''}</label><input id="reward_${i+1}" inputmode="numeric" value="${r}"></div>`).join('')}</div>
+      <button class="btn green" onclick="saveRewards()">💾 حفظ قيم المكافآت</button>
+    </div>
+
+    <!-- فلاش البونص -->
+    <div class="card">
+      <div class="card-title">⚡ فلاش البونص ${af?'<span class="pill">نشط الآن</span>':''}</div>
+      ${af?`<div class="warn-box" style="border-color:var(--gold);color:var(--gold)">⚡ فلاش نشط: ${af.percent}% — ينتهي ${new Date(af.ends_at).toLocaleString('ar-EG')}<br><button class="btn danger" style="margin-top:8px" onclick="stopFlash(${af.id})">🛑 إيقاف الفلاش الآن</button></div>`:`
+      <div class="field"><label>نسبة الفلاش %</label><input id="flash_percent" inputmode="decimal" placeholder="مثال: 15"></div>
+      <div class="field"><label>المدة (دقائق)</label><input id="flash_duration" inputmode="numeric" value="30"></div>
+      <div class="field"><label>طريقة الدفع</label><select id="flash_method"><option value="all">كل الطرق</option><option value="syriatel">سيريتل</option><option value="mtn">MTN</option><option value="sham_syp">شام SYP</option><option value="sham_usd">شام USD</option><option value="usdt_trc">USDT</option></select></div>
+      <button class="btn gold" onclick="createFlash()">⚡ إطلاق فلاش بونص</button>
+      `}
+    </div>
+
+    ${rf.length?`<div class="card"><div class="card-title">📜 سجل الفلاشات</div>${rf.map(f=>`<div class="pending-item"><b>#${f.id} — ${f.percent}%</b> ${f.is_active?'<span class="pill green">نشط</span>':'<span class="pill">منتهي</span>'}<br><span class="label">ينتهي: ${f.ends_at}</span></div>`).join('')}</div>`:''}
+
+    <!-- عجلة الحظ -->
+    <div class="card">
+      <div class="card-title">🎰 عجلة الحظ <span class="pill ${wheelEn?'green':''}">${wheelEn?'مفعّل':'متوقف'}</span></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">دورات اليوم</div><div class="stat-value gold">${fmt(ws.today_spins||0)}</div></div>
+        <div class="stat-box"><div class="stat-label">جوائز اليوم</div><div class="stat-value green">${fmt(ws.today_rewards||0)}</div></div>
+        <div class="stat-box"><div class="stat-label">إجمالي الدورات</div><div class="stat-value blue">${fmt(ws.total_spins||0)}</div></div>
+        <div class="stat-box"><div class="stat-label">إجمالي الجوائز</div><div class="stat-value">${fmt(ws.total_rewards||0)}</div></div>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn ${wheelEn?'danger':'green'}" onclick="toggleWheel(${wheelEn?'false':'true'})">${wheelEn?'⛔ إيقاف العجلة':'✅ تفعيل العجلة'}</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚙️ قطاعات العجلة (8)</div>
+      <div class="warn-box">كل قطاع = [نسبة الجائزة %] + [احتمال الوقوع]. النسبة 0 = حظ أوفر 💔. مجموع الاحتمالات يفضل أن يكون 100.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        ${wheelSeg.map((seg,i)=>{
+          const pct=seg[0],prob=seg[1];
+          const label=pct===0?'💔 حظ أوفر':pct>=25?'💎 +'+pct+'%':'+'+pct+'%';
+          const color=pct===0?'var(--hint)':pct>=15?'var(--gold)':pct>=5?'var(--green)':'var(--blue)';
+          return `<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px;border-right:3px solid ${color}">
+            <div style="font-size:12px;font-weight:700;color:${color};margin-bottom:6px">قطاع ${i+1}: ${label}</div>
+            <div class="field" style="margin:0"><label style="font-size:10px">الجائزة %</label><input id="wseg_${i}_pct" inputmode="decimal" value="${pct}" style="padding:8px;font-size:13px"></div>
+            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">الاحتمال</label><input id="wseg_${i}_prob" inputmode="decimal" value="${prob}" style="padding:8px;font-size:13px"></div>
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="btn gold" onclick="saveWheel()">💾 حفظ قطاعات العجلة</button>
+    </div>
+
+    <!-- نظام VIP -->
+    <div class="card">
+      <div class="card-title">🏆 نظام الطبقات (VIP) <span class="pill ${vipEn?'green':''}">${vipEn?'مفعّل':'متوقف'}</span></div>
+      <div class="warn-box">كلما زاد إجمالي إيداعات المستخدم (Lifetime)، ترقّى في الطبقات وحصل على مكافآت وبونص أعلى.</div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn ${vipEn?'danger':'green'}" onclick="toggleVIP(${vipEn?'false':'true'})">${vipEn?'⛔ إيقاف VIP':'✅ تفعيل VIP'}</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚙️ حدود الطبقات والمكافآت</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+        ${vipTiers.map((t,i)=>{
+          const names=['🥉 مواطن','🥈 فارس','🥇 نبيل','👑 قيصر'];
+          return `<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px">
+            <div style="font-size:13px;font-weight:900;margin-bottom:8px">${names[i]||'طبقة '+i}</div>
+            <div class="field" style="margin:0"><label style="font-size:10px">حد الإيداع (ل.س)</label><input id="vip_${i}_thresh" inputmode="numeric" value="${t[0]}" style="padding:8px;font-size:13px"></div>
+            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">بونص الإيداع %</label><input id="vip_${i}_pct" inputmode="decimal" value="${t[1]}" style="padding:8px;font-size:13px"></div>
+            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">مكافأة الترقية</label><input id="vip_${i}_reward" inputmode="numeric" value="${t[2]}" style="padding:8px;font-size:13px"></div>
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="btn gold" onclick="saveVIP()">💾 حفظ طبقات VIP</button>
+    </div>
+
+    <!-- الكاش باك -->
+    <div class="card">
+      <div class="card-title">💸 الكاش باك الأسبوعي <span class="pill ${cbEn?'green':''}">${cbEn?'مفعّل':'متوقف'}</span></div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">مدفوعات الأسبوع</div><div class="stat-value green">${fmt(cbs.week_paid||0)}</div></div>
+        <div class="stat-box"><div class="stat-label">مستفيدين</div><div class="stat-value blue">${fmt(cbs.week_count||0)}</div></div>
+        <div class="stat-box"><div class="stat-label">إجمالي مدفوع</div><div class="stat-value gold">${fmt(cbs.total_paid||0)}</div></div>
+        <div class="stat-box"><div class="stat-label">خسائر الأسبوع</div><div class="stat-value red">${fmt(cbs.week_losses||0)}</div></div>
+      </div>
+      <div class="warn-box" style="margin-top:10px">% من خسارة المستخدمين في اللعبة يرجع لهم كرصيد مكافآت أسبوعياً.</div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn ${cbEn?'danger':'green'}" onclick="toggleCashback(${cbEn?'false':'true'})">${cbEn?'⛔ إيقاف':'✅ تفعيل'}</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚙️ إعدادات الكاش باك</div>
+      <div class="field"><label>نسبة الاسترجاع %</label><input id="cb_pct" inputmode="decimal" value="${cbPct}"></div>
+      <div class="field"><label>الحد الأدنى للخسارة (ل.س)</label><input id="cb_min" inputmode="numeric" value="${cbMin}"><div class="hint">المستخدم الذي تخسر خسارته أقل من هذا المبلغ لا يحصل على كاش باك</div></div>
+      <button class="btn green" onclick="saveCashback()">💾 حفظ إعدادات الكاش باك</button>
+    </div>
+
+    <!-- لوحة الصدارة -->
+    <div class="card">
+      <div class="card-title">📊 لوحة الصدارة <span class="pill ${s.leaderboard_enabled!==false?'green':''}">${s.leaderboard_enabled!==false?'مفعّل':'متوقف'}</span></div>
+      <div class="field"><label>الفترة</label><select id="lb_type"><option value="all_time" ${lbType==='all_time'?'selected':''}>كل الوقت</option><option value="weekly" ${lbType==='weekly'?'selected':''}>أسبوعي</option><option value="monthly" ${lbType==='monthly'?'selected':''}>شهري</option></select></div>
+      <div class="btn-row">
+        <button class="btn ${s.leaderboard_enabled!==false?'danger':'green'}" onclick="toggleFeature('leaderboard_enabled',${s.leaderboard_enabled!==false?'false':'true'})">${s.leaderboard_enabled!==false?'⛔ إيقاف الصدارة':'✅ تفعيل الصدارة'}</button>
+        <button class="btn outline" onclick="saveLbType()">💾 حفظ الفترة</button>
+      </div>
+    </div>
+
+    <button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>
+  `;
+}
+
+async function toggleFeature(key,val){
+  const payload={action:'update_features'};payload[key]=val;
+  try{await apiPost(FEATURES_API,payload);setNotice('✅ تم التحديث');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function saveRewards(){
+  const rewards=[0];
+  for(let i=1;i<=7;i++){rewards.push(parseInt(document.getElementById('reward_'+i).value)||0)}
+  try{await apiPost(FEATURES_API,{action:'update_features',checkin_rewards:rewards});setNotice('✅ تم حفظ المكافآت');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function saveLbType(){
+  const t=document.getElementById('lb_type').value;
+  try{await apiPost(FEATURES_API,{action:'update_features',leaderboard_type:t});setNotice('✅ تم حفظ الفترة');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function toggleWheel(en){
+  try{await apiPost(FEATURES_API,{action:'update_wheel',wheel_enabled:en});setNotice('✅ تم التحديث');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function toggleVIP(en){
+  try{await apiPost(FEATURES_API,{action:'update_vip',vip_enabled:en});setNotice('✅ تم التحديث');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function saveVIP(){
+  const tiers=[];
+  for(let i=0;i<4;i++){
+    const thresh=parseInt(document.getElementById('vip_'+i+'_thresh').value)||0;
+    const pct=parseFloat(document.getElementById('vip_'+i+'_pct').value)||0;
+    const reward=parseInt(document.getElementById('vip_'+i+'_reward').value)||0;
+    tiers.push([thresh,pct,reward]);
+  }
+  try{await apiPost(FEATURES_API,{action:'update_vip',tiers});setNotice('✅ تم حفظ طبقات VIP');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function toggleCashback(en){try{await apiPost(FEATURES_API,{action:"update_cashback",cashback_enabled:en});setNotice("✅ تم التحديث");loadFeatures();}catch(e){setNotice("❌ "+e.message,"error")}}
+async function saveCashback(){const pct=parseFloat(document.getElementById("cb_pct").value)||0;const minLoss=parseInt(document.getElementById("cb_min").value)||0;try{await apiPost(FEATURES_API,{action:"update_cashback",cashback_pct:pct,cashback_min_loss:minLoss});setNotice("✅ تم حفظ إعدادات الكاش باك");loadFeatures();}catch(e){setNotice("❌ "+e.message,"error")}}
+async function saveWheel(){
+  const segments=[];
+  for(let i=0;i<8;i++){
+    const pct=parseFloat(document.getElementById('wseg_'+i+'_pct').value)||0;
+    const prob=parseFloat(document.getElementById('wseg_'+i+'_prob').value)||0;
+    segments.push([pct,prob]);
+  }
+  const total=segments.reduce((a,s)=>a+s[1],0);
+  if(total<=0){setNotice('⚠️ مجموع الاحتمالات يجب أن يكون أكبر من صفر','error');return}
+  try{await apiPost(FEATURES_API,{action:'update_wheel',segments});setNotice('✅ تم حفظ القطاعات');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function createFlash(){
+  const percent=parseFloat(val('flash_percent'));const duration=parseInt(val('flash_duration'));const method=document.getElementById('flash_method').value;
+  if(!percent||percent<=0){setNotice('أدخل نسبة صحيحة','error');return}
+  try{await apiPost(FLASH_API,{action:'create',percent,duration_minutes:duration,payment_method:method});setNotice('⚡ تم إطلاق الفلاش!');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+}
+async function stopFlash(id){
+  tg.showConfirm('إيقاف الفلاش الآن؟',async ok=>{if(!ok)return;try{await apiPost(FLASH_API,{action:'stop'});setNotice('🛑 تم الإيقاف');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}})
+}
+
+// ===== بدء التشغيل =====
+loadDashboard();
+</script>
+</body>
+</html>
