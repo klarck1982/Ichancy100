@@ -455,6 +455,8 @@ class DatabaseManager:
         alter_users_bonus_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_balance BIGINT DEFAULT 0;"
         # 🆕 مبلغ البونص المحوّل إلى اللعبة والذي يحتاج تدوير قبل السحب
         alter_users_game_bonus_amount = "ALTER TABLE users ADD COLUMN IF NOT EXISTS game_bonus_amount BIGINT DEFAULT 0;"
+        # قاعدة الرصيد النقدي التي يرتبط بها رصيد البونص (لصرفه نسبياً عند شحن اللعبة)
+        alter_users_bonus_base_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_base_balance BIGINT DEFAULT 0;"
         
         # 🆕 (Update 14 Fix) ALTER TABLE لإضافة أعمدة شروط المكافآت لجدول موجود
         alter_feat_bonus_min = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_min_transfer BIGINT DEFAULT 20000;"
@@ -549,6 +551,7 @@ class DatabaseManager:
             alter_settings_syp_version,
             alter_users_bonus_balance,
             alter_users_game_bonus_amount,
+            alter_users_bonus_base_balance,
             alter_feat_bonus_min,
             alter_feat_bonus_threshold,
             alter_feat_bonus_days,

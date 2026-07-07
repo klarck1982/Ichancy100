@@ -587,25 +587,31 @@ def create_withdraw_transaction_atomic(telegram_id, amount, payment_method=None,
             DatabaseManager.put_connection(conn)
 
 
-def calculate_game_bonus_for_deposit(amount, available_bonus=None):
+def calculate_game_bonus_for_deposit(amount, available_bonus=None, bonus_base_balance=None):
     """حساب بونص اللعب المرفق عند شحن حساب iChancy.
 
-    هذا النظام معزول عن Flash Bonus: يستخدم فقط رصيد bonus_balance المحفوظ مسبقاً،
-    ويرفق نسبة من مبلغ شحن اللعبة حسب إعداد game_bonus_apply_percent.
+    إذا كان البونص مرتبطاً بإيداع: شحن كامل مبلغ الإيداع يصرف كامل البونص،
+    وشحن نصفه يصرف نصف البونص. إذا لم توجد قاعدة ربط نستخدم نسبة الإرفاق من الإعدادات كاحتياط.
     """
     amount_int = int(float(amount or 0))
     available_bonus_int = int(float(available_bonus or 0)) if available_bonus is not None else 0
+    base_int = int(float(bonus_base_balance or 0)) if bonus_base_balance is not None else 0
     if amount_int <= 0 or available_bonus_int <= 0:
         return 0
     settings = get_bot_settings() or {}
     enabled = True if settings.get('game_bonus_enabled') is None else bool(settings.get('game_bonus_enabled'))
     if not enabled:
         return 0
-    pct = float(10 if settings.get('game_bonus_apply_percent') is None else settings.get('game_bonus_apply_percent'))
-    if pct <= 0:
-        return 0
-    bonus = int(amount_int * (pct / 100.0))
+    if base_int > 0:
+        bonus = int(amount_int * available_bonus_int / base_int)
+    else:
+        pct = float(10 if settings.get('game_bonus_apply_percent') is None else settings.get('game_bonus_apply_percent'))
+        if pct <= 0:
+            return 0
+        bonus = int(amount_int * (pct / 100.0))
     return max(0, min(available_bonus_int, bonus))
+
+
 
 
 def reserve_game_deposit_atomic(telegram_id, amount, player_id):
@@ -622,7 +628,7 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT bot_balance, bonus_balance FROM users WHERE telegram_id = %s FOR UPDATE",
+            "SELECT bot_balance, bonus_balance, bonus_base_balance FROM users WHERE telegram_id = %s FOR UPDATE",
             (tid,)
         )
         user_row = cursor.fetchone()
@@ -632,18 +638,21 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
 
         old_balance = int(user_row[0] or 0)
         old_bonus_balance = int(user_row[1] or 0)
-        bonus_amount = calculate_game_bonus_for_deposit(cash_amount, old_bonus_balance)
+        old_bonus_base_balance = int(user_row[2] or 0)
+        bonus_amount = calculate_game_bonus_for_deposit(cash_amount, old_bonus_balance, old_bonus_base_balance)
+        base_consumed = min(cash_amount, old_bonus_base_balance) if bonus_amount > 0 else 0
         total_to_game = cash_amount + bonus_amount
 
         cursor.execute(
             """
             UPDATE users
             SET bot_balance = COALESCE(bot_balance, 0) - %s,
-                bonus_balance = COALESCE(bonus_balance, 0) - %s
+                bonus_balance = COALESCE(bonus_balance, 0) - %s,
+                bonus_base_balance = GREATEST(0, COALESCE(bonus_base_balance, 0) - %s)
             WHERE telegram_id = %s AND COALESCE(bot_balance, 0) >= %s AND COALESCE(bonus_balance, 0) >= %s
-            RETURNING bot_balance, bonus_balance
+            RETURNING bot_balance, bonus_balance, bonus_base_balance
             """,
-            (cash_amount, bonus_amount, tid, cash_amount, bonus_amount)
+            (cash_amount, bonus_amount, base_consumed, tid, cash_amount, bonus_amount)
         )
         updated = cursor.fetchone()
         if not updated:
@@ -662,9 +671,9 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             """
             INSERT INTO transactions (
                 user_telegram_id, type, payment_method, amount, transfer_number, status,
-                original_amount, original_currency, converted_amount_syp
+                original_amount, original_currency, converted_amount_syp, external_ref
             )
-            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s)
+            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s, %s)
             RETURNING id
             """,
             (
@@ -673,6 +682,7 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
                 f'Game deposit for player {player_id} | cash={cash_amount} | bonus={bonus_amount} | total={total_to_game}',
                 cash_amount,
                 bonus_amount,
+                str(base_consumed),
             )
         )
         tx_id = cursor.fetchone()[0]
@@ -684,6 +694,9 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             'new_balance': new_balance,
             'old_bonus_balance': old_bonus_balance,
             'new_bonus_balance': new_bonus_balance,
+            'old_bonus_base_balance': old_bonus_base_balance,
+            'new_bonus_base_balance': int(updated[2] or 0) if len(updated) > 2 else 0,
+            'bonus_base_consumed': base_consumed,
             'cash_amount': cash_amount,
             'bonus_amount': bonus_amount,
             'total_to_game': total_to_game,
@@ -765,7 +778,7 @@ def revert_game_transaction(tx_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp
+            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp, external_ref
                FROM transactions WHERE id = %s FOR UPDATE""",
             (int(tx_id),)
         )
@@ -774,14 +787,18 @@ def revert_game_transaction(tx_id):
             conn.rollback()
             return False
 
-        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp = tx_row
+        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp, external_ref = tx_row
         if status == 'pending':
             if tx_type == 'deposit_to_game':
                 cash_refund = int(float(original_amount or amount or 0))
                 bonus_refund = int(float(converted_amount_syp or 0))
+                try:
+                    base_refund = int(float(external_ref or 0))
+                except Exception:
+                    base_refund = 0
                 cursor.execute(
-                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
-                    (cash_refund, bonus_refund, str(user_telegram_id))
+                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s, bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s WHERE telegram_id = %s",
+                    (cash_refund, bonus_refund, base_refund, str(user_telegram_id))
                 )
             elif tx_type == 'bonus_to_game':
                 bonus_refund = int(float(amount or 0))
@@ -952,13 +969,16 @@ def approve_deposit_atomic(telegram_id, deposit_amount, bonus_amount, tx_id, rev
             return {'ok': False, 'reason': 'user_not_found'}
 
         # 3) إضافة ذرّية: الإيداع النقدي → bot_balance ، والبونص → bonus_balance (مقيّد)
+        # ونضيف deposit_added إلى bonus_base_balance فقط إذا وُجد بونص، ليُصرف البونص نسبياً عند شحن اللعبة.
+        bonus_base_added = deposit_added if bonus_added > 0 else 0
         cursor.execute(
             """UPDATE users
                SET bot_balance = COALESCE(bot_balance, 0) + %s,
-                   bonus_balance = COALESCE(bonus_balance, 0) + %s
+                   bonus_balance = COALESCE(bonus_balance, 0) + %s,
+                   bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s
                WHERE telegram_id = %s
                RETURNING bot_balance, bonus_balance""",
-            (deposit_added, bonus_added, tid)
+            (deposit_added, bonus_added, bonus_base_added, tid)
         )
         new_row = cursor.fetchone()
         new_balance = int(new_row[0]) if new_row else 0

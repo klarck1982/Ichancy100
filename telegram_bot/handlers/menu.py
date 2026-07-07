@@ -2245,7 +2245,8 @@ async def process_game_deposit_amount(message: Message, state: FSMContext):
     # 🆕 نسبة 1:1 — المبلغ بالـ SYP يساوي المبلغ بالـ NSP، مع بونص لعب مرفق حسب إعدادات الأدمن
     amount_nsp = amount_syp
     bonus_available = int(user.get('bonus_balance') or 0)
-    bonus_to_apply = repo.calculate_game_bonus_for_deposit(amount_syp, bonus_available)
+    bonus_base_balance = int(user.get('bonus_base_balance') or 0)
+    bonus_to_apply = repo.calculate_game_bonus_for_deposit(amount_syp, bonus_available, bonus_base_balance)
     total_nsp = amount_nsp + bonus_to_apply
     data = await state.get_data()
     await state.update_data(
@@ -2263,6 +2264,8 @@ async def process_game_deposit_amount(message: Message, state: FSMContext):
         settings = repo.get_bot_settings()
         if not settings.get('game_bonus_enabled', True) or float(settings.get('game_bonus_apply_percent') or 0) <= 0:
             bonus_line = "🎁 لديك بونص متاح، لكن إرفاق بونص اللعب متوقف حالياً من الإدارة.\n"
+        elif bonus_base_balance <= 0:
+            bonus_line = "🎁 لديك بونص متاح، لكنه غير مرتبط بإيداع نقدي حالياً؛ سيتم استخدام نسبة الإرفاق الاحتياطية عند توفرها.\n"
         else:
             bonus_line = "🎁 لديك بونص متاح، لكن لم تنطبق شروط إرفاقه على هذا الشحن.\n"
     else:
