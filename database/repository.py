@@ -1635,6 +1635,33 @@ def calculate_best_deposit_bonus(amount_syp, payment_method):
                 'total_amount': int(amount) + bonus_int,
             }
 
+    # ⚡ Flash Bonus: يعامل كعرض بونص عادي مؤقت، وينافس العروض العادية.
+    # لا يتراكم مع البونص العادي؛ المستخدم يأخذ أعلى بونص منطبق فقط.
+    try:
+        flash = get_active_flash_bonus()
+        if flash:
+            flash_method = normalize(flash.get('payment_method'))
+            if flash_method == 'all' or flash_method == method:
+                flash_percent = float(flash.get('percent') or 0)
+                if flash_percent > 0:
+                    flash_bonus_int = int(amount * (flash_percent / 100.0))
+                    if flash_bonus_int > best['bonus_amount']:
+                        best = {
+                            'bonus_amount': flash_bonus_int,
+                            'rule': {
+                                'id': flash.get('id'),
+                                'title': f"Flash Bonus {flash_percent:g}%",
+                                'percent': flash_percent,
+                                'payment_method': flash.get('payment_method') or 'all',
+                                'min_amount_syp': 0,
+                                'max_bonus_syp': 0,
+                                'is_flash': True,
+                            },
+                            'total_amount': int(amount) + flash_bonus_int,
+                        }
+    except Exception as e:
+        logger.error(f"calculate_best_deposit_bonus flash error: {e}")
+
     return best
 
 

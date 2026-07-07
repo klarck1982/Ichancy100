@@ -2406,6 +2406,7 @@ async def admin_flash_handler(request):
                     'active': True,
                     'id': fb.get('id'),
                     'percent': float(fb.get('percent') or 0),
+                    'payment_method': fb.get('payment_method') or 'all',
                     'ends_at': fb.get('ends_at').isoformat() if fb.get('ends_at') else None,
                 })
             return web.json_response({'active': False})
@@ -2500,6 +2501,7 @@ async def admin_features_get_handler(request):
             flash_info = {
                 'id': flash.get('id'),
                 'percent': float(flash.get('percent') or 0),
+                'payment_method': flash.get('payment_method') or 'all',
                 'ends_at': flash.get('ends_at').isoformat() if flash.get('ends_at') else None,
             }
         recent_flashes = repo.get_recent_flash_bonuses(limit=5)
@@ -2508,6 +2510,7 @@ async def admin_features_get_handler(request):
             recent.append({
                 'id': f.get('id'),
                 'percent': float(f.get('percent') or 0),
+                'payment_method': f.get('payment_method') or 'all',
                 'ends_at': f.get('ends_at').strftime('%Y-%m-%d %H:%M') if f.get('ends_at') else '',
                 'is_active': f.get('is_active'),
             })
