@@ -2716,16 +2716,29 @@ def approve_contest_entry(entry_id, reviewed_by=None):
 
         gift_code = None
         reward_amount = int(contest.get('reward_amount') or 0)
-        if str(contest.get('reward_type')) == 'gift_code':
+        reward_type = str(contest.get('reward_type') or 'bonus_code')
+        if reward_type in ('bonus_code', 'gift_code'):
             import secrets
-            gift_code = f"CTR-{secrets.token_hex(4).upper()}"
+            gift_code = f"CAESAR-BONUS-{secrets.token_hex(4).upper()}"
             cursor.execute(
                 "INSERT INTO gifts (sender_telegram_id, receiver_telegram_id, code, amount, is_redeemed) VALUES (%s, %s, %s, %s, FALSE)",
-                (f"CONTEST:{contest.get('id')}", str(entry.get('user_telegram_id')), gift_code, reward_amount)
+                (f"CONTEST:{contest.get('id')}:BONUS", str(entry.get('user_telegram_id')), gift_code, reward_amount)
             )
-        elif str(contest.get('reward_type')) == 'bot_balance' and reward_amount > 0:
+        elif reward_type == 'cash_code':
+            import secrets
+            gift_code = f"CAESAR-CASH-{secrets.token_hex(4).upper()}"
+            cursor.execute(
+                "INSERT INTO gifts (sender_telegram_id, receiver_telegram_id, code, amount, is_redeemed) VALUES (%s, %s, %s, %s, FALSE)",
+                (f"CONTEST:{contest.get('id')}:CASH", str(entry.get('user_telegram_id')), gift_code, reward_amount)
+            )
+        elif reward_type == 'bot_balance' and reward_amount > 0:
             cursor.execute(
                 "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s WHERE telegram_id = %s",
+                (reward_amount, str(entry.get('user_telegram_id')))
+            )
+        elif reward_type == 'bonus_balance' and reward_amount > 0:
+            cursor.execute(
+                "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
                 (reward_amount, str(entry.get('user_telegram_id')))
             )
 

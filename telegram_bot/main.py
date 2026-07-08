@@ -1909,14 +1909,14 @@ async def admin_contests_handler(request):
             title = (payload.get('title') or '').strip()
             description = (payload.get('description') or '').strip()
             contest_type = (payload.get('contest_type') or 'first_approved').strip()
-            reward_type = (payload.get('reward_type') or 'gift_code').strip()
+            reward_type = (payload.get('reward_type') or 'bonus_code').strip()
             reward_amount = int(str(payload.get('reward_amount') or '0').replace(',', ''))
             winners_limit = int(str(payload.get('winners_limit') or '1').replace(',', ''))
             requires_proof_raw = payload.get('requires_proof', True)
             requires_proof = str(requires_proof_raw).lower() in ('1', 'true', 'yes', 'on') if not isinstance(requires_proof_raw, bool) else requires_proof_raw
             if contest_type not in {'first_approved', 'manual_review', 'random_draw'}:
                 return web.json_response({'error': 'نوع المسابقة غير معروف'}, status=400)
-            if reward_type not in {'gift_code', 'bot_balance'}:
+            if reward_type not in {'bonus_code', 'cash_code', 'gift_code', 'bot_balance', 'bonus_balance'}:
                 return web.json_response({'error': 'نوع الجائزة غير معروف'}, status=400)
             if len(title) < 3 or winners_limit < 1 or reward_amount < 0:
                 return web.json_response({'error': 'بيانات المسابقة غير صالحة'}, status=400)
