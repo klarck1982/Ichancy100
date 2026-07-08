@@ -1327,7 +1327,7 @@ def redeem_gift(code, receiver_id):
 
         cursor.execute(
             """
-            SELECT id, receiver_telegram_id, amount, is_redeemed
+            SELECT id, sender_telegram_id, receiver_telegram_id, amount, is_redeemed
             FROM gifts
             WHERE code = %s
             FOR UPDATE
@@ -1339,8 +1339,10 @@ def redeem_gift(code, receiver_id):
             conn.rollback()
             return False, "كود الهدية هذا غير موجود!"
 
-        gift_id, dedicated_receiver, amount, is_redeemed = gift
+        gift_id, sender_telegram_id, dedicated_receiver, amount, is_redeemed = gift
         amount_int = int(amount)
+        code_upper = normalized_code.upper()
+        is_bonus_gift = code_upper.startswith('CAESAR-BONUS-')
 
         if is_redeemed:
             conn.rollback()
@@ -1375,13 +1377,21 @@ def redeem_gift(code, receiver_id):
             conn.rollback()
             return False, "لقد تم استخدام هذا الكود مسبقاً!"
 
-        cursor.execute(
-            "UPDATE users SET bot_balance = bot_balance + %s WHERE telegram_id = %s",
-            (amount_int, receiver_tid)
-        )
+        if is_bonus_gift:
+            cursor.execute(
+                "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
+                (amount_int, receiver_tid)
+            )
+            success_msg = f"تهانينا! تم تفعيل كود بونص بنجاح وإضافة {amount_int:,} ل.س إلى رصيد مكافآت اللعب."
+        else:
+            cursor.execute(
+                "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s WHERE telegram_id = %s",
+                (amount_int, receiver_tid)
+            )
+            success_msg = f"تهانينا! تم تفعيل كود كاش بنجاح وإضافة {amount_int:,} ل.س إلى رصيدك القابل للسحب."
 
         conn.commit()
-        return True, f"تهانينا! تم تفعيل الكود بنجاح وإضافة {amount_int:,} ل.س إلى رصيدك."
+        return True, success_msg
     except Exception as e:
         if conn:
             conn.rollback()
