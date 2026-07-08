@@ -300,10 +300,10 @@ def get_top_referrers(limit=10):
         u.player_id,
         COUNT(*) AS total_referrals,
         COALESCE(SUM(CASE WHEN r.is_active = TRUE THEN 1 ELSE 0 END), 0) AS active_referrals,
-        COALESCE(SUM(rc.commission_amount), 0) AS total_earnings
+        COALESCE(SUM(awc.commission_amount), 0) AS total_earnings
     FROM referrals r
     LEFT JOIN users u ON u.telegram_id = r.referrer_telegram_id
-    LEFT JOIN referral_commissions rc ON rc.referrer_telegram_id = r.referrer_telegram_id
+    LEFT JOIN affiliate_weekly_commissions awc ON awc.referrer_telegram_id = r.referrer_telegram_id
     GROUP BY r.referrer_telegram_id, u.telegram_username, u.ichancy_username, u.player_id
     ORDER BY total_earnings DESC, active_referrals DESC, total_referrals DESC
     LIMIT %s
@@ -337,7 +337,7 @@ def get_total_referral_commissions_sum():
 
 def get_total_referral_earnings(referrer_id):
     result = DatabaseManager.execute_query(
-        "SELECT COALESCE(SUM(commission_amount), 0) FROM referral_commissions WHERE referrer_telegram_id = %s",
+        "SELECT COALESCE(SUM(commission_amount), 0) FROM affiliate_weekly_commissions WHERE referrer_telegram_id = %s",
         (str(referrer_id),), fetch='one'
     )
     return int(result[0]) if result else 0
@@ -1482,6 +1482,220 @@ def get_user_details(telegram_id):
         'ref_count': ref_count_result[0] if ref_count_result else 0,
     }
 
+
+# ==================== 🤝 عمولات الإحالات القابلة للسحب (Revenue Share) ====================
+
+def get_affiliate_percent_by_active_count(active_count):
+    """شرائح أرباح الإحالات من خسارة المحالين الأسبوعية — قابلة للسحب."""
+    active_count = int(active_count or 0)
+    if active_count >= 10:
+        return 2.0
+    if active_count >= 5:
+        return 1.5
+    if active_count >= 3:
+        return 1.0
+    return 0.0
+
+
+def has_affiliate_commission_for_week(referrer_id, referred_id, week_start):
+    result = DatabaseManager.execute_query(
+        """SELECT id FROM affiliate_weekly_commissions
+           WHERE referrer_telegram_id = %s AND referred_telegram_id = %s AND week_start = %s""",
+        (str(referrer_id), str(referred_id), week_start), fetch='one'
+    )
+    return result is not None
+
+
+def get_affiliate_commissions_summary(limit=20):
+    rows = DatabaseManager.execute_query_dict(
+        """SELECT awc.*, ru.telegram_username AS referrer_username, uu.telegram_username AS referred_username
+           FROM affiliate_weekly_commissions awc
+           LEFT JOIN users ru ON ru.telegram_id = awc.referrer_telegram_id
+           LEFT JOIN users uu ON uu.telegram_id = awc.referred_telegram_id
+           ORDER BY awc.created_at DESC
+           LIMIT %s""",
+        (int(limit),), fetch='all'
+    ) or []
+    total = DatabaseManager.execute_query(
+        "SELECT COALESCE(SUM(commission_amount),0) FROM affiliate_weekly_commissions",
+        fetch='one'
+    )
+    week_start = get_syria_now().date() - timedelta(days=get_syria_now().weekday())
+    pending_refs = DatabaseManager.execute_query(
+        """SELECT COUNT(*) FROM referrals r
+           WHERE r.is_active = TRUE
+           AND NOT EXISTS (
+             SELECT 1 FROM affiliate_weekly_commissions awc
+             WHERE awc.referrer_telegram_id = r.referrer_telegram_id
+             AND awc.referred_telegram_id = r.referred_telegram_id
+             AND awc.week_start = %s
+           )""",
+        (week_start,), fetch='one'
+    )
+    return {
+        'total_paid': int(total[0]) if total else 0,
+        'pending_active_referrals': int(pending_refs[0]) if pending_refs else 0,
+        'recent': rows,
+    }
+
+
+def credit_affiliate_weekly_commission(referrer_id, referred_id, activity, percent):
+    """إضافة عمولة إحالة أسبوعية قابلة للسحب إلى affiliate_balance."""
+    referrer_id = str(referrer_id)
+    referred_id = str(referred_id)
+    net_loss = int(activity.get('net_loss') or 0)
+    pct = float(percent or 0)
+    if net_loss <= 0 or pct <= 0:
+        return {'ok': False, 'reason': 'no_loss_or_percent', 'net_loss': net_loss, 'percent': pct}
+    commission = int(net_loss * pct / 100.0)
+    if commission <= 0:
+        return {'ok': False, 'reason': 'zero_commission', 'net_loss': net_loss, 'percent': pct}
+    now = get_syria_now()
+    week_start = now.date() - timedelta(days=now.weekday())
+    week_end = week_start + timedelta(days=6)
+    conn = None
+    cursor = None
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT affiliate_balance FROM users WHERE telegram_id = %s FOR UPDATE", (referrer_id,))
+        if not cursor.fetchone():
+            conn.rollback()
+            return {'ok': False, 'reason': 'referrer_not_found'}
+        cursor.execute(
+            """INSERT INTO affiliate_weekly_commissions (
+                   referrer_telegram_id, referred_telegram_id, week_start, week_end,
+                   total_deposited, total_withdrawn, ending_game_balance, net_loss,
+                   commission_percent, commission_amount, status
+               ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'paid')
+               ON CONFLICT (referrer_telegram_id, referred_telegram_id, week_start) DO NOTHING
+               RETURNING id""",
+            (
+                referrer_id, referred_id, week_start, week_end,
+                int(activity.get('deposited') or 0), int(activity.get('withdrawn') or 0),
+                int(activity.get('game_balance') or 0), net_loss, pct, commission
+            )
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return {'ok': False, 'reason': 'already_paid'}
+        cursor.execute(
+            "UPDATE users SET affiliate_balance = COALESCE(affiliate_balance,0) + %s WHERE telegram_id = %s RETURNING affiliate_balance",
+            (commission, referrer_id)
+        )
+        new_balance = int(cursor.fetchone()[0] or 0)
+        conn.commit()
+        return {'ok': True, 'commission': commission, 'net_loss': net_loss, 'percent': pct, 'new_affiliate_balance': new_balance}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"credit_affiliate_weekly_commission error: {e}")
+        return {'ok': False, 'reason': 'error', 'message': str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
+async def process_weekly_affiliate_commissions(bot=None):
+    """صرف عمولات الإحالات الأسبوعية على أساس خسارة المحالين في اللعبة."""
+    rows = DatabaseManager.execute_query_dict(
+        """SELECT r.referrer_telegram_id, r.referred_telegram_id, u.player_id
+           FROM referrals r
+           JOIN users u ON u.telegram_id = r.referred_telegram_id
+           WHERE r.is_active = TRUE""",
+        fetch='all'
+    ) or []
+    from ichancy_api.client import ichancy_api_client
+    checked = 0
+    paid_count = 0
+    total_loss = 0
+    total_paid = 0
+    results = []
+    for row in rows:
+        referrer_id = str(row.get('referrer_telegram_id'))
+        referred_id = str(row.get('referred_telegram_id'))
+        active_count = get_active_referrals_count(referrer_id)
+        pct = get_affiliate_percent_by_active_count(active_count)
+        if pct <= 0:
+            continue
+        live_balance = None
+        try:
+            pid = row.get('player_id')
+            if pid:
+                live_balance = int(await ichancy_api_client.get_player_balance(pid) or 0)
+        except Exception as e:
+            logger.warning(f"affiliate: failed live balance for {referred_id}: {e}")
+            live_balance = None
+        activity = get_user_weekly_game_activity(referred_id, current_game_balance=live_balance)
+        checked += 1
+        if int(activity.get('net_loss') or 0) <= 0:
+            continue
+        res = credit_affiliate_weekly_commission(referrer_id, referred_id, activity, pct)
+        if res.get('ok'):
+            paid_count += 1
+            total_loss += int(res.get('net_loss') or 0)
+            total_paid += int(res.get('commission') or 0)
+            results.append({'referrer_id': referrer_id, 'referred_id': referred_id, **res})
+            if bot:
+                try:
+                    await bot.send_message(
+                        chat_id=referrer_id,
+                        text=(
+                            "🤝 <b>أرباح إحالة أسبوعية!</b>\n\n"
+                            f"📊 خسارة أحد المحالين لديك: <code>{int(res.get('net_loss')):,} ل.س</code>\n"
+                            f"📈 نسبتك: <code>{float(res.get('percent')):g}%</code>\n"
+                            f"💵 أرباحك القابلة للسحب: <code>{int(res.get('commission')):,} ل.س</code>\n\n"
+                            "تمت إضافتها إلى رصيد أرباح الإحالات."
+                        ),
+                        parse_mode="HTML"
+                    )
+                except Exception:
+                    pass
+    return {'ok': True, 'checked': checked, 'paid_count': paid_count, 'total_loss': total_loss, 'total_paid': total_paid, 'items': results[:50]}
+
+
+def transfer_affiliate_balance_to_bot(telegram_id):
+    """تحويل رصيد أرباح الإحالات القابل للسحب إلى رصيد البوت النقدي."""
+    conn = None
+    cursor = None
+    tid = str(telegram_id)
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT affiliate_balance FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return {'ok': False, 'reason': 'user_not_found'}
+        amount = int(row[0] or 0)
+        if amount <= 0:
+            conn.rollback()
+            return {'ok': False, 'reason': 'empty'}
+        cursor.execute(
+            "UPDATE users SET affiliate_balance = 0, bot_balance = COALESCE(bot_balance,0) + %s WHERE telegram_id = %s RETURNING bot_balance",
+            (amount, tid)
+        )
+        new_bot_balance = int(cursor.fetchone()[0] or 0)
+        cursor.execute(
+            """INSERT INTO transactions (user_telegram_id, type, payment_method, amount, transfer_number, status)
+               VALUES (%s, 'affiliate_to_bot', 'affiliate', %s, 'Affiliate earnings transferred to bot balance', 'completed')""",
+            (tid, amount)
+        )
+        conn.commit()
+        return {'ok': True, 'amount': amount, 'new_bot_balance': new_bot_balance}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"transfer_affiliate_balance_to_bot error: {e}")
+        return {'ok': False, 'reason': 'error', 'message': str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
 
 
 # ==================== 🎁 البونصات والعروض ====================
@@ -3244,10 +3458,15 @@ def check_and_process_vip_upgrade(telegram_id, new_deposit_amount):
         # حدثت ترقية!
         reward = new_info['current_reward']
         if reward > 0:
-            # إضافة مكافأة الترقية لرصيد المكافآت
+            # إضافة مكافأة الترقية لرصيد المكافآت وربطها بالإيداع الذي سبب الترقية
+            # حتى تُصرف نسبياً عند شحن اللعبة مثل البونص العادي والفلاش والعجلة.
             DatabaseManager.execute_query(
-                "UPDATE users SET bonus_balance = bonus_balance + %s, vip_tier = %s WHERE telegram_id = %s",
-                (reward, new_info['current_index'], tid)
+                """UPDATE users
+                   SET bonus_balance = COALESCE(bonus_balance, 0) + %s,
+                       bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s,
+                       vip_tier = %s
+                   WHERE telegram_id = %s""",
+                (reward, int(float(new_deposit_amount or 0)), new_info['current_index'], tid)
             )
         else:
             DatabaseManager.execute_query(

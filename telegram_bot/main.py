@@ -1597,6 +1597,7 @@ async def admin_bonuses_handler(request):
             referral_summary = repo.get_referral_summary()
             top_referrers = repo.get_top_referrers(limit=int(payload.get('limit') or 10))
             recent_commissions = repo.get_recent_referral_commissions(limit=20)
+            affiliate_summary = repo.get_affiliate_commissions_summary(limit=10)
             return web.json_response({
                 'settings': {
                     'referrals_enabled': bool(bot_settings.get('referrals_enabled', True)),
@@ -1610,6 +1611,22 @@ async def admin_bonuses_handler(request):
                     'active_referrals': int(referral_summary.get('active_referrals') or 0),
                     'top_percent_now': repo.get_referral_percent_by_active_count(int(referral_summary.get('active_referrals') or 0)),
                     'total_commissions_paid': repo.get_total_referral_commissions_sum(),
+                    'affiliate_total_paid': int(affiliate_summary.get('total_paid') or 0),
+                    'affiliate_pending_active_referrals': int(affiliate_summary.get('pending_active_referrals') or 0),
+                },
+                'affiliate_summary': {
+                    'total_paid': int(affiliate_summary.get('total_paid') or 0),
+                    'pending_active_referrals': int(affiliate_summary.get('pending_active_referrals') or 0),
+                    'recent': [{
+                        'referrer_telegram_id': str(x.get('referrer_telegram_id')),
+                        'referrer_username': x.get('referrer_username'),
+                        'referred_telegram_id': str(x.get('referred_telegram_id')),
+                        'referred_username': x.get('referred_username'),
+                        'week_start': str(x.get('week_start')),
+                        'net_loss': int(x.get('net_loss') or 0),
+                        'commission_percent': float(x.get('commission_percent') or 0),
+                        'commission_amount': int(x.get('commission_amount') or 0),
+                    } for x in (affiliate_summary.get('recent') or [])],
                 },
                 'bonus_rules': [_bonus_rule_to_json(r) for r in rules],
                 'top_referrers': [{
@@ -1620,7 +1637,7 @@ async def admin_bonuses_handler(request):
                     'total_referrals': int(r.get('total_referrals') or 0),
                     'active_referrals': int(r.get('active_referrals') or 0),
                     'total_earnings': int(r.get('total_earnings') or 0),
-                    'current_percent': repo.get_referral_percent_by_active_count(int(r.get('active_referrals') or 0)),
+                    'current_percent': repo.get_affiliate_percent_by_active_count(int(r.get('active_referrals') or 0)),
                 } for r in top_referrers],
                 'recent_commissions': [_ref_commission_to_json(r) for r in recent_commissions],
             })
@@ -1682,6 +1699,11 @@ async def admin_bonuses_handler(request):
                 return web.json_response({'error': f'⚠️ نسبة البونص ({percent}%) أعلى من عمولة السحب ({withdraw_commission}%). يمكن للمستخدم الإيداع والسحب فوراً ليربح! يجب أن يكون البونص أقل من العمولة.'}, status=400)
             repo.update_bonus_rule(rule_id, title=title, percent=percent, payment_method=payment_method, min_amount_syp=min_amount_syp, max_bonus_syp=max_bonus_syp)
             return web.json_response({'ok': True})
+
+        if action == 'process_affiliate_commissions':
+            bot = request.app.get('bot')
+            result = await repo.process_weekly_affiliate_commissions(bot=bot)
+            return web.json_response(result)
 
         if action == 'toggle_referrals':
             enabled_raw = payload.get('enabled', True)
@@ -2187,7 +2209,8 @@ async def user_me_api_handler(request):
             active_refs = repo.get_active_referrals_count(telegram_id)
             total_refs = repo.get_referrals_count(telegram_id)
             earnings = repo.get_total_referral_earnings(telegram_id)
-            pct = repo.get_referral_percent_by_active_count(active_refs)
+            affiliate_balance = int((user or {}).get('affiliate_balance') or 0)
+            pct = repo.get_affiliate_percent_by_active_count(active_refs)
             bot_user = await request.app['bot'].get_me()
             ref_link = f"https://t.me/{bot_user.username}?start=ref_{telegram_id}"
             referral = {
@@ -2195,6 +2218,7 @@ async def user_me_api_handler(request):
                 'total_referrals': total_refs,
                 'percent': pct,
                 'total_earnings': earnings,
+                'affiliate_balance': affiliate_balance,
                 'ref_link': ref_link,
             }
         except Exception as e:

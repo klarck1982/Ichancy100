@@ -657,10 +657,13 @@ async def back_to_main_menu_callback(callback: CallbackQuery, state: FSMContext)
 
     bot_balance = safe_balance(user)
     game_balance = repo.get_user_game_balance(telegram_id)
+    affiliate_balance = int(user.get('affiliate_balance') or 0)
+    affiliate_line = f"🤝 <b>أرباح الإحالات:</b><code>{affiliate_balance:,} ل.س</code>\n" if affiliate_balance > 0 else ""
     bot_balance_new = bot_balance / 100
     bot_balance_new_str = f"{int(bot_balance_new):,}" if bot_balance_new == int(bot_balance_new) else f"{bot_balance_new:,.2f}"
     balance_text = (
         f"💎 <b>رصيد البوت:</b><code>{bot_balance:,} ل.س</code> <i>({bot_balance_new_str} ل.س جديدة)</i>\n"
+        f"{affiliate_line}"
         f"🎮 <b>رصيد اللعبة (iChancy):</b><code>{game_balance:,} NSP</code>\n\n"
         " <i>اختر الخدمة المطلوبة:</i>"
     )
@@ -2519,8 +2522,8 @@ async def referral_menu_callback(callback: CallbackQuery):
 
     registered = repo.get_referrals_count(telegram_id)
     active = repo.get_active_referrals_count(telegram_id)
-    percent = repo.get_referral_percent_by_active_count(active)
-    total_earnings = repo.get_total_referral_earnings(telegram_id)
+    percent = repo.get_affiliate_percent_by_active_count(active)
+    total_earnings = int(user.get('affiliate_balance') or 0)
     referrals_enabled = repo.are_referrals_enabled()
     me = await callback.bot.get_me()
     ref_link = f"https://t.me/{me.username}?start=ref_{telegram_id}"
@@ -2529,32 +2532,52 @@ async def referral_menu_callback(callback: CallbackQuery):
     if active < 3:
         next_level = "تحتاج إلى 3 إحالات نشطة لبدء الربح"
     elif active < 5:
-        next_level = "المستوى القادم: 5 إحالات نشطة = 5%"
+        next_level = "المستوى القادم: 5 إحالات نشطة = 1.5% من خسارة المحالين"
     elif active < 10:
-        next_level = "المستوى القادم: 10 إحالات نشطة = 10%"
+        next_level = "المستوى القادم: 10 إحالات نشطة = 2% من خسارة المحالين"
     else:
         next_level = "أنت في أعلى مستوى إحالات حالياً 👑"
 
     text = (
         "🤝 <b>نظام الإحالات</b>\n\n"
-        "شارك رابطك مع أصدقائك واربح نسبة من إيداعاتهم المقبولة داخل البوت.\n\n"
-        "🎯 <b>شرائح الأرباح:</b>\n"
-        "• 3 إحالات نشطة = 3%\n"
-        "• 5 إحالات نشطة = 5%\n"
-        "• 10 إحالات نشطة = 10%\n\n"
+        "شارك رابطك مع أصدقائك واربح من صافي خسارتهم الأسبوعية في اللعبة كأنك شريك في البوت.\n\n"
+        "🎯 <b>شرائح أرباح الإحالات القابلة للسحب:</b>\n"
+        "• 3 إحالات نشطة = 1% من خسارة المحالين\n"
+        "• 5 إحالات نشطة = 1.5% من خسارة المحالين\n"
+        "• 10 إحالات نشطة = 2% من خسارة المحالين\n\n"
         "✅ <b>الإحالة النشطة:</b> من سجّل عبر رابطك وأكمل أول إيداع مقبول.\n"
-        "💡 العمولة تُحسب على مبلغ الإيداع الأساسي فقط بدون البونصات، وتضاف فوراً إلى رصيدك في البوت.\n\n"
+        "💡 الأرباح تُحسب أسبوعياً من خسارة المحالين في اللعبة، وتضاف إلى رصيد أرباح إحالات قابل للسحب.\n\n"
         f"⚙️ <b>حالة النظام:</b> {status_text}\n"
         f"👥 <b>الإحالات المسجلة:</b> <code>{registered}</code>\n"
         f"✅ <b>الإحالات النشطة:</b> <code>{active}</code>\n"
         f"📈 <b>نسبتك الحالية:</b> <code>{percent}%</code>\n"
-        f"💰 <b>إجمالي أرباح الإحالات:</b> <code>{total_earnings:,} SYP</code>\n"
+        f"💵 <b>رصيد أرباح الإحالات القابل للسحب:</b> <code>{total_earnings:,} SYP</code>\n"
         f"🔜 <b>{next_level}</b>\n\n"
         f"🔗 <b>رابط الإحالة الخاص بك:</b>\n<code>{ref_link}</code>\n\n"
         "انسخ الرابط وشاركه مع أصدقائك 🚀"
     )
-    await safe_edit_text(callback.message, text, reply_markup=get_user_menu_keyboard(callback.from_user.id), parse_mode="HTML")
+    rows = []
+    if total_earnings > 0:
+        rows.append([InlineKeyboardButton(text="💵 تحويل أرباح الإحالات إلى رصيد البوت للسحب", callback_data="transfer_affiliate_balance")])
+    rows.append([InlineKeyboardButton(text="🏠 القائمة الرئيسية", callback_data="back_to_main_menu")])
+    await safe_edit_text(callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows), parse_mode="HTML")
     await safe_answer_callback(callback)
+
+
+@router.callback_query(F.data == "transfer_affiliate_balance")
+async def transfer_affiliate_balance_callback(callback: CallbackQuery):
+    telegram_id = str(callback.from_user.id)
+    result = repo.transfer_affiliate_balance_to_bot(telegram_id)
+    if result.get('ok'):
+        await safe_edit_text(
+            callback.message,
+            f"✅ <b>تم تحويل أرباح الإحالات إلى رصيد البوت.</b>\n\n💵 المبلغ: <code>{int(result.get('amount') or 0):,} SYP</code>\n💎 رصيد البوت الجديد: <code>{int(result.get('new_bot_balance') or 0):,} SYP</code>",
+            reply_markup=get_user_menu_keyboard(callback.from_user.id),
+            parse_mode="HTML"
+        )
+        await safe_answer_callback(callback, "تم التحويل")
+    else:
+        await safe_answer_callback(callback, "لا يوجد رصيد إحالات قابل للتحويل", show_alert=True)
 
 
 @router.callback_query(F.data == "history_menu")

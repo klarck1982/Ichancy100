@@ -457,6 +457,8 @@ class DatabaseManager:
         alter_users_game_bonus_amount = "ALTER TABLE users ADD COLUMN IF NOT EXISTS game_bonus_amount BIGINT DEFAULT 0;"
         # قاعدة الرصيد النقدي التي يرتبط بها رصيد البونص (لصرفه نسبياً عند شحن اللعبة)
         alter_users_bonus_base_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_base_balance BIGINT DEFAULT 0;"
+        # رصيد أرباح الإحالات القابل للسحب (Revenue Share)
+        alter_users_affiliate_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_balance BIGINT DEFAULT 0;"
         
         # 🆕 (Update 14 Fix) ALTER TABLE لإضافة أعمدة شروط المكافآت لجدول موجود
         alter_feat_bonus_min = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_min_transfer BIGINT DEFAULT 20000;"
@@ -507,6 +509,25 @@ class DatabaseManager:
             UNIQUE(telegram_id, week_start)
         );
         """
+
+        affiliate_weekly_commissions_table = """
+        CREATE TABLE IF NOT EXISTS affiliate_weekly_commissions (
+            id SERIAL PRIMARY KEY,
+            referrer_telegram_id VARCHAR(50) NOT NULL,
+            referred_telegram_id VARCHAR(50) NOT NULL,
+            week_start DATE NOT NULL,
+            week_end DATE NOT NULL,
+            total_deposited BIGINT DEFAULT 0,
+            total_withdrawn BIGINT DEFAULT 0,
+            ending_game_balance BIGINT DEFAULT 0,
+            net_loss BIGINT DEFAULT 0,
+            commission_percent NUMERIC(7,2) DEFAULT 0,
+            commission_amount BIGINT DEFAULT 0,
+            status VARCHAR(30) DEFAULT 'paid',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(referrer_telegram_id, referred_telegram_id, week_start)
+        );
+        """
         alter_users_total_deposits = "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_deposits BIGINT DEFAULT 0;"
         alter_users_vip_tier = "ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_tier INT DEFAULT 0;"
 
@@ -552,6 +573,7 @@ class DatabaseManager:
             alter_users_bonus_balance,
             alter_users_game_bonus_amount,
             alter_users_bonus_base_balance,
+            alter_users_affiliate_balance,
             alter_feat_bonus_min,
             alter_feat_bonus_threshold,
             alter_feat_bonus_days,
@@ -567,6 +589,7 @@ class DatabaseManager:
             alter_feat_cashback_pct,
             alter_feat_cashback_min,
             cashback_payouts_table,
+            affiliate_weekly_commissions_table,
             alter_users_total_deposits,
             alter_users_vip_tier,
             insert_default_settings,

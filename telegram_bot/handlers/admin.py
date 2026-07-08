@@ -637,33 +637,13 @@ async def approve_dep_callback(callback: CallbackQuery):
                 except Exception as e:
                     logger.warning(f"Failed to notify referrer activation {referrer_id}: {e}")
 
-            commission = repo.credit_referral_commission_if_applicable(
-                referrer_id=referrer_id,
-                referred_id=tx['user_telegram_id'],
-                transaction_id=tx_id,
-                deposit_amount_syp=deposit_amount
+            # النظام الجديد: لا تُدفع عمولة على الإيداع نفسه.
+            # الإحالة تُفعّل هنا فقط، وتُصرف أرباح المحيل أسبوعياً من خسارة المحالين في اللعبة.
+            referral_log_line = (
+                f"\n🤝 الإحالة: <code>{referrer_id}</code> مرتبطة بهذا المستخدم. "
+                "سيتم احتساب أرباح المحيل أسبوعياً بناءً على خسارة المحال في اللعبة."
             )
-            if commission.get('credited'):
-                referral_amount = int(commission['amount'])
-                referral_percent = commission['percent']
-                referral_log_line = (
-                    f"\n🤝 عمولة الإحالة: <code>{referral_amount:,} SYP</code> "
-                    f"(<code>{referral_percent:g}%</code>) → رصيد المكافآت لصاحب الإحالة <code>{referrer_id}</code>"
-                )
-                try:
-                    await callback.bot.send_message(
-                        chat_id=referrer_id,
-                        text=(
-                            "🤝 <b>تمت إضافة عمولة إحالة إلى رصيد المكافآت!</b>\n\n"
-                            f"💰 إيداع تابعك: <code>{deposit_amount:,} SYP</code>\n"
-                            f"📈 نسبتك الحالية: <code>{referral_percent:g}%</code>\n"
-                            f"🎁 عمولتك: <code>{referral_amount:,} SYP</code>\n\n"
-                            "أُضيفت عمولتك إلى رصيد المكافآت 🎁 لاستخدامها في اللعبة."
-                        ),
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to notify referral commission {referrer_id}: {e}")
+
 
     # تحديث رسالة قناة الإيداع مع الحفاظ على تفاصيل الطلب الأصلية
     deposit_status = (
