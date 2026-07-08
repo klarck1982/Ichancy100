@@ -502,6 +502,7 @@ function renderBalance(d){
   const gameBal = Number(d.game_balance||0);
   const affBal = Number((d.referral&&d.referral.affiliate_balance)||0);
   const bonusBal = Number(d.bonus_balance||0);
+  const pendingCashback = Number(d.cashback_pending_balance||0);
   const activeGameBonus = Number(d.active_game_bonus||0);
   const bonusNew = bonusBal/100;
   const bonusNewStr = bonusNew==Math.floor(bonusNew)?fmt(Math.floor(bonusNew)):bonusNew.toLocaleString('en-US',{maximumFractionDigits:2});
@@ -515,6 +516,11 @@ function renderBalance(d){
         <div class="g-value" style="color:var(--gold)">${fmt(bonusBal)} ل.س</div>
       </div>
       <div style="font-size:11px;color:var(--hint);margin-top:2px;text-align:left">≈ ${bonusNewStr} ل.س جديدة — يُرفق تلقائياً عند شحن اللعبة</div>
+    `;
+  }
+  if(pendingCashback > 0){
+    bonusHtml += `
+      <div style="font-size:11px;color:var(--green);margin-top:6px;text-align:left">💸 كاش باك مستحق: ${fmt(pendingCashback)} ل.س — سيُضاف تلقائياً بعد أول شحن ناجح للعبة</div>
     `;
   }
   if(activeGameBonus > 0){

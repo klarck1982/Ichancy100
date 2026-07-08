@@ -628,7 +628,7 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT bot_balance, bonus_balance, bonus_base_balance FROM users WHERE telegram_id = %s FOR UPDATE",
+            "SELECT bot_balance, bonus_balance, bonus_base_balance, cashback_pending_balance FROM users WHERE telegram_id = %s FOR UPDATE",
             (tid,)
         )
         user_row = cursor.fetchone()
@@ -639,18 +639,20 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
         old_balance = int(user_row[0] or 0)
         old_bonus_balance = int(user_row[1] or 0)
         old_bonus_base_balance = int(user_row[2] or 0)
+        cashback_amount = int(user_row[3] or 0)
         bonus_amount = calculate_game_bonus_for_deposit(cash_amount, old_bonus_balance, old_bonus_base_balance)
         base_consumed = min(cash_amount, old_bonus_base_balance) if bonus_amount > 0 else 0
-        total_to_game = cash_amount + bonus_amount
+        total_to_game = cash_amount + bonus_amount + cashback_amount
 
         cursor.execute(
             """
             UPDATE users
             SET bot_balance = COALESCE(bot_balance, 0) - %s,
                 bonus_balance = COALESCE(bonus_balance, 0) - %s,
-                bonus_base_balance = GREATEST(0, COALESCE(bonus_base_balance, 0) - %s)
+                bonus_base_balance = GREATEST(0, COALESCE(bonus_base_balance, 0) - %s),
+                cashback_pending_balance = 0
             WHERE telegram_id = %s AND COALESCE(bot_balance, 0) >= %s AND COALESCE(bonus_balance, 0) >= %s
-            RETURNING bot_balance, bonus_balance, bonus_base_balance
+            RETURNING bot_balance, bonus_balance, bonus_base_balance, cashback_pending_balance
             """,
             (cash_amount, bonus_amount, base_consumed, tid, cash_amount, bonus_amount)
         )
@@ -671,18 +673,19 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             """
             INSERT INTO transactions (
                 user_telegram_id, type, payment_method, amount, transfer_number, status,
-                original_amount, original_currency, converted_amount_syp, external_ref
+                original_amount, original_currency, converted_amount_syp, external_ref, cashback_amount_syp
             )
-            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s, %s)
+            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s, %s, %s)
             RETURNING id
             """,
             (
                 tid,
                 total_to_game,
-                f'Game deposit for player {player_id} | cash={cash_amount} | bonus={bonus_amount} | total={total_to_game}',
+                f'Game deposit for player {player_id} | cash={cash_amount} | bonus={bonus_amount} | cashback={cashback_amount} | total={total_to_game}',
                 cash_amount,
                 bonus_amount,
                 str(base_consumed),
+                cashback_amount,
             )
         )
         tx_id = cursor.fetchone()[0]
@@ -699,6 +702,7 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             'bonus_base_consumed': base_consumed,
             'cash_amount': cash_amount,
             'bonus_amount': bonus_amount,
+            'cashback_amount': cashback_amount,
             'total_to_game': total_to_game,
             'amount': cash_amount,
         }
@@ -722,22 +726,24 @@ def confirm_reserved_game_deposit(tx_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT user_telegram_id, status, COALESCE(converted_amount_syp, 0) FROM transactions WHERE id = %s FOR UPDATE",
+            "SELECT user_telegram_id, status, COALESCE(converted_amount_syp, 0), COALESCE(cashback_amount_syp, 0) FROM transactions WHERE id = %s FOR UPDATE",
             (int(tx_id),)
         )
         row = cursor.fetchone()
         if not row:
             conn.rollback()
             return False
-        user_telegram_id, status, bonus_amount = row
+        user_telegram_id, status, bonus_amount, cashback_amount = row
         if status != 'pending':
             conn.rollback()
             return True
         bonus_int = int(float(bonus_amount or 0))
-        if bonus_int > 0:
+        cashback_int = int(float(cashback_amount or 0))
+        active_bonus_to_add = bonus_int + cashback_int
+        if active_bonus_to_add > 0:
             cursor.execute(
                 "UPDATE users SET game_bonus_amount = COALESCE(game_bonus_amount, 0) + %s WHERE telegram_id = %s",
-                (bonus_int, str(user_telegram_id))
+                (active_bonus_to_add, str(user_telegram_id))
             )
         cursor.execute(
             "UPDATE transactions SET status = 'completed', reviewed_at = CURRENT_TIMESTAMP WHERE id = %s",
@@ -778,7 +784,7 @@ def revert_game_transaction(tx_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp, external_ref
+            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp, external_ref, COALESCE(cashback_amount_syp, 0)
                FROM transactions WHERE id = %s FOR UPDATE""",
             (int(tx_id),)
         )
@@ -787,18 +793,19 @@ def revert_game_transaction(tx_id):
             conn.rollback()
             return False
 
-        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp, external_ref = tx_row
+        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp, external_ref, cashback_amount_syp = tx_row
         if status == 'pending':
             if tx_type == 'deposit_to_game':
                 cash_refund = int(float(original_amount or amount or 0))
                 bonus_refund = int(float(converted_amount_syp or 0))
+                cashback_refund = int(float(cashback_amount_syp or 0))
                 try:
                     base_refund = int(float(external_ref or 0))
                 except Exception:
                     base_refund = 0
                 cursor.execute(
-                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s, bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s WHERE telegram_id = %s",
-                    (cash_refund, bonus_refund, base_refund, str(user_telegram_id))
+                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s, bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s, cashback_pending_balance = COALESCE(cashback_pending_balance, 0) + %s WHERE telegram_id = %s",
+                    (cash_refund, bonus_refund, base_refund, cashback_refund, str(user_telegram_id))
                 )
             elif tx_type == 'bonus_to_game':
                 bonus_refund = int(float(amount or 0))
@@ -2846,7 +2853,7 @@ def do_daily_checkin(telegram_id):
         cursor = conn.cursor()
         cursor.execute("SELECT bonus_balance FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
         if cursor.fetchone():
-            cursor.execute("UPDATE users SET bonus_balance = bonus_balance + %s WHERE telegram_id = %s", (reward, tid))
+            cursor.execute("UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s", (reward, tid))
         cursor.execute("""
             INSERT INTO daily_checkins (telegram_id, last_checkin_date, current_streak, total_checkins, total_rewards)
             VALUES (%s, %s, %s, 1, %s)
@@ -3590,12 +3597,12 @@ def process_weekly_cashback_for_user(telegram_id, current_game_balance=None):
     try:
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT bonus_balance FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
+        cursor.execute("SELECT cashback_pending_balance FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
         if not cursor.fetchone():
             conn.rollback()
             return {'ok': False, 'reason': 'user_not_found'}
         cursor.execute(
-            "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
+            "UPDATE users SET cashback_pending_balance = COALESCE(cashback_pending_balance, 0) + %s WHERE telegram_id = %s",
             (cashback, tid)
         )
         cursor.execute(
@@ -3665,8 +3672,8 @@ async def process_all_weekly_cashbacks(bot=None):
                             f"💸 <b>كاش باك أسبوعي!</b>\n\n"
                             f"📊 خسارتك هذا الأسبوع: <code>{result['net_loss']:,} ل.س</code>\n"
                             f"💰 نسبة الاسترجاع: <code>{result['pct']}%</code>\n"
-                            f"🎁 تم إضافة: <code>{result['cashback']:,} ل.س</code> لرصيد مكافآتك\n\n"
-                            f"💡 استخدمها للّعب مرة أخرى!"
+                            f"💸 تم تسجيل كاش باك مستحق: <code>{result['cashback']:,} ل.س</code>\n"
+                            f"🎮 سيُضاف تلقائياً إلى حساب اللعبة بعد أول عملية شحن ناجحة."
                         ),
                         parse_mode="HTML"
                     )

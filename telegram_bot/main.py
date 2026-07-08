@@ -2358,6 +2358,7 @@ async def user_me_api_handler(request):
             'username': user.get('telegram_username'),
             'bot_balance': bot_balance,
             'bonus_balance': bonus_balance,
+            'cashback_pending_balance': int(user.get('cashback_pending_balance') or 0),
             'active_game_bonus': int(user.get('game_bonus_amount') or 0),
             'game_balance': game_balance,
             'recent_transactions': recent_transactions,

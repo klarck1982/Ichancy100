@@ -190,6 +190,7 @@ class DatabaseManager:
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS original_currency VARCHAR(20);",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS converted_amount_syp NUMERIC(15, 2);",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_ref VARCHAR(255);",
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cashback_amount_syp BIGINT DEFAULT 0;",
         ]
 
         gifts_table = """
@@ -459,6 +460,8 @@ class DatabaseManager:
         alter_users_bonus_base_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_base_balance BIGINT DEFAULT 0;"
         # رصيد أرباح الإحالات القابل للسحب (Revenue Share)
         alter_users_affiliate_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_balance BIGINT DEFAULT 0;"
+        # كاش باك مستحق ينتظر أول شحن لعبة ناجح ليُضاف إلى iChancy
+        alter_users_cashback_pending_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_pending_balance BIGINT DEFAULT 0;"
         
         # 🆕 (Update 14 Fix) ALTER TABLE لإضافة أعمدة شروط المكافآت لجدول موجود
         alter_feat_bonus_min = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_min_transfer BIGINT DEFAULT 20000;"
@@ -574,6 +577,7 @@ class DatabaseManager:
             alter_users_game_bonus_amount,
             alter_users_bonus_base_balance,
             alter_users_affiliate_balance,
+            alter_users_cashback_pending_balance,
             alter_feat_bonus_min,
             alter_feat_bonus_threshold,
             alter_feat_bonus_days,
