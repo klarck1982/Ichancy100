@@ -2116,6 +2116,14 @@ async def serve_user_app_html(request):
     return _no_cache_file_response(html_path)
 
 
+async def serve_user_app_pingo_html(request):
+    """نسخة PINGO من Mini App عبر مسار جديد لكسر كاش Telegram."""
+    html_path = os.path.join(WEBAPP_DIR, "user_app_pingo.html")
+    if not os.path.exists(html_path):
+        return web.Response(text="Pingo app not found", status=404)
+    return _no_cache_file_response(html_path)
+
+
 async def user_me_api_handler(request):
     """🆕 (Update 10) API يغذّي Mini App للمستخدم بالبيانات."""
     user_obj = _verify_telegram_init_data(request.headers.get('X-Telegram-Init-Data', ''))
@@ -2676,6 +2684,7 @@ def main():
     # 🆕 مسارات Mini App
     app.router.add_get("/dashboard", serve_dashboard_html)
     app.router.add_get("/user-app", serve_user_app_html)
+    app.router.add_get("/user-app-pingo", serve_user_app_pingo_html)
     app.router.add_get("/api/user/me", user_me_api_handler)
     app.router.add_post("/api/user/checkin", user_checkin_handler)
     app.router.add_post("/api/user/bonus-to-game", user_bonus_to_game_handler)
