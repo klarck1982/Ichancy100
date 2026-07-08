@@ -543,10 +543,42 @@ async def approve_dep_callback(callback: CallbackQuery):
 
     # حساب البونص أولاً (قراءة فقط، آمنة خارج المعاملة)
     deposit_amount = int(float(tx['amount']))
+
+    # 1) أفضل بونص عام/فلاش فقط (لا يتراكمان)
     bonus_info = repo.calculate_best_deposit_bonus(deposit_amount, tx.get('payment_method'))
-    bonus_amount = int(bonus_info.get('bonus_amount') or 0)
+    public_bonus_amount = int(bonus_info.get('bonus_amount') or 0)
     bonus_rule = bonus_info.get('rule')
-    # ملاحظة: الإيداع والبونص لم يعودا يُجمعان — الإيداع → bot_balance ، البونص → bonus_balance
+
+    # 2) بونص VIP مستمر حسب طبقة المستخدم الحالية قبل هذا الإيداع
+    vip_deposit_bonus = 0
+    vip_deposit_pct = 0
+    vip_current_tier_name = None
+    vip_upgrade = {'upgraded': False}
+    try:
+        vip_settings = repo.get_vip_settings()
+        tiers = vip_settings.get('tiers', [])
+        if vip_settings.get('vip_enabled', True) and tiers:
+            total_before = repo.get_user_total_deposits(tx['user_telegram_id'])
+            old_vip_info = repo.get_vip_tier_info(total_before, tiers)
+            new_vip_info = repo.get_vip_tier_info(total_before + deposit_amount, tiers)
+            vip_deposit_pct = float(old_vip_info.get('current_bonus_pct') or 0)
+            vip_current_tier_name = old_vip_info.get('tier_names', [''])[old_vip_info.get('current_index', 0)]
+            if vip_deposit_pct > 0:
+                vip_deposit_bonus = int(deposit_amount * (vip_deposit_pct / 100.0))
+            if new_vip_info.get('current_index', 0) > old_vip_info.get('current_index', 0):
+                vip_upgrade = {
+                    'upgraded': True,
+                    'new_tier': new_vip_info['tier_names'][new_vip_info['current_index']],
+                    'new_tier_index': new_vip_info['current_index'],
+                    'reward': int(new_vip_info.get('current_reward') or 0),
+                }
+    except Exception as e:
+        logger.error(f"VIP pre-calc error: {e}")
+        vip_upgrade = {'upgraded': False}
+
+    vip_upgrade_reward = int(vip_upgrade.get('reward') or 0) if vip_upgrade.get('upgraded') else 0
+    bonus_amount = public_bonus_amount + vip_deposit_bonus + vip_upgrade_reward
+    # ملاحظة: الإيداع والبونص لم يعودا يُجمعان — الإيداع → bot_balance ، كل البونصات → bonus_balance
 
     # 🔒 اعتماد ذري كامل (Update 4): قفل + إضافة على الرصيد الفعلي + تعليم المعاملة
     # في معاملة واحدة — يمنع 'الكتابة فوق' والقبول المزدوج.
@@ -566,18 +598,20 @@ async def approve_dep_callback(callback: CallbackQuery):
 
     new_balance = int(result.get('new_balance') or 0)
 
-    # 🏆 (Update 16) فحص ترقية VIP بعد قبول الإيداع
-    vip_upgrade = {'upgraded': False}
+    # 🏆 تثبيت طبقة VIP الجديدة بعد قبول الإيداع (المكافأة احتُسبت ضمن bonus_amount أعلاه)
     try:
-        vip_upgrade = repo.check_and_process_vip_upgrade(tx['user_telegram_id'], deposit_amount)
         if vip_upgrade.get('upgraded'):
+            DatabaseManager.execute_query(
+                "UPDATE users SET vip_tier = %s WHERE telegram_id = %s",
+                (int(vip_upgrade.get('new_tier_index') or 0), str(tx['user_telegram_id']))
+            )
             logger.info(f"VIP Upgrade for user {tx['user_telegram_id']} to {vip_upgrade.get('new_tier')}")
             try:
                 await callback.bot.send_message(
                     chat_id=tx['user_telegram_id'],
                     text=(
                         f"🎉 <b>مبروك! تمت ترقيتك إلى {vip_upgrade.get('new_tier')}!</b>\n\n"
-                        f"💎 مكافأة الترقية: <code>{vip_upgrade.get('reward'):,} ل.س</code>\n"
+                        f"💎 مكافأة الترقية: <code>{vip_upgrade_reward:,} ل.س</code>\n"
                         f"(أُضيفت لرصيد المكافآت 🎁 للاستخدام في اللعبة)"
                     ),
                     parse_mode="HTML"
@@ -585,7 +619,7 @@ async def approve_dep_callback(callback: CallbackQuery):
             except Exception as e:
                 logger.warning(f"Failed to notify VIP upgrade: {e}")
     except Exception as e:
-        logger.error(f"VIP upgrade check error: {e}")
+        logger.error(f"VIP upgrade update error: {e}")
 
     # حساب صافي مخاطرة البونص للأدمن: البونص ناقص ما يُسترد من عمولته لو سُحب.
     # (عمولة السحب تُسترد نسبةً فقط من البونص، فلا تغطّيه — راجع المنطق المالي.)
@@ -596,19 +630,29 @@ async def approve_dep_callback(callback: CallbackQuery):
     bonus_recovered_by_commission = int(bonus_amount * (_wc / 100.0)) if bonus_amount > 0 else 0
     bonus_net_risk = int(bonus_amount) - bonus_recovered_by_commission
 
-    if bonus_amount > 0 and bonus_rule:
-        # 🎯 البونص يذهب لرصيد المكافآت المقيّد (لا يُسحب نقداً) — يُوضَّح للمستخدم.
+    if bonus_amount > 0:
+        user_bonus_parts = []
+        log_bonus_parts = []
+        if public_bonus_amount > 0 and bonus_rule:
+            user_bonus_parts.append(f"🎁 <b>بونص العرض:</b> <code>{public_bonus_amount:,} SYP</code> — <code>{bonus_rule.get('title')}</code>")
+            log_bonus_parts.append(f"🎁 بونص العرض: <code>{public_bonus_amount:,} SYP</code> — <code>{bonus_rule.get('title')}</code>")
+        if vip_deposit_bonus > 0:
+            user_bonus_parts.append(f"🏆 <b>بونص VIP {vip_current_tier_name or ''}:</b> <code>{vip_deposit_bonus:,} SYP</code> (<code>{vip_deposit_pct:g}%</code>)")
+            log_bonus_parts.append(f"🏆 بونص VIP: <code>{vip_deposit_bonus:,} SYP</code> (<code>{vip_deposit_pct:g}%</code>)")
+        if vip_upgrade_reward > 0:
+            user_bonus_parts.append(f"🎉 <b>مكافأة ترقية VIP:</b> <code>{vip_upgrade_reward:,} SYP</code> — <code>{vip_upgrade.get('new_tier')}</code>")
+            log_bonus_parts.append(f"🎉 مكافأة ترقية VIP: <code>{vip_upgrade_reward:,} SYP</code> — <code>{vip_upgrade.get('new_tier')}</code>")
+
         bonus_user_line = (
-            f"\n🎁 <b>بونص العرض:</b> <code>{bonus_amount:,} SYP</code>\n"
-            f"🏷️ <b>العرض:</b> <code>{bonus_rule.get('title')}</code>\n"
-            f"🎁 <b>أُضيف إلى رصيد المكافآت</b> (للاستخدام في اللعبة)"
+            "\n" + "\n".join(user_bonus_parts) +
+            f"\n🎁 <b>إجمالي البونص المضاف:</b> <code>{bonus_amount:,} SYP</code>" +
+            "\n🎁 <b>أُضيف إلى رصيد المكافآت</b> (للاستخدام في اللعبة)"
         )
-        # سطر الأدمن/السجل: يوضّح الفصل + تحذير صافي المخاطرة
         risk_flag = "🔴" if bonus_net_risk > bonus_recovered_by_commission else "🟡"
         bonus_log_line = (
-            f"\n🎁 البونص: <code>{bonus_amount:,} SYP</code> → رصيد المكافآت (مقيّد)\n"
-            f"🏷️ العرض: <code>{bonus_rule.get('title')}</code>\n"
-            f"{risk_flag} صافي مخاطرة البونص: <code>{bonus_net_risk:,} SYP</code> "
+            "\n" + "\n".join(log_bonus_parts) +
+            f"\n🎁 إجمالي البونص: <code>{bonus_amount:,} SYP</code> → رصيد المكافآت (مقيّد)" +
+            f"\n{risk_flag} صافي مخاطرة البونص: <code>{bonus_net_risk:,} SYP</code> "
             f"(يُسترد من العمولة: <code>{bonus_recovered_by_commission:,}</code>)"
         )
     else:
