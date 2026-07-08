@@ -13,9 +13,9 @@ def get_terms_keyboard():
 
 
 def get_user_app_url():
-    """🆕 (Update 10) بناء رابط Mini App للمستخدم."""
+    """🆕 (Update 10) بناء رابط Mini App للمستخدم مع كسر كاش Telegram WebView."""
     base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
-    return f"{base}/user-app"
+    return f"{base}/user-app?v=pingo-wheel-v3-20260708"
 
 
 def get_main_menu_keyboard(is_admin=False):

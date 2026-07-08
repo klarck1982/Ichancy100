@@ -177,3 +177,22 @@ python -m pyflakes .
 - رقم الإيداع.
 - مبلغ الإيداع.
 - اقتراح التواصل معه وإرسال كود هدية.
+
+---
+
+# إصلاح كاش Telegram WebView للعجلة الجديدة
+
+عند ظهور العجلة القديمة رغم رفع الكود، السبب الأغلب هو كاش Telegram WebView أو كاش المتصفح.
+
+تم تطبيق:
+
+- إضافة رقم نسخة إلى رابط Mini App للمستخدم:
+  `/user-app?v=pingo-wheel-v3-20260708`
+- إضافة رقم نسخة إلى رابط لوحة التحكم:
+  `/dashboard?v=pingo-wheel-v3-20260708`
+- إرسال صفحات HTML برؤوس منع الكاش:
+  - `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`
+  - `Pragma: no-cache`
+  - `Expires: 0`
+
+هذا يجبر Telegram/المتصفح على تحميل نسخة العجلة الجديدة بدل النسخة القديمة.

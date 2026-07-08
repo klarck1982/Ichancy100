@@ -2092,20 +2092,28 @@ async def public_links_handler(request):
     })
 
 
+def _no_cache_file_response(path):
+    response = web.FileResponse(path)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
 async def serve_dashboard_html(request):
-    """🆕 يقدّم صفحة HTML للوحة التحكم."""
+    """🆕 يقدّم صفحة HTML للوحة التحكم بدون كاش."""
     html_path = os.path.join(WEBAPP_DIR, "dashboard.html")
     if not os.path.exists(html_path):
         return web.Response(text="Dashboard not found", status=404)
-    return web.FileResponse(html_path)
+    return _no_cache_file_response(html_path)
 
 
 async def serve_user_app_html(request):
-    """🆕 (Update 10) يقدّم Mini App للمستخدم العادي."""
+    """🆕 (Update 10) يقدّم Mini App للمستخدم العادي بدون كاش."""
     html_path = os.path.join(WEBAPP_DIR, "user_app.html")
     if not os.path.exists(html_path):
         return web.Response(text="App not found", status=404)
-    return web.FileResponse(html_path)
+    return _no_cache_file_response(html_path)
 
 
 async def user_me_api_handler(request):
