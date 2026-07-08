@@ -2260,9 +2260,12 @@ async def user_me_api_handler(request):
         spun_ids = []
         try:
             spun_ids = repo.get_spun_deposit_ids(telegram_id)
+            _bot_settings = repo.get_bot_settings()
+            _wheel_min = int(_bot_settings.get('min_deposit_syp') or 20000)
             for tx in recent_transactions:
                 if tx.get('type') == 'deposit_bot' and tx.get('status') == 'approved':
-                    tx['can_spin_wheel'] = tx.get('id') not in spun_ids
+                    tx_amount = int(float(tx.get('amount') or 0))
+                    tx['can_spin_wheel'] = (tx.get('id') not in spun_ids) and (tx_amount >= _wheel_min)
                 else:
                     tx['can_spin_wheel'] = False
         except Exception as e:
@@ -2445,8 +2448,9 @@ async def user_spin_wheel_handler(request):
 
         deposit_amount = int(float(tx.get('amount') or 0))
 
-        # 🆕 حد أدنى للإيداع لاستحقاق الدورة (يمنع استغلال الإيداعات الصغيرة)
-        wheel_min = int(ws.get('wheel_min_deposit') or 0)
+        # أهلية العجلة = أي إيداع يطابق الحد الأدنى للإيداع في البوت
+        bot_settings = repo.get_bot_settings()
+        wheel_min = int(bot_settings.get('min_deposit_syp') or 20000)
         if wheel_min > 0 and deposit_amount < wheel_min:
             return web.json_response(
                 {'error': f'عجلة الحظ متاحة للإيداعات من {wheel_min:,} ل.س فأكثر.'},
@@ -2461,6 +2465,37 @@ async def user_spin_wheel_handler(request):
         result = repo.spin_wheel_atomic(telegram_id, deposit_tx_id, deposit_amount)
         if not result.get('ok'):
             return web.json_response({'error': 'تعذّر تنفيذ الدوران'}, status=500)
+
+        # 🎯 PINGO: لا يضيف رصيداً تلقائياً، بل يرسل تنبيهاً للإدارة للتواصل مع اللاعب.
+        if str(result.get('label') or '').upper() == 'PINGO':
+            try:
+                bot = request.app.get('bot')
+                user = repo.get_user(telegram_id) or {}
+                username = user.get('telegram_username') or user_obj.get('username') or '—'
+                pingo_text = (
+                    "🎯 <b>PINGO في عجلة الحظ!</b>\n\n"
+                    f"👤 المستخدم: @{username}\n"
+                    f"🆔 Telegram ID: <code>{telegram_id}</code>\n"
+                    f"📌 رقم الإيداع: <code>#{deposit_tx_id}</code>\n"
+                    f"💰 مبلغ الإيداع: <code>{deposit_amount:,} SYP</code>\n\n"
+                    "🎁 الإجراء المقترح: تواصل مع المستخدم وأرسل كود هدية مناسب."
+                )
+                targets = []
+                log_channel_id = getattr(settings, 'LOG_CHANNEL_ID', None)
+                if log_channel_id:
+                    targets.append(log_channel_id)
+                targets += [item.strip() for item in str(getattr(settings, 'ADMIN_IDS', settings.ADMIN_ID)).split(',') if item.strip()]
+                sent_to = set()
+                for chat_id in targets:
+                    if chat_id in sent_to:
+                        continue
+                    sent_to.add(chat_id)
+                    try:
+                        await bot.send_message(chat_id=chat_id, text=pingo_text, parse_mode='HTML')
+                    except Exception as send_err:
+                        logger.warning(f"PINGO notification failed for {chat_id}: {send_err}")
+            except Exception as notify_err:
+                logger.warning(f"PINGO notification error: {notify_err}")
 
         return web.json_response(result)
     except Exception as e:
@@ -2585,12 +2620,16 @@ async def admin_features_post_handler(request):
                 if not isinstance(segments, list) or len(segments) != 8:
                     return web.json_response({'error': 'يجب أن تكون 8 قطاعات'}, status=400)
                 try:
-                    segments = [[float(a), float(b)] for a, b in segments]
-                    total_weight = sum(s[1] for s in segments)
+                    normalized = []
+                    for i, item in enumerate(segments):
+                        weight = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else item
+                        normalized.append([0, float(weight)])
+                    total_weight = sum(max(0, s[1]) for s in normalized)
                     if total_weight <= 0:
                         return web.json_response({'error': 'مجموع الاحتمالات يجب أن يكون أكبر من صفر'}, status=400)
+                    segments = normalized
                 except (ValueError, TypeError):
-                    return web.json_response({'error': 'قيم القطاعات غير صالحة'}, status=400)
+                    return web.json_response({'error': 'قيم الاحتمالات غير صالحة'}, status=400)
             repo.update_wheel_settings(wheel_enabled=wheel_enabled, segments=segments)
             return web.json_response({'ok': True})
 

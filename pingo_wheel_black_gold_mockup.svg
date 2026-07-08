@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="900" viewBox="0 0 900 900">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0" stop-color="#151515"/>
+      <stop offset="1" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff0a8"/>
+      <stop offset="0.35" stop-color="#ffd35a"/>
+      <stop offset="0.7" stop-color="#c99016"/>
+      <stop offset="1" stop-color="#8a5a00"/>
+    </linearGradient>
+    <linearGradient id="darkseg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1b1b"/>
+      <stop offset="1" stop-color="#060606"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity="0.75"/>
+    </filter>
+    <filter id="goldGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#ffd35a" flood-opacity="0.8"/>
+    </filter>
+    <style>
+      .title{font-family:Tahoma,Arial,sans-serif;font-size:38px;font-weight:900;fill:#ffd35a;text-anchor:middle;letter-spacing:1px}
+      .sub{font-family:Tahoma,Arial,sans-serif;font-size:17px;fill:#bfa45a;text-anchor:middle}
+      .segText{font-family:Tahoma,Arial,sans-serif;font-size:27px;font-weight:900;fill:#ffd35a;text-anchor:middle;dominant-baseline:middle}
+      .pingoText{font-family:Tahoma,Arial,sans-serif;font-size:28px;font-weight:900;fill:#050505;text-anchor:middle;dominant-baseline:middle;letter-spacing:1px}
+      .centerText{font-family:Tahoma,Arial,sans-serif;font-size:42px;font-weight:900;fill:#050505;text-anchor:middle;dominant-baseline:middle}
+      .note{font-family:Tahoma,Arial,sans-serif;font-size:18px;fill:#e8d38a;text-anchor:middle}
+    </style>
+  </defs>
+
+  <rect width="900" height="900" fill="url(#bg)"/>
+  <text x="450" y="70" class="title">عجلة PINGO الذهبية</text>
+  <text x="450" y="102" class="sub">8 خانات متساوية — خلفية سوداء، فواصل ذهبية، وخانة PINGO ذهبية</text>
+
+  <!-- Pointer -->
+  <g filter="url(#goldGlow)">
+    <path d="M450 120 L423 170 L477 170 Z" fill="url(#gold)" stroke="#fff0a8" stroke-width="2"/>
+    <circle cx="450" cy="174" r="8" fill="#ffd35a"/>
+  </g>
+
+  <g transform="translate(450,455)" filter="url(#shadow)">
+    <!-- outer rings -->
+    <circle r="330" fill="#050505" stroke="url(#gold)" stroke-width="18"/>
+    <circle r="304" fill="none" stroke="#6d4700" stroke-width="3"/>
+
+    <!-- segments: start at top, clockwise, 45 degrees each -->
+    <!-- PINGO segment centered at 22.5 deg from top -->
+    <path d="M0,0 L0,-285 A285,285 0 0,1 201.53,-201.53 Z" fill="url(#gold)" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L201.53,-201.53 A285,285 0 0,1 285,0 Z" fill="url(#darkseg)" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L285,0 A285,285 0 0,1 201.53,201.53 Z" fill="#0d0d0d" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L201.53,201.53 A285,285 0 0,1 0,285 Z" fill="url(#darkseg)" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L0,285 A285,285 0 0,1 -201.53,201.53 Z" fill="#0d0d0d" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L-201.53,201.53 A285,285 0 0,1 -285,0 Z" fill="url(#darkseg)" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L-285,0 A285,285 0 0,1 -201.53,-201.53 Z" fill="#0d0d0d" stroke="#ffd35a" stroke-width="5"/>
+    <path d="M0,0 L-201.53,-201.53 A285,285 0 0,1 0,-285 Z" fill="url(#darkseg)" stroke="#ffd35a" stroke-width="5"/>
+
+    <!-- labels, positioned at segment centers -->
+    <text x="101" y="-244" class="pingoText" transform="rotate(22.5 101 -244)">PINGO</text>
+    <text x="244" y="-101" class="segText" transform="rotate(67.5 244 -101)">0%</text>
+    <text x="244" y="101" class="segText" transform="rotate(112.5 244 101)">+1%</text>
+    <text x="101" y="244" class="segText" transform="rotate(157.5 101 244)">+2%</text>
+    <text x="-101" y="244" class="segText" transform="rotate(202.5 -101 244)">0%</text>
+    <text x="-244" y="101" class="segText" transform="rotate(247.5 -244 101)">+3%</text>
+    <text x="-244" y="-101" class="segText" transform="rotate(292.5 -244 -101)">+4%</text>
+    <text x="-101" y="-244" class="segText" transform="rotate(337.5 -101 -244)">0%</text>
+
+    <!-- center cap -->
+    <circle r="88" fill="url(#gold)" stroke="#fff0a8" stroke-width="7" filter="url(#goldGlow)"/>
+    <circle r="68" fill="#050505" opacity="0.12"/>
+    <text y="5" class="centerText">👑</text>
+  </g>
+
+  <text x="450" y="825" class="note">ترتيب الخانات: PINGO - 0% - 1% - 2% - 0% - 3% - 4% - 0%</text>
+  <text x="450" y="855" class="sub">اقتراح بصري: إبقاء المؤشر ثابتاً أعلى العجلة، والدوران يتوقف في منتصف الخانة الفائزة</text>
+</svg>

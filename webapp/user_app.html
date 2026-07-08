@@ -219,16 +219,17 @@
 
   /* ===== عجلة الحظ ===== */
   .wheel-container{text-align:center;padding:10px 0;margin-bottom:12px}
-  .wheel-wrapper{position:relative;width:260px;height:260px;margin:0 auto 16px}
+  .wheel-wrapper{position:relative;width:280px;height:280px;margin:0 auto 16px;filter:drop-shadow(0 18px 22px rgba(0,0,0,0.55))}
   .wheel-svg{width:100%;height:100%;transition:transform 4s cubic-bezier(0.17,0.67,0.12,0.99);transform:rotate(0deg)}
-  .wheel-pointer{position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:20px solid var(--gold);z-index:10;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4))}
-  .wheel-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--gold),#b8860b);display:flex;align-items:center;justify-content:center;font-size:24px;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+  .wheel-pointer{position:absolute;top:-9px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-top:24px solid var(--gold);z-index:10;filter:drop-shadow(0 0 8px rgba(255,215,0,0.8))}
+  .wheel-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:58px;height:58px;border-radius:50%;background:linear-gradient(135deg,#fff0a8,var(--gold),#9b6700);display:flex;align-items:center;justify-content:center;font-size:26px;z-index:5;box-shadow:0 0 16px rgba(255,215,0,0.45),0 4px 12px rgba(0,0,0,0.5);border:3px solid #fff1a6}
   .spin-btn{width:100%;background:linear-gradient(135deg,var(--gold),#b8860b);color:#0a0e1a;border:none;padding:16px;border-radius:16px;font-size:18px;font-weight:900;cursor:pointer;transition:all 0.2s;box-shadow:0 4px 16px rgba(255,215,0,0.2)}
   .spin-btn:active{transform:scale(0.97)}
   .spin-btn:disabled{background:rgba(255,255,255,0.06);color:var(--hint);cursor:not-allowed;box-shadow:none}
   .wheel-result{font-size:16px;font-weight:900;margin-top:12px;padding:12px;border-radius:12px;animation:fadeIn 0.4s}
   .wheel-result.win{background:var(--gold-dim);color:var(--gold)}
   .wheel-result.lose{background:rgba(255,255,255,0.04);color:var(--hint)}
+  .wheel-result.pingo{background:linear-gradient(135deg,#fff0a8,var(--gold),#b8860b);color:#050505;box-shadow:0 0 16px rgba(255,215,0,0.35)}
 
   /* ===== شريط التنقّل السفلي ===== */
   .bottom-nav{
@@ -770,37 +771,48 @@ function renderWheel(d){
   `;
 }
 
-let wheelSegments=[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]];
+let wheelSegments=[[0,1,'PINGO'],[0,1,'0%'],[1,1,'+1%'],[2,1,'+2%'],[0,1,'0%'],[3,1,'+3%'],[4,1,'+4%'],[0,1,'0%']];
 function openWheel(depositTxId, depositAmount){
   showWheelModal(depositTxId, depositAmount, wheelSegments);
 }
 
 function buildWheelSVG(segments){
-  const colors=['#ff5252','#4caf50','#ff9800','#4a9eff','#a855f7','#00d68f','#ffd700','#e91e63'];
   const n=segments.length;
   const angle=360/n;
+  const cx=130,cy=130,r=120;
   let paths='';
   let labels='';
   for(let i=0;i<n;i++){
     const startAngle=i*angle-90;
     const endAngle=(i+1)*angle-90;
-    const r=120;
-    const cx=130,cy=130;
     const x1=cx+r*Math.cos(startAngle*Math.PI/180);
     const y1=cy+r*Math.sin(startAngle*Math.PI/180);
     const x2=cx+r*Math.cos(endAngle*Math.PI/180);
     const y2=cy+r*Math.sin(endAngle*Math.PI/180);
-    const largeArc=angle>180?1:0;
-    paths+=`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${colors[i%8]}" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>`;
-    // نص القطاع
     const midAngle=startAngle+angle/2;
-    const tx=cx+(r*0.65)*Math.cos(midAngle*Math.PI/180);
-    const ty=cy+(r*0.65)*Math.sin(midAngle*Math.PI/180);
-    const pct=segments[i][0];
-    const label=pct===0?'💔':pct>=25?'💎+25%':`+${pct}%`;
-    labels+=`<text x="${tx}" y="${ty}" fill="white" font-size="${pct>=15?'14':'11'}" font-weight="900" text-anchor="middle" dominant-baseline="middle" transform="rotate(${midAngle+90},${tx},${ty})">${label}</text>`;
+    const largeArc=angle>180?1:0;
+    const rawLabel=segments[i][2] || (segments[i][0]===0?'0%':`+${segments[i][0]}%`);
+    const isPingo=String(rawLabel).toUpperCase()==='PINGO';
+    const fill=isPingo?'url(#wheelGold)':'url(#wheelBlack)';
+    const stroke='#ffd35a';
+    paths+=`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc},1 ${x2},${y2} Z" fill="${fill}" stroke="${stroke}" stroke-width="2.8"/>`;
+    const tx=cx+(r*0.68)*Math.cos(midAngle*Math.PI/180);
+    const ty=cy+(r*0.68)*Math.sin(midAngle*Math.PI/180);
+    const text=isPingo?'PINGO':(segments[i][0]===0?'0%':`+${segments[i][0]}%`);
+    const color=isPingo?'#050505':'#ffd35a';
+    const size=isPingo?'13':'14';
+    labels+=`<text x="${tx}" y="${ty}" fill="${color}" font-size="${size}" font-weight="900" text-anchor="middle" dominant-baseline="middle" transform="rotate(${midAngle+90},${tx},${ty})">${text}</text>`;
   }
-  return `<svg class="wheel-svg" id="wheelSVG" viewBox="0 0 260 260">${paths}${labels}<circle cx="130" cy="130" r="130" fill="none" stroke="rgba(255,215,0,0.3)" stroke-width="3"/></svg>`;
+  return `<svg class="wheel-svg" id="wheelSVG" viewBox="0 0 260 260">
+    <defs>
+      <linearGradient id="wheelGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0a8"/><stop offset="0.42" stop-color="#ffd35a"/><stop offset="1" stop-color="#9b6700"/></linearGradient>
+      <linearGradient id="wheelBlack" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c1c1c"/><stop offset="1" stop-color="#050505"/></linearGradient>
+    </defs>
+    <circle cx="130" cy="130" r="128" fill="#050505" stroke="url(#wheelGold)" stroke-width="8"/>
+    ${paths}${labels}
+    <circle cx="130" cy="130" r="44" fill="url(#wheelGold)" stroke="#fff0a8" stroke-width="4"/>
+    <text x="130" y="137" text-anchor="middle" font-size="26" font-weight="900">👑</text>
+  </svg>`;
 }
 
 function showWheelModal(depositTxId,depositAmount,segments){
@@ -850,11 +862,11 @@ async function doSpin(depositTxId){
     const segAngle = 360 / segCount;
     const targetIndex = data.segment_index;
 
-    // لحساب الزاوية: المؤشر ثابت في الأعلى. قطاع 0 يبدأ من المنتصف العلوي.
-    // لإحضار قطاع معين (i) إلى المؤشر، العجلة تدور عكس عقارب الساعة بمقدار (i * segAngle).
-    // نضيف دورات كاملة (360 * 5) للإبهار البصري، ونستخدم علامة سالبة للدوران.
+    // لحساب الزاوية: المؤشر ثابت في الأعلى. كل قطاع يبدأ من حد وينتهي بحد.
+    // يجب أن يقف المؤشر في منتصف القطاع الفائز، وليس على الحد بين قطاعين.
+    // لذلك نضيف نصف زاوية القطاع: (targetIndex + 0.5) * segAngle.
     const extraSpins = 5; 
-    const targetRotation = -(extraSpins * 360 + (targetIndex * segAngle));
+    const targetRotation = -(extraSpins * 360 + ((targetIndex + 0.5) * segAngle));
     
     // ضمان أن العجلة تكمل الدوران للأمام ولا تعود للخلف بصرياً
     const currentMod = currentRotation % 360;
@@ -868,7 +880,9 @@ async function doSpin(depositTxId){
     // نتيجة بعد 4 ثوانٍ
     setTimeout(()=>{
       const box=document.getElementById('wheelResultBox');
-      if(data.reward_amount>0){
+      if(String(data.label||'').toUpperCase()==='PINGO'){
+        box.innerHTML=`<div class="wheel-result pingo">🎯 PINGO!<br><span style="font-size:12px">جائزة خاصة — ستتواصل معك الإدارة للحصول على كود هدية 🎁</span></div>`;
+      }else if(data.reward_amount>0){
         box.innerHTML=`<div class="wheel-result win">🎉 مبروك! ربحت +${data.reward_percent}% = ${fmt(data.reward_amount)} ل.س<br><span style="font-size:11px">أُضيفت لرصيد المكافآت 🎁</span></div>`;
       }else{
         box.innerHTML=`<div class="wheel-result lose">💔 حظ أوفر! حاول مرة أخرى في الإيداع القادم</div>`;

@@ -924,7 +924,7 @@ function renderFeatures(d){
   const rewards=s.checkin_rewards||[0,500,1000,1500,2000,2500,3000,10000];
   const lbType=s.leaderboard_type||'all_time';
   const wheelEn=s.wheel_enabled!==false;
-  const wheelSeg=s.wheel_segments||[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]];
+  const wheelSeg=s.wheel_segments||[[0,1,'PINGO'],[0,1,'0%'],[1,1,'+1%'],[2,1,'+2%'],[0,1,'0%'],[3,1,'+3%'],[4,1,'+4%'],[0,1,'0%']];
   const ws=d.wheel_stats||{};
   const vipEn=s.vip_enabled!==false;
   const vipTiers=s.vip_tiers||[[0,0,0],[500000,1,10000],[2000000,2,50000],[5000000,3,200000]];
@@ -988,16 +988,17 @@ function renderFeatures(d){
 
     <div class="card">
       <div class="card-title">⚙️ قطاعات العجلة (8)</div>
-      <div class="warn-box">كل قطاع = [نسبة الجائزة %] + [احتمال الوقوع]. النسبة 0 = حظ أوفر 💔. مجموع الاحتمالات يفضل أن يكون 100.</div>
+      <div class="warn-box">الخانات ثابتة: PINGO - 0% - 1% - 2% - 0% - 3% - 4% - 0%. يمكنك تعديل ثقل/احتمال كل خانة فقط، ويمكن جعل أي وزن 0 لتعطيلها.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
         ${wheelSeg.map((seg,i)=>{
-          const pct=seg[0],prob=seg[1];
-          const label=pct===0?'💔 حظ أوفر':pct>=25?'💎 +'+pct+'%':'+'+pct+'%';
-          const color=pct===0?'var(--hint)':pct>=15?'var(--gold)':pct>=5?'var(--green)':'var(--blue)';
-          return `<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px;border-right:3px solid ${color}">
-            <div style="font-size:12px;font-weight:700;color:${color};margin-bottom:6px">قطاع ${i+1}: ${label}</div>
-            <div class="field" style="margin:0"><label style="font-size:10px">الجائزة %</label><input id="wseg_${i}_pct" inputmode="decimal" value="${pct}" style="padding:8px;font-size:13px"></div>
-            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">الاحتمال</label><input id="wseg_${i}_prob" inputmode="decimal" value="${prob}" style="padding:8px;font-size:13px"></div>
+          const pct=Number(seg[0]||0),prob=Number(seg[1]??1),rawLabel=seg[2]||String(pct)+'%';
+          const isPingo=String(rawLabel).toUpperCase()==='PINGO';
+          const label=isPingo?'🎯 PINGO':(pct===0?'💔 0% حظ أوفر':'+'+pct+'%');
+          const color=isPingo?'var(--gold)':pct===0?'var(--hint)':pct>=4?'var(--green)':'var(--blue)';
+          return `<div style="background:${isPingo?'rgba(255,215,0,0.10)':'rgba(255,255,255,0.03)'};border-radius:10px;padding:10px;border-right:3px solid ${color}">
+            <div style="font-size:12px;font-weight:900;color:${color};margin-bottom:6px">قطاع ${i+1}: ${label}</div>
+            <div class="hint" style="margin-bottom:6px">قيمة الخانة ثابتة ولا تعدّل من هنا</div>
+            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">الثقل / احتمال الظهور</label><input id="wseg_${i}_prob" inputmode="decimal" value="${prob}" style="padding:8px;font-size:13px"></div>
           </div>`;
         }).join('')}
       </div>
@@ -1097,15 +1098,15 @@ async function saveVIP(){
 async function toggleCashback(en){try{await apiPost(FEATURES_API,{action:"update_cashback",cashback_enabled:en});setNotice("✅ تم التحديث");loadFeatures();}catch(e){setNotice("❌ "+e.message,"error")}}
 async function saveCashback(){const pct=parseFloat(document.getElementById("cb_pct").value)||0;const minLoss=parseInt(document.getElementById("cb_min").value)||0;try{await apiPost(FEATURES_API,{action:"update_cashback",cashback_pct:pct,cashback_min_loss:minLoss});setNotice("✅ تم حفظ إعدادات الكاش باك");loadFeatures();}catch(e){setNotice("❌ "+e.message,"error")}}
 async function saveWheel(){
+  const fixed=[[0,1,'PINGO'],[0,1,'0%'],[1,1,'+1%'],[2,1,'+2%'],[0,1,'0%'],[3,1,'+3%'],[4,1,'+4%'],[0,1,'0%']];
   const segments=[];
   for(let i=0;i<8;i++){
-    const pct=parseFloat(document.getElementById('wseg_'+i+'_pct').value)||0;
-    const prob=parseFloat(document.getElementById('wseg_'+i+'_prob').value)||0;
-    segments.push([pct,prob]);
+    const prob=parseFloat(document.getElementById('wseg_'+i+'_prob').value);
+    segments.push([fixed[i][0], Number.isFinite(prob)?prob:0, fixed[i][2]]);
   }
-  const total=segments.reduce((a,s)=>a+s[1],0);
+  const total=segments.reduce((a,s)=>a+Math.max(0,s[1]),0);
   if(total<=0){setNotice('⚠️ مجموع الاحتمالات يجب أن يكون أكبر من صفر','error');return}
-  try{await apiPost(FEATURES_API,{action:'update_wheel',segments});setNotice('✅ تم حفظ القطاعات');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+  try{await apiPost(FEATURES_API,{action:'update_wheel',segments});setNotice('✅ تم حفظ احتمالات العجلة');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
 }
 async function createFlash(){
   const percent=parseFloat(val('flash_percent'));const duration=parseInt(val('flash_duration'));const method=document.getElementById('flash_method').value;

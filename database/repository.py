@@ -2756,6 +2756,40 @@ def get_leaderboard(limit=10, telegram_id=None):
 
 import json as _json
 
+WHEEL_FIXED_SEGMENTS = [
+    [0, 1, 'PINGO'],
+    [0, 1, '0%'],
+    [1, 1, '+1%'],
+    [2, 1, '+2%'],
+    [0, 1, '0%'],
+    [3, 1, '+3%'],
+    [4, 1, '+4%'],
+    [0, 1, '0%'],
+]
+
+
+def _fixed_wheel_segments_with_weights(saved=None):
+    """إرجاع قطاعات العجلة الثابتة مع أوزان قابلة للتعديل فقط."""
+    weights = []
+    if isinstance(saved, str):
+        try:
+            saved = _json.loads(saved or '[]')
+        except Exception:
+            saved = []
+    if isinstance(saved, list):
+        for i, item in enumerate(saved[:8]):
+            try:
+                # ندعم [pct, weight] أو [pct, weight, label] أو وزن مباشر
+                w = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else item
+                weights.append(float(w))
+            except Exception:
+                weights.append(1.0)
+    out = []
+    for i, fixed in enumerate(WHEEL_FIXED_SEGMENTS):
+        w = weights[i] if i < len(weights) else fixed[1]
+        out.append([fixed[0], float(w), fixed[2]])
+    return out
+
 def get_user_features_settings():
     """جلب إعدادات ميزات المستخدم (الحضور، الصدارة، شروط المكافآت)."""
     row = DatabaseManager.execute_query_dict("SELECT * FROM user_features_settings WHERE id = 1", fetch='one')
@@ -2954,33 +2988,29 @@ def get_checkin_stats():
 def get_wheel_settings():
     """جلب إعدادات العجلة (التفعيل + القطاعات + الحدود)."""
     feat = get_user_features_settings()
-    # صيغة القطاع: [نسبة الجائزة, الوزن/الاحتمال].
-    # يجب أن تبقى 8 قطاعات لأنها تُعرض وتُحرر في لوحة Dashboard بهذا العدد.
-    segments = [[0, 30], [2, 20], [0, 10], [5, 15], [10, 10], [0, 5], [15, 7], [25, 3]]
-    try:
-        _saved = _json.loads(feat.get('wheel_segments_json') or '[]')
-        if _saved:
-            segments = _saved
-    except Exception:
-        pass
+    # الخانات ثابتة: PINGO - 0% - 1% - 2% - 0% - 3% - 4% - 0%
+    # المتغير الوحيد من لوحة التحكم هو الوزن/الاحتمال لكل خانة.
+    segments = _fixed_wheel_segments_with_weights(feat.get('wheel_segments_json'))
+    bot_settings = get_bot_settings() or {}
     return {
         'wheel_enabled': feat.get('wheel_enabled', True),
         'segments': segments,
-        # 🆕 حد أدنى للإيداع لاستحقاق الدورة (افتراضي 50,000 ل.س)
-        'wheel_min_deposit': int(feat.get('wheel_min_deposit') or 50000),
+        # أهلية العجلة تتبع الحد الأدنى للإيداع في البوت.
+        'wheel_min_deposit': int(bot_settings.get('min_deposit_syp') or 20000),
         # 🆕 سقف أقصى لجائزة الدورة الواحدة (افتراضي 30,000 ل.س) — يحمي من الإيداعات الكبيرة
         'wheel_max_reward': int(feat.get('wheel_max_reward') or 30000),
     }
 
 
 def update_wheel_settings(wheel_enabled=None, segments=None):
-    """تحديث إعدادات العجلة."""
+    """تحديث إعدادات العجلة: الخانات ثابتة، والأوزان فقط قابلة للتعديل."""
     current = get_user_features_settings()
     new_enabled = wheel_enabled if wheel_enabled is not None else current.get('wheel_enabled', True)
     if segments is not None:
-        seg_json = _json.dumps([[float(a), float(b)] for a, b in segments])
+        fixed_segments = _fixed_wheel_segments_with_weights(segments)
+        seg_json = _json.dumps(fixed_segments, ensure_ascii=False)
     else:
-        seg_json = current.get('wheel_segments_json', '[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]]')
+        seg_json = current.get('wheel_segments_json') or _json.dumps(WHEEL_FIXED_SEGMENTS, ensure_ascii=False)
     DatabaseManager.execute_query("""
         UPDATE user_features_settings
         SET wheel_enabled = %s, wheel_segments_json = %s, updated_at = CURRENT_TIMESTAMP
@@ -3065,11 +3095,14 @@ def spin_wheel_atomic(telegram_id, deposit_tx_id, deposit_amount):
             conn.rollback()
             return {'ok': False, 'reason': 'already_spun'}
 
-        # إضافة الجائزة لرصيد المكافآت
+        # إضافة الجائزة لرصيد المكافآت وربطها بنفس الإيداع لتُصرف نسبياً عند شحن اللعبة
         if reward_amount > 0:
             cursor.execute(
-                "UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s",
-                (reward_amount, tid)
+                """UPDATE users
+                   SET bonus_balance = COALESCE(bonus_balance, 0) + %s,
+                       bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s
+                   WHERE telegram_id = %s""",
+                (reward_amount, int(deposit_amount), tid)
             )
 
         # حفظ الدوران
