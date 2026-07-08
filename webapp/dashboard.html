@@ -953,12 +953,14 @@ function renderFeatures(d){
       </div>
     </div>
 
-    <!-- تعديل قيم المكافآت -->
+    <!-- إعدادات الحضور اليومي -->
     <div class="card">
-      <div class="card-title">💎 قيم مكافآت الحضور (ل.س)</div>
-      <div class="warn-box">عدّل قيم المكافآت لكل يوم من 1 إلى 7. اليوم 7 = الجائزة الكبرى.</div>
-      <div id="rewardsInputs">${rewards.slice(1).map((r,i)=>`<div class="field"><label>يوم ${i+1}${i===6?' 💥':''}</label><input id="reward_${i+1}" inputmode="numeric" value="${r}"></div>`).join('')}</div>
-      <button class="btn green" onclick="saveRewards()">💾 حفظ قيم المكافآت</button>
+      <div class="card-title">💎 إعدادات مكافأة الحضور</div>
+      <div class="warn-box">الحضور يتفعل بعد أول إيداع مقبول. لا توجد مكافآت يومية؛ المكافأة تُصرف عند إكمال الدورة دون انقطاع وتحقيق شرط الإيداع، ثم تُضاف تلقائياً عند أول شحن لعبة ناجح.</div>
+      <div class="field"><label>عدد أيام الدورة</label><input id="checkin_cycle_days" inputmode="numeric" value="${s.checkin_cycle_days||30}"></div>
+      <div class="field"><label>الحد الأدنى لمجموع إيداعات آخر 30 يوم</label><input id="checkin_min_deposit" inputmode="numeric" value="${s.checkin_min_deposit||50000}"></div>
+      <div class="field"><label>مكافأة إكمال الدورة</label><input id="checkin_completion_reward" inputmode="numeric" value="${s.checkin_completion_reward||20000}"></div>
+      <button class="btn green" onclick="saveCheckinSettings()">💾 حفظ إعدادات الحضور</button>
     </div>
 
     <!-- فلاش البونص -->
@@ -1072,10 +1074,11 @@ async function toggleFeature(key,val){
   const payload={action:'update_features'};payload[key]=val;
   try{await apiPost(FEATURES_API,payload);setNotice('✅ تم التحديث');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
 }
-async function saveRewards(){
-  const rewards=[0];
-  for(let i=1;i<=7;i++){rewards.push(parseInt(document.getElementById('reward_'+i).value)||0)}
-  try{await apiPost(FEATURES_API,{action:'update_features',checkin_rewards:rewards});setNotice('✅ تم حفظ المكافآت');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
+async function saveCheckinSettings(){
+  const cycle=parseInt(document.getElementById('checkin_cycle_days').value)||30;
+  const minDep=parseInt(document.getElementById('checkin_min_deposit').value)||50000;
+  const reward=parseInt(document.getElementById('checkin_completion_reward').value)||20000;
+  try{await apiPost(FEATURES_API,{action:'update_features',checkin_cycle_days:cycle,checkin_min_deposit:minDep,checkin_completion_reward:reward});setNotice('✅ تم حفظ إعدادات الحضور');loadFeatures();}catch(e){setNotice('❌ '+e.message,'error')}
 }
 async function saveLbType(){
   const t=document.getElementById('lb_type').value;

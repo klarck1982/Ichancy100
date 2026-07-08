@@ -191,6 +191,7 @@ class DatabaseManager:
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS converted_amount_syp NUMERIC(15, 2);",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_ref VARCHAR(255);",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cashback_amount_syp BIGINT DEFAULT 0;",
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS checkin_amount_syp BIGINT DEFAULT 0;",
         ]
 
         gifts_table = """
@@ -462,12 +463,16 @@ class DatabaseManager:
         alter_users_affiliate_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_balance BIGINT DEFAULT 0;"
         # كاش باك مستحق ينتظر أول شحن لعبة ناجح ليُضاف إلى iChancy
         alter_users_cashback_pending_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_pending_balance BIGINT DEFAULT 0;"
+        # مكافأة حضور مستحقة تنتظر أول شحن لعبة ناجح
+        alter_users_checkin_pending_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_pending_balance BIGINT DEFAULT 0;"
         
         # 🆕 (Update 14 Fix) ALTER TABLE لإضافة أعمدة شروط المكافآت لجدول موجود
         alter_feat_bonus_min = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_min_transfer BIGINT DEFAULT 20000;"
         alter_feat_bonus_threshold = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_deposit_threshold BIGINT DEFAULT 100000;"
         alter_feat_bonus_days = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_deposit_days INT DEFAULT 30;"
         alter_feat_checkin_min_deposit = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_min_deposit BIGINT DEFAULT 50000;"
+        alter_feat_checkin_cycle_days = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_cycle_days INT DEFAULT 30;"
+        alter_feat_checkin_completion_reward = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_completion_reward BIGINT DEFAULT 20000;"
 
         # 🆕 (Update 15) عجلة الحظ - جدول تتبع الدورات
         wheel_spins_table = """
@@ -578,10 +583,13 @@ class DatabaseManager:
             alter_users_bonus_base_balance,
             alter_users_affiliate_balance,
             alter_users_cashback_pending_balance,
+            alter_users_checkin_pending_balance,
             alter_feat_bonus_min,
             alter_feat_bonus_threshold,
             alter_feat_bonus_days,
             alter_feat_checkin_min_deposit,
+            alter_feat_checkin_cycle_days,
+            alter_feat_checkin_completion_reward,
             wheel_spins_table,
             alter_feat_wheel_enabled,
             alter_feat_wheel_segments,

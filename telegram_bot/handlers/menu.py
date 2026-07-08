@@ -468,10 +468,11 @@ async def deposit_to_player_game(
         tx_id = reserve['tx_id']
         bonus_amount = int(reserve.get('bonus_amount') or 0)
         cashback_amount = int(reserve.get('cashback_amount') or 0)
+        checkin_amount = int(reserve.get('checkin_amount') or 0)
         total_to_game = int(reserve.get('total_to_game') or cash_amount)
 
         # 🔒 الخطوة 2: استدعاء iChancy API بالمبلغ الإجمالي (شحن نقدي + بونص مرفق)
-        logger.info(f"📤 Calling API depositToPlayer: player_id={player_id}, cash={cash_amount}, bonus={bonus_amount}, cashback={cashback_amount}, total={total_to_game}")
+        logger.info(f"📤 Calling API depositToPlayer: player_id={player_id}, cash={cash_amount}, bonus={bonus_amount}, cashback={cashback_amount}, checkin={checkin_amount}, total={total_to_game}")
         deposit_result = await ichancy_api_client.deposit_to_player(
             player_id=player_id,
             amount=total_to_game
@@ -513,7 +514,7 @@ async def deposit_to_player_game(
             f"⏰ الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
         await send_log_message(bot, log_text)
-        return {'success': True, 'cash_amount': cash_amount, 'bonus_amount': bonus_amount, 'cashback_amount': cashback_amount, 'total_to_game': total_to_game, 'tx_id': tx_id}
+        return {'success': True, 'cash_amount': cash_amount, 'bonus_amount': bonus_amount, 'cashback_amount': cashback_amount, 'checkin_amount': checkin_amount, 'total_to_game': total_to_game, 'tx_id': tx_id}
 
     except Exception as e:
         logger.error(f"❌ Exception in deposit_to_player: {e}", exc_info=True)
@@ -2252,7 +2253,8 @@ async def process_game_deposit_amount(message: Message, state: FSMContext):
     bonus_base_balance = int(user.get('bonus_base_balance') or 0)
     bonus_to_apply = repo.calculate_game_bonus_for_deposit(amount_syp, bonus_available, bonus_base_balance)
     cashback_pending = int(user.get('cashback_pending_balance') or 0)
-    total_nsp = amount_nsp + bonus_to_apply + cashback_pending
+    checkin_pending = int(user.get('checkin_pending_balance') or 0)
+    total_nsp = amount_nsp + bonus_to_apply + cashback_pending + checkin_pending
     data = await state.get_data()
     await state.update_data(
         game_deposit_syp=amount_syp,
@@ -2260,6 +2262,7 @@ async def process_game_deposit_amount(message: Message, state: FSMContext):
         game_deposit_cash_nsp=amount_nsp,
         game_deposit_bonus=bonus_to_apply,
         game_deposit_cashback=cashback_pending,
+        game_deposit_checkin=checkin_pending,
         game_deposit_cached_balance=int(data.get('game_deposit_cached_balance') or repo.get_user_game_balance(telegram_id)),
     )
 

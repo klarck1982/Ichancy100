@@ -628,7 +628,7 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT bot_balance, bonus_balance, bonus_base_balance, cashback_pending_balance FROM users WHERE telegram_id = %s FOR UPDATE",
+            "SELECT bot_balance, bonus_balance, bonus_base_balance, cashback_pending_balance, checkin_pending_balance FROM users WHERE telegram_id = %s FOR UPDATE",
             (tid,)
         )
         user_row = cursor.fetchone()
@@ -640,9 +640,10 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
         old_bonus_balance = int(user_row[1] or 0)
         old_bonus_base_balance = int(user_row[2] or 0)
         cashback_amount = int(user_row[3] or 0)
+        checkin_amount = int(user_row[4] or 0)
         bonus_amount = calculate_game_bonus_for_deposit(cash_amount, old_bonus_balance, old_bonus_base_balance)
         base_consumed = min(cash_amount, old_bonus_base_balance) if bonus_amount > 0 else 0
-        total_to_game = cash_amount + bonus_amount + cashback_amount
+        total_to_game = cash_amount + bonus_amount + cashback_amount + checkin_amount
 
         cursor.execute(
             """
@@ -650,7 +651,8 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             SET bot_balance = COALESCE(bot_balance, 0) - %s,
                 bonus_balance = COALESCE(bonus_balance, 0) - %s,
                 bonus_base_balance = GREATEST(0, COALESCE(bonus_base_balance, 0) - %s),
-                cashback_pending_balance = 0
+                cashback_pending_balance = 0,
+                checkin_pending_balance = 0
             WHERE telegram_id = %s AND COALESCE(bot_balance, 0) >= %s AND COALESCE(bonus_balance, 0) >= %s
             RETURNING bot_balance, bonus_balance, bonus_base_balance, cashback_pending_balance
             """,
@@ -673,19 +675,20 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             """
             INSERT INTO transactions (
                 user_telegram_id, type, payment_method, amount, transfer_number, status,
-                original_amount, original_currency, converted_amount_syp, external_ref, cashback_amount_syp
+                original_amount, original_currency, converted_amount_syp, external_ref, cashback_amount_syp, checkin_amount_syp
             )
-            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s, %s, %s)
+            VALUES (%s, 'deposit_to_game', 'game', %s, %s, 'pending', %s, 'cash_syp', %s, %s, %s, %s)
             RETURNING id
             """,
             (
                 tid,
                 total_to_game,
-                f'Game deposit for player {player_id} | cash={cash_amount} | bonus={bonus_amount} | cashback={cashback_amount} | total={total_to_game}',
+                f'Game deposit for player {player_id} | cash={cash_amount} | bonus={bonus_amount} | cashback={cashback_amount} | checkin={checkin_amount} | total={total_to_game}',
                 cash_amount,
                 bonus_amount,
                 str(base_consumed),
                 cashback_amount,
+                checkin_amount,
             )
         )
         tx_id = cursor.fetchone()[0]
@@ -703,6 +706,7 @@ def reserve_game_deposit_atomic(telegram_id, amount, player_id):
             'cash_amount': cash_amount,
             'bonus_amount': bonus_amount,
             'cashback_amount': cashback_amount,
+            'checkin_amount': checkin_amount,
             'total_to_game': total_to_game,
             'amount': cash_amount,
         }
@@ -726,20 +730,21 @@ def confirm_reserved_game_deposit(tx_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT user_telegram_id, status, COALESCE(converted_amount_syp, 0), COALESCE(cashback_amount_syp, 0) FROM transactions WHERE id = %s FOR UPDATE",
+            "SELECT user_telegram_id, status, COALESCE(converted_amount_syp, 0), COALESCE(cashback_amount_syp, 0), COALESCE(checkin_amount_syp, 0) FROM transactions WHERE id = %s FOR UPDATE",
             (int(tx_id),)
         )
         row = cursor.fetchone()
         if not row:
             conn.rollback()
             return False
-        user_telegram_id, status, bonus_amount, cashback_amount = row
+        user_telegram_id, status, bonus_amount, cashback_amount, checkin_amount = row
         if status != 'pending':
             conn.rollback()
             return True
         bonus_int = int(float(bonus_amount or 0))
         cashback_int = int(float(cashback_amount or 0))
-        active_bonus_to_add = bonus_int + cashback_int
+        checkin_int = int(float(checkin_amount or 0))
+        active_bonus_to_add = bonus_int + cashback_int + checkin_int
         if active_bonus_to_add > 0:
             cursor.execute(
                 "UPDATE users SET game_bonus_amount = COALESCE(game_bonus_amount, 0) + %s WHERE telegram_id = %s",
@@ -784,7 +789,7 @@ def revert_game_transaction(tx_id):
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp, external_ref, COALESCE(cashback_amount_syp, 0)
+            """SELECT user_telegram_id, type, amount, status, original_amount, converted_amount_syp, external_ref, COALESCE(cashback_amount_syp, 0), COALESCE(checkin_amount_syp, 0)
                FROM transactions WHERE id = %s FOR UPDATE""",
             (int(tx_id),)
         )
@@ -793,19 +798,20 @@ def revert_game_transaction(tx_id):
             conn.rollback()
             return False
 
-        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp, external_ref, cashback_amount_syp = tx_row
+        user_telegram_id, tx_type, amount, status, original_amount, converted_amount_syp, external_ref, cashback_amount_syp, checkin_amount_syp = tx_row
         if status == 'pending':
             if tx_type == 'deposit_to_game':
                 cash_refund = int(float(original_amount or amount or 0))
                 bonus_refund = int(float(converted_amount_syp or 0))
                 cashback_refund = int(float(cashback_amount_syp or 0))
+                checkin_refund = int(float(checkin_amount_syp or 0))
                 try:
                     base_refund = int(float(external_ref or 0))
                 except Exception:
                     base_refund = 0
                 cursor.execute(
-                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s, bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s, cashback_pending_balance = COALESCE(cashback_pending_balance, 0) + %s WHERE telegram_id = %s",
-                    (cash_refund, bonus_refund, base_refund, cashback_refund, str(user_telegram_id))
+                    "UPDATE users SET bot_balance = COALESCE(bot_balance, 0) + %s, bonus_balance = COALESCE(bonus_balance, 0) + %s, bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s, cashback_pending_balance = COALESCE(cashback_pending_balance, 0) + %s, checkin_pending_balance = COALESCE(checkin_pending_balance, 0) + %s WHERE telegram_id = %s",
+                    (cash_refund, bonus_refund, base_refund, cashback_refund, checkin_refund, str(user_telegram_id))
                 )
             elif tx_type == 'bonus_to_game':
                 bonus_refund = int(float(amount or 0))
@@ -2790,70 +2796,62 @@ def can_checkin_today(telegram_id):
 
 
 def do_daily_checkin(telegram_id):
-    """تسجيل الحضور اليومي وإرجاع المكافأة في (رصيد المكافآت غير القابل للسحب).
+    """تسجيل الحضور اليومي بنظام تقدّم بصري 30 يوم.
 
-    السلسلة تتضاعف: يوم 1=500، يوم 2=1000، ... يوم 7=10000 (جائزة الأسبوع).
-    لو فات يوم، تعود السلسلة من 1.
+    - يتفعل بعد أول إيداع مقبول أياً كانت قيمته.
+    - لا تُصرف مكافآت يومية.
+    - عند إكمال الدورة دون انقطاع، ومع تحقق حد إيداعات آخر 30 يوم، تُضاف مكافأة مستحقة
+      إلى checkin_pending_balance لتُضاف تلقائياً عند أول شحن لعبة ناجح.
     """
     tid = str(telegram_id)
-    today = get_syria_now().date()  # 🆕 (Update 14) توقيت سوريا
+    today = get_syria_now().date()
     info = get_checkin_info(tid)
+    feat_settings = get_user_features_settings()
+    cycle_days = int(feat_settings.get('checkin_cycle_days') or 30)
+    completion_reward = int(feat_settings.get('checkin_completion_reward') or 20000)
+    min_deposit = int(feat_settings.get('checkin_min_deposit') or 50000)
+    if cycle_days < 1:
+        cycle_days = 30
 
     if not can_checkin_today(tid):
         return {'ok': False, 'reason': 'already_checked_in'}
 
-    # 🆕 شرط الأهلية: يجب أن يكون اللاعب قد أودع حداً أدنى خلال الشهر (افتراضي 50,000 ل.س).
-    #    يمنع تجميع مكافآت الحضور دون أي إيداع حقيقي.
-    feat_settings = get_user_features_settings()
-    checkin_min_deposit = int(feat_settings.get('checkin_min_deposit') or 50000)
-    if checkin_min_deposit > 0:
-        recent_deposits = get_user_recent_deposits_total(tid, 30)
-        if recent_deposits < checkin_min_deposit:
-            return {
-                'ok': False,
-                'reason': 'deposit_required',
-                'required': checkin_min_deposit,
-                'current': recent_deposits,
-            }
-    # 🆕 دورة شهرية (30 يوماً)، المجموع = 20,000 ل.س بالضبط، تصاعدي مع معالم (يوم 7/15/30).
-    DEFAULT_MONTHLY_REWARDS = [
-        200, 200, 300, 300, 400, 400, 1200,   # أيام 1-7  (معلم يوم 7)
-        300, 400, 400, 400, 500, 500, 600,     # أيام 8-14
-        2000,                                   # معلم يوم 15
-        400, 500, 500, 500, 600, 600, 700,     # أيام 16-22
-        500, 600, 600, 700, 700, 800,          # أيام 23-28
-        1000,                                   # يوم 29
-        3200,                                   # معلم يوم 30 (الجائزة الكبرى)
-    ]  # المجموع = 20,000
-    reward_table = feat_settings.get('checkin_rewards') or DEFAULT_MONTHLY_REWARDS
+    # التفعيل بعد أول إيداع مقبول مهما كانت قيمته
+    any_deposit = DatabaseManager.execute_query(
+        "SELECT id FROM transactions WHERE user_telegram_id = %s AND type = 'deposit_bot' AND status = 'approved' LIMIT 1",
+        (tid,), fetch='one'
+    )
+    if not any_deposit:
+        return {'ok': False, 'reason': 'first_deposit_required'}
 
     last_date = info.get('last_checkin_date')
     if last_date:
         last = last_date if hasattr(last_date, 'year') else datetime.strptime(str(last_date), '%Y-%m-%d').date()
         diff = (today - last).days
-        if diff == 1:
-            new_streak = info['current_streak'] + 1
-        else:
-            new_streak = 1  # فات يوم → يعود التتابع للبداية (يوم 1)
+        new_streak = info['current_streak'] + 1 if diff == 1 else 1
     else:
         new_streak = 1
 
-    # دورة شهرية من 30 يوماً: بعد اليوم 30 يبدأ شهر جديد من اليوم 1.
-    cycle_len = len(reward_table) if reward_table else 30
-    if cycle_len <= 0:
-        cycle_len = 30
-    streak_cycle = ((new_streak - 1) % cycle_len)  # فهرس 0-based داخل الجدول
-    reward = int(reward_table[streak_cycle]) if 0 <= streak_cycle < len(reward_table) else 0
+    recent_deposits = get_user_recent_deposits_total(tid, 30)
+    cycle_completed = new_streak >= cycle_days
+    qualified = recent_deposits >= min_deposit
+    reward = completion_reward if (cycle_completed and qualified) else 0
+    stored_streak = 0 if cycle_completed else new_streak
 
-    # 🆕 (Update 14) إضافة المكافأة لرصيد المكافآت (bonus_balance) بدل bot_balance
     conn = None
     cursor = None
     try:
         conn = DatabaseManager.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT bonus_balance FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
-        if cursor.fetchone():
-            cursor.execute("UPDATE users SET bonus_balance = COALESCE(bonus_balance, 0) + %s WHERE telegram_id = %s", (reward, tid))
+        cursor.execute("SELECT checkin_pending_balance FROM users WHERE telegram_id = %s FOR UPDATE", (tid,))
+        if not cursor.fetchone():
+            conn.rollback()
+            return {'ok': False, 'reason': 'user_not_found'}
+        if reward > 0:
+            cursor.execute(
+                "UPDATE users SET checkin_pending_balance = COALESCE(checkin_pending_balance, 0) + %s WHERE telegram_id = %s",
+                (reward, tid)
+            )
         cursor.execute("""
             INSERT INTO daily_checkins (telegram_id, last_checkin_date, current_streak, total_checkins, total_rewards)
             VALUES (%s, %s, %s, 1, %s)
@@ -2862,9 +2860,20 @@ def do_daily_checkin(telegram_id):
                 current_streak = EXCLUDED.current_streak,
                 total_checkins = daily_checkins.total_checkins + 1,
                 total_rewards = daily_checkins.total_rewards + EXCLUDED.total_rewards
-        """, (tid, today, new_streak, reward))
+        """, (tid, today, stored_streak, reward))
         conn.commit()
-        return {'ok': True, 'reward': reward, 'streak': new_streak, 'day_in_cycle': streak_cycle}
+        return {
+            'ok': True,
+            'reward': reward,
+            'streak': new_streak,
+            'stored_streak': stored_streak,
+            'cycle_days': cycle_days,
+            'cycle_completed': cycle_completed,
+            'qualified': qualified,
+            'recent_deposits': recent_deposits,
+            'required_deposits': min_deposit,
+            'pending_reward': reward,
+        }
     except Exception as e:
         if conn:
             conn.rollback()
@@ -2875,102 +2884,6 @@ def do_daily_checkin(telegram_id):
             cursor.close()
         if conn:
             DatabaseManager.put_connection(conn)
-
-
-# ==================== ⚡ فلاش البونص (Flash Bonus) ====================
-
-def create_flash_bonus(percent, payment_method='all', duration_minutes=30, created_by=None):
-    """إنشاء فلاش بونص محدود الوقت."""
-    query = """
-    INSERT INTO flash_bonuses (percent, payment_method, starts_at, ends_at, is_active, created_by)
-    VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '%s minutes', TRUE, %s)
-    RETURNING id
-    """
-    result = DatabaseManager.execute_query(
-        query, (float(percent), payment_method, int(duration_minutes), str(created_by) if created_by else None),
-        fetch='one'
-    )
-    return int(result[0]) if result else None
-
-
-def get_active_flash_bonus():
-    """جلب فلاش البونص النشط حالياً (لو يوجد)."""
-    # أولاً نُعلّم المنتهية كغير نشطة
-    DatabaseManager.execute_query(
-        "UPDATE flash_bonuses SET is_active = FALSE WHERE ends_at < CURRENT_TIMESTAMP AND is_active = TRUE"
-    )
-    return DatabaseManager.execute_query_dict(
-        "SELECT * FROM flash_bonuses WHERE is_active = TRUE AND ends_at > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1",
-        fetch='one'
-    )
-
-
-def stop_flash_bonus(bonus_id=None):
-    """إيقاف فلاش بونص."""
-    if bonus_id:
-        DatabaseManager.execute_query("UPDATE flash_bonuses SET is_active = FALSE WHERE id = %s", (int(bonus_id),))
-    else:
-        DatabaseManager.execute_query("UPDATE flash_bonuses SET is_active = FALSE WHERE is_active = TRUE")
-
-
-def get_recent_flash_bonuses(limit=10):
-    return DatabaseManager.execute_query_dict(
-        "SELECT * FROM flash_bonuses ORDER BY id DESC LIMIT %s",
-        (int(limit),), fetch='all'
-    ) or []
-
-
-# ==================== 📊 لوحة الصدارة (Leaderboard) ====================
-
-def get_leaderboard(limit=10, telegram_id=None):
-    """جلب أعلى اللاعبين برصيد البوت + مكان المستخدم الحالي."""
-    feat = get_user_features_settings()
-    if not feat.get('leaderboard_enabled', True):
-        return {'top': [], 'disabled': True}
-
-    lb_type = feat.get('leaderboard_type', 'all_time')
-
-    # تحديد شرط الوقت
-    time_condition = ""
-    if lb_type == 'weekly':
-        time_condition = "AND created_at >= CURRENT_DATE - INTERVAL '7 days'"
-    elif lb_type == 'monthly':
-        time_condition = "AND created_at >= CURRENT_DATE - INTERVAL '30 days'"
-
-    top = DatabaseManager.execute_query_dict(
-        f"""SELECT u.telegram_id, u.telegram_username, COALESCE(SUM(CASE WHEN t.type='deposit_bot' AND t.status='approved' THEN t.amount ELSE 0 END), 0) as volume
-           FROM users u
-           LEFT JOIN transactions t ON t.user_telegram_id = u.telegram_id {time_condition}
-           WHERE u.terms_accepted = TRUE
-           GROUP BY u.telegram_id, u.telegram_username
-           HAVING COALESCE(SUM(CASE WHEN t.type='deposit_bot' AND t.status='approved' THEN t.amount ELSE 0 END), 0) > 0
-           ORDER BY volume DESC LIMIT %s""",
-        (int(limit),), fetch='all'
-    ) or []
-    result = {'top': []}
-    for i, u in enumerate(top):
-        result['top'].append({
-            'rank': i + 1,
-            'telegram_id': u.get('telegram_id'),
-            'username': u.get('telegram_username') or 'مستخدم',
-            'balance': int(u.get('bot_balance') or 0),
-        })
-    # مكان المستخدم الحالي
-    if telegram_id:
-        row = DatabaseManager.execute_query(
-            """SELECT COUNT(*) + 1 AS rank FROM users
-               WHERE bot_balance > (SELECT bot_balance FROM users WHERE telegram_id = %s)
-               AND terms_accepted = TRUE AND bot_balance > 0""",
-            (str(telegram_id),), fetch='one'
-        )
-        my_rank = int(row[0]) if row else 0
-        my_user = DatabaseManager.execute_query_dict(
-            "SELECT bot_balance FROM users WHERE telegram_id = %s",
-            (str(telegram_id),), fetch='one'
-        )
-        result['my_rank'] = my_rank
-        result['my_balance'] = int((my_user or {}).get('bot_balance') or 0)
-    return result
 
 
 # ==================== ⚙️ إعدادات ميزات المستخدم (Update 13) ====================
@@ -3039,6 +2952,8 @@ def get_user_features_settings():
         'checkin_rewards': rewards,
         'checkin_rewards_json': row.get('checkin_rewards_json') if row else None,
         'checkin_min_deposit': int(row.get('checkin_min_deposit') or 50000) if row else 50000,
+        'checkin_cycle_days': int(row.get('checkin_cycle_days') or 30) if row else 30,
+        'checkin_completion_reward': int(row.get('checkin_completion_reward') or 20000) if row else 20000,
         'leaderboard_enabled': row.get('leaderboard_enabled', True) if row else True,
         'leaderboard_type': row.get('leaderboard_type', 'all_time') if row else 'all_time',
         'bonus_min_transfer': int(row.get('bonus_min_transfer') or 20000) if row else 20000,
@@ -3057,13 +2972,16 @@ def get_user_features_settings():
     }
 
 
-def update_user_features_settings(checkin_enabled=None, checkin_rewards=None, leaderboard_enabled=None, leaderboard_type=None, bonus_min_transfer=None, bonus_deposit_threshold=None, bonus_deposit_days=None):
+def update_user_features_settings(checkin_enabled=None, checkin_rewards=None, leaderboard_enabled=None, leaderboard_type=None, bonus_min_transfer=None, bonus_deposit_threshold=None, bonus_deposit_days=None, checkin_min_deposit=None, checkin_cycle_days=None, checkin_completion_reward=None):
     """تحديث إعدادات ميزات المستخدم."""
     current = get_user_features_settings()
     new_checkin_enabled = checkin_enabled if checkin_enabled is not None else current['checkin_enabled']
     new_checkin_rewards = checkin_rewards if checkin_rewards is not None else current['checkin_rewards']
     new_lb_enabled = leaderboard_enabled if leaderboard_enabled is not None else current['leaderboard_enabled']
     new_lb_type = leaderboard_type if leaderboard_type is not None else current['leaderboard_type']
+    new_checkin_min = int(checkin_min_deposit) if checkin_min_deposit is not None else current.get('checkin_min_deposit', 50000)
+    new_checkin_cycle = int(checkin_cycle_days) if checkin_cycle_days is not None else current.get('checkin_cycle_days', 30)
+    new_checkin_reward = int(checkin_completion_reward) if checkin_completion_reward is not None else current.get('checkin_completion_reward', 20000)
     
     # 🆕 (Update 14) شروط المكافآت
     new_bonus_min = int(bonus_min_transfer) if bonus_min_transfer is not None else current['bonus_min_transfer']
@@ -3074,9 +2992,10 @@ def update_user_features_settings(checkin_enabled=None, checkin_rewards=None, le
     DatabaseManager.execute_query("""
         UPDATE user_features_settings
         SET checkin_enabled = %s, checkin_rewards_json = %s, leaderboard_enabled = %s, leaderboard_type = %s,
+            checkin_min_deposit = %s, checkin_cycle_days = %s, checkin_completion_reward = %s,
             bonus_min_transfer = %s, bonus_deposit_threshold = %s, bonus_deposit_days = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
-    """, (bool(new_checkin_enabled), rewards_json, bool(new_lb_enabled), str(new_lb_type), new_bonus_min, new_bonus_threshold, new_bonus_days))
+    """, (bool(new_checkin_enabled), rewards_json, bool(new_lb_enabled), str(new_lb_type), new_checkin_min, new_checkin_cycle, new_checkin_reward, new_bonus_min, new_bonus_threshold, new_bonus_days))
 
 
 def get_user_recent_deposits_total(telegram_id, days=30):
@@ -3701,3 +3620,45 @@ def get_cashback_stats():
         'total_count': int(total[0]) if total else 0,
         'total_paid': int(total[1]) if total else 0,
     }
+
+
+# ==================== ⚡ فلاش البونص (Flash Bonus) ====================
+
+def create_flash_bonus(percent, payment_method='all', duration_minutes=30, created_by=None):
+    """إنشاء فلاش بونص محدود الوقت."""
+    query = """
+    INSERT INTO flash_bonuses (percent, payment_method, starts_at, ends_at, is_active, created_by)
+    VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '%s minutes', TRUE, %s)
+    RETURNING id
+    """
+    result = DatabaseManager.execute_query(
+        query, (float(percent), payment_method, int(duration_minutes), str(created_by) if created_by else None),
+        fetch='one'
+    )
+    return int(result[0]) if result else None
+
+
+def get_active_flash_bonus():
+    """جلب فلاش البونص النشط حالياً (لو يوجد)."""
+    DatabaseManager.execute_query(
+        "UPDATE flash_bonuses SET is_active = FALSE WHERE ends_at < CURRENT_TIMESTAMP AND is_active = TRUE"
+    )
+    return DatabaseManager.execute_query_dict(
+        "SELECT * FROM flash_bonuses WHERE is_active = TRUE AND ends_at > CURRENT_TIMESTAMP ORDER BY id DESC LIMIT 1",
+        fetch='one'
+    )
+
+
+def stop_flash_bonus(bonus_id=None):
+    """إيقاف فلاش بونص."""
+    if bonus_id:
+        DatabaseManager.execute_query("UPDATE flash_bonuses SET is_active = FALSE WHERE id = %s", (int(bonus_id),))
+    else:
+        DatabaseManager.execute_query("UPDATE flash_bonuses SET is_active = FALSE WHERE is_active = TRUE")
+
+
+def get_recent_flash_bonuses(limit=10):
+    return DatabaseManager.execute_query_dict(
+        "SELECT * FROM flash_bonuses ORDER BY id DESC LIMIT %s",
+        (int(limit),), fetch='all'
+    ) or []

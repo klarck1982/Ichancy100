@@ -2228,16 +2228,25 @@ async def user_me_api_handler(request):
         checkin = {}
         try:
             info = repo.get_checkin_info(telegram_id)
-            # 🆕 شرط الأهلية: حد أدنى للإيداع خلال الشهر
             _feat = repo.get_user_features_settings()
             _min_dep = int(_feat.get('checkin_min_deposit') or 50000)
+            _cycle_days = int(_feat.get('checkin_cycle_days') or 30)
+            _completion_reward = int(_feat.get('checkin_completion_reward') or 20000)
             _recent = repo.get_user_recent_deposits_total(telegram_id, 30) if _min_dep > 0 else 0
             _eligible = (_min_dep <= 0) or (_recent >= _min_dep)
+            _has_deposit = bool(DatabaseManager.execute_query(
+                "SELECT id FROM transactions WHERE user_telegram_id = %s AND type = 'deposit_bot' AND status = 'approved' LIMIT 1",
+                (telegram_id,), fetch='one'
+            ))
             checkin = {
-                'can_checkin': repo.can_checkin_today(telegram_id) and _eligible,
+                'can_checkin': repo.can_checkin_today(telegram_id) and _has_deposit,
+                'has_deposit': _has_deposit,
                 'eligible': _eligible,
                 'min_deposit': _min_dep,
                 'recent_deposits': _recent,
+                'cycle_days': _cycle_days,
+                'completion_reward': _completion_reward,
+                'pending_balance': int(user.get('checkin_pending_balance') or 0),
                 'current_streak': info['current_streak'],
                 'total_checkins': info['total_checkins'],
                 'total_rewards': info['total_rewards'],
@@ -2359,6 +2368,7 @@ async def user_me_api_handler(request):
             'bot_balance': bot_balance,
             'bonus_balance': bonus_balance,
             'cashback_pending_balance': int(user.get('cashback_pending_balance') or 0),
+            'checkin_pending_balance': int(user.get('checkin_pending_balance') or 0),
             'active_game_bonus': int(user.get('game_bonus_amount') or 0),
             'game_balance': game_balance,
             'recent_transactions': recent_transactions,
@@ -2389,16 +2399,8 @@ async def user_checkin_handler(request):
         if not result.get('ok'):
             if result.get('reason') == 'already_checked_in':
                 return web.json_response({'error': 'لقد سجّلت حضورك اليوم بالفعل! عُد غداً.'}, status=400)
-            if result.get('reason') == 'deposit_required':
-                req = int(result.get('required') or 0)
-                cur = int(result.get('current') or 0)
-                return web.json_response({
-                    'error': (
-                        f'للمشاركة في مكافأة الحضور اليومي، يجب أن يكون إجمالي إيداعاتك '
-                        f'خلال آخر 30 يوماً {req:,} ل.س على الأقل.\n'
-                        f'إيداعاتك الحالية: {cur:,} ل.س.'
-                    )
-                }, status=403)
+            if result.get('reason') == 'first_deposit_required':
+                return web.json_response({'error': 'الحضور اليومي يتفعل بعد أول إيداع مقبول لك.'}, status=403)
             return web.json_response({'error': 'تعذّر تسجيل الحضور'}, status=500)
         return web.json_response(result)
     except Exception as e:
@@ -2624,6 +2626,9 @@ async def admin_features_post_handler(request):
             # 🆕 (Update 14 Fix) تحويل القيم النصية لـ boolean بشكل صحيح
             checkin_enabled = parse_bool(payload.get('checkin_enabled'))
             checkin_rewards = payload.get('checkin_rewards')
+            checkin_min_deposit = payload.get('checkin_min_deposit')
+            checkin_cycle_days = payload.get('checkin_cycle_days')
+            checkin_completion_reward = payload.get('checkin_completion_reward')
             leaderboard_enabled = parse_bool(payload.get('leaderboard_enabled'))
             leaderboard_type = payload.get('leaderboard_type')
             bonus_min_transfer = payload.get('bonus_min_transfer')
@@ -2646,6 +2651,9 @@ async def admin_features_post_handler(request):
             repo.update_user_features_settings(
                 checkin_enabled=checkin_enabled,
                 checkin_rewards=checkin_rewards,
+                checkin_min_deposit=checkin_min_deposit,
+                checkin_cycle_days=checkin_cycle_days,
+                checkin_completion_reward=checkin_completion_reward,
                 leaderboard_enabled=leaderboard_enabled,
                 leaderboard_type=leaderboard_type,
                 bonus_min_transfer=bonus_min_transfer,
