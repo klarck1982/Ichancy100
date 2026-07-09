@@ -192,6 +192,7 @@ class DatabaseManager:
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS external_ref VARCHAR(255);",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cashback_amount_syp BIGINT DEFAULT 0;",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS checkin_amount_syp BIGINT DEFAULT 0;",
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bonus_base_added_syp BIGINT DEFAULT 0;",
         ]
 
         gifts_table = """

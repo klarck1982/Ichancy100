@@ -999,8 +999,13 @@ def approve_deposit_atomic(telegram_id, deposit_amount, bonus_amount, tx_id, rev
 
         # 4) تعليم المعاملة approved
         cursor.execute(
-            "UPDATE transactions SET status = 'approved', reviewed_by = COALESCE(%s, reviewed_by), reviewed_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (str(reviewed_by) if reviewed_by else None, int(tx_id))
+            """UPDATE transactions
+               SET status = 'approved',
+                   reviewed_by = COALESCE(%s, reviewed_by),
+                   reviewed_at = CURRENT_TIMESTAMP,
+                   bonus_base_added_syp = COALESCE(bonus_base_added_syp, 0) + %s
+               WHERE id = %s""",
+            (str(reviewed_by) if reviewed_by else None, bonus_base_added, int(tx_id))
         )
 
         conn.commit()
@@ -3258,15 +3263,29 @@ def spin_wheel_atomic(telegram_id, deposit_tx_id, deposit_amount):
             conn.rollback()
             return {'ok': False, 'reason': 'already_spun'}
 
-        # إضافة الجائزة لرصيد المكافآت وربطها بنفس الإيداع لتُصرف نسبياً عند شحن اللعبة
+        # إضافة الجائزة لرصيد المكافآت.
+        # لا نكرر bonus_base_balance إذا كان نفس الإيداع أضاف قاعدة صرف مسبقاً (بونص/فلاش/VIP).
+        # إذا لم يكن للإيداع أي بونص سابق، نضيف قاعدة الإيداع هنا حتى تُصرف جائزة العجلة مع شحن نفس مبلغ الإيداع.
         if reward_amount > 0:
+            cursor.execute(
+                "SELECT COALESCE(bonus_base_added_syp, 0) FROM transactions WHERE id = %s FOR UPDATE",
+                (int(deposit_tx_id),)
+            )
+            tx_base_row = cursor.fetchone()
+            already_added_base = int(tx_base_row[0] or 0) if tx_base_row else 0
+            base_to_add = 0 if already_added_base > 0 else int(deposit_amount)
             cursor.execute(
                 """UPDATE users
                    SET bonus_balance = COALESCE(bonus_balance, 0) + %s,
                        bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s
                    WHERE telegram_id = %s""",
-                (reward_amount, int(deposit_amount), tid)
+                (reward_amount, base_to_add, tid)
             )
+            if base_to_add > 0:
+                cursor.execute(
+                    "UPDATE transactions SET bonus_base_added_syp = COALESCE(bonus_base_added_syp, 0) + %s WHERE id = %s",
+                    (base_to_add, int(deposit_tx_id))
+                )
 
         # حفظ الدوران
         cursor.execute(
