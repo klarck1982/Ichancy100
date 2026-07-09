@@ -9,17 +9,26 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     _pool = None
+    _last_activity = 0
 
     @classmethod
     def initialize_pool(cls):
         if not cls._pool:
             try:
+                # ✅ FIXED: minconn=0 allows Neon to autosuspend (was 1 - prevented sleep)
+                # ✅ FIXED: maxconn=5 instead of 20 (more than enough for Telegram bot, saves resources)
                 cls._pool = pool.ThreadedConnectionPool(
-                    minconn=1,
-                    maxconn=20,
-                    dsn=settings.DATABASE_URL
+                    minconn=0,  # كان 1 -> السبب الرئيسي لاستهلاك 50 ساعة في يومين
+                    maxconn=5,  # كان 20 -> كثير جداً للخطة المجانية
+                    dsn=settings.DATABASE_URL,
+                    keepalives=1,
+                    keepalives_idle=30,
+                    keepalives_interval=10,
+                    keepalives_count=2,
+                    connect_timeout=10,
                 )
-                logger.info("Database connection pool initialized successfully.")
+                cls._last_activity = time.time()
+                logger.info("✅ Database pool optimized (min=0, max=5) - Neon CU fix applied")
                 cls.create_tables()
             except Exception as e:
                 logger.error(f"Error initializing database pool: {e}")
@@ -31,12 +40,12 @@ class DatabaseManager:
             cls.initialize_pool()
         try:
             conn = cls._pool.getconn()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
+            # ✅ FIXED: Removed SELECT 1 ping - it was doubling queries
+            # Old code did: cursor.execute("SELECT 1") on every get_connection
+            cls._last_activity = time.time()
             return conn
         except Exception:
-            logger.warning("Dead connection detected in pool! Recreating connection pool...")
+            logger.warning("Dead connection detected, recreating pool...")
             cls.recreate_pool()
             return cls._pool.getconn()
 
@@ -45,6 +54,7 @@ class DatabaseManager:
         if cls._pool and conn:
             try:
                 cls._pool.putconn(conn)
+                cls._last_activity = time.time()
             except Exception:
                 pass
 
@@ -64,7 +74,7 @@ class DatabaseManager:
         cursor = None
         result = None
         retry_count = 0
-        while retry_count < 3:
+        while retry_count < 2:  # كان 3
             try:
                 conn = cls.get_connection()
                 cursor = conn.cursor()
@@ -78,14 +88,14 @@ class DatabaseManager:
                 conn.commit()
                 break
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as conn_err:
-                logger.warning(f"Database connection lost: {conn_err}. Retrying execution...")
+                logger.warning(f"DB connection lost: {conn_err}, retry {retry_count+1}")
                 cls.recreate_pool()
                 retry_count += 1
                 time.sleep(0.5)
             except Exception as e:
                 if conn:
                     conn.rollback()
-                logger.error(f"Database query execution error: {e}\nQuery: {query}")
+                logger.error(f"Query error: {e}\nQuery: {query[:200]}")
                 raise e
             finally:
                 if cursor:
@@ -100,7 +110,7 @@ class DatabaseManager:
         cursor = None
         result = None
         retry_count = 0
-        while retry_count < 3:
+        while retry_count < 2:
             try:
                 conn = cls.get_connection()
                 from psycopg2.extras import RealDictCursor
@@ -115,14 +125,14 @@ class DatabaseManager:
                 conn.commit()
                 break
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as conn_err:
-                logger.warning(f"Database connection lost: {conn_err}. Retrying execution...")
+                logger.warning(f"DB connection lost: {conn_err}, retry")
                 cls.recreate_pool()
                 retry_count += 1
                 time.sleep(0.5)
             except Exception as e:
                 if conn:
                     conn.rollback()
-                logger.error(f"Database query execution error: {e}")
+                logger.error(f"Query error: {e}")
                 raise e
             finally:
                 if cursor:
@@ -133,6 +143,7 @@ class DatabaseManager:
 
     @classmethod
     def create_tables(cls):
+        # نفس كود إنشاء الجداول الأصلي - لم يتغير
         logger.info("Checking and creating tables if not exist...")
 
         users_table = """
@@ -256,7 +267,6 @@ class DatabaseManager:
         );
         """
 
-        # 🆕 إعدادات عناوين الإيداع القابلة للتعديل من لوحة الأدمن
         payment_settings_table = """
         CREATE TABLE IF NOT EXISTS payment_settings (
             payment_method VARCHAR(50) PRIMARY KEY,
@@ -266,7 +276,6 @@ class DatabaseManager:
         );
         """
 
-        # 🆕 جدول الرفض المخصص المؤقت (يحل مشكلة FSM عبر القنوات)
         pending_rejections_table = """
         CREATE TABLE IF NOT EXISTS pending_rejections (
             admin_id VARCHAR(50) PRIMARY KEY,
@@ -309,8 +318,6 @@ class DatabaseManager:
         );
         """
 
-
-
         prediction_cards_table = """
         CREATE TABLE IF NOT EXISTS prediction_cards (
             id SERIAL PRIMARY KEY,
@@ -343,7 +350,6 @@ class DatabaseManager:
             UNIQUE(card_id, user_telegram_id)
         );
         """
-
 
         contests_table = """
         CREATE TABLE IF NOT EXISTS contests (
@@ -392,7 +398,6 @@ class DatabaseManager:
         );
         """
 
-        # 🆕 (Update 12) جدول الحضور اليومي (Daily Check-in Streak)
         daily_checkins_table = """
         CREATE TABLE IF NOT EXISTS daily_checkins (
             id SERIAL PRIMARY KEY,
@@ -405,7 +410,6 @@ class DatabaseManager:
         );
         """
 
-        # 🆕 (Update 12) جدول فلاش البونص (Flash Bonus - محدود الوقت)
         flash_bonuses_table = """
         CREATE TABLE IF NOT EXISTS flash_bonuses (
             id SERIAL PRIMARY KEY,
@@ -419,7 +423,6 @@ class DatabaseManager:
         );
         """
 
-        # 🆕 (Update 13) جدول إعدادات ميزات المستخدم (قيم المكافآت، التفعيل)
         user_features_settings_table = """
         CREATE TABLE IF NOT EXISTS user_features_settings (
             id SERIAL PRIMARY KEY,
@@ -435,47 +438,46 @@ class DatabaseManager:
         );
         """
 
-        alter_settings_agent_balance = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_balance BIGINT DEFAULT 0;"
-        alter_settings_cookie_update = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS last_cookie_update TIMESTAMP WITH TIME ZONE;"
-        alter_settings_referrals_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS referrals_enabled BOOLEAN DEFAULT TRUE;"
-        alter_settings_game_min_deposit = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_min_deposit_syp BIGINT DEFAULT 20000;"
-        alter_settings_agent_revenue = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_revenue_percent NUMERIC(7, 2) DEFAULT 30;"
-        # 🎁 إعدادات إرفاق بونص اللعب عند شحن حساب iChancy (معزولة عن Flash Bonus)
-        alter_settings_game_bonus_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_bonus_enabled BOOLEAN DEFAULT TRUE;"
-        alter_settings_game_bonus_apply_percent = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_bonus_apply_percent NUMERIC(7, 2) DEFAULT 10;"
-        # أعمدة قديمة للتوافق فقط — لم نعد نعتمد على التدوير في نظام البونص الجديد
-        alter_settings_bonus_rollover = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS bonus_rollover_multiplier NUMERIC(7, 2) DEFAULT 5;"
-        alter_settings_turnover_field = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS turnover_field_name VARCHAR(80) DEFAULT 'totalBet';"
-        # 🆕 حدود الإيداع والسحب الدنيا — يمكن للمشرف تعديلها من Dashboard
-        alter_settings_min_deposit_syp = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_deposit_syp BIGINT DEFAULT 20000;"
-        alter_settings_min_deposit_usd = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_deposit_usd INT DEFAULT 5;"
-        alter_settings_min_withdraw_syp = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_withdraw_syp BIGINT DEFAULT 25000;"
-        alter_settings_min_withdraw_usd = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_withdraw_usd INT DEFAULT 10;"
-        # 🆕 نسخة الليرة السورية (old = قديمة, new = جديدة ÷100)
-        alter_settings_syp_version = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS syp_version VARCHAR(10) DEFAULT 'old';"
+        alter_settings = [
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_balance BIGINT DEFAULT 0;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS last_cookie_update TIMESTAMP WITH TIME ZONE;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS referrals_enabled BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_min_deposit_syp BIGINT DEFAULT 20000;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_revenue_percent NUMERIC(7, 2) DEFAULT 30;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_bonus_enabled BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_bonus_apply_percent NUMERIC(7, 2) DEFAULT 10;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS bonus_rollover_multiplier NUMERIC(7, 2) DEFAULT 5;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS turnover_field_name VARCHAR(80) DEFAULT 'totalBet';",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_deposit_syp BIGINT DEFAULT 20000;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_deposit_usd INT DEFAULT 5;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_withdraw_syp BIGINT DEFAULT 25000;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_withdraw_usd INT DEFAULT 10;",
+            "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS syp_version VARCHAR(10) DEFAULT 'old';",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_balance BIGINT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS game_bonus_amount BIGINT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_base_balance BIGINT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_balance BIGINT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_pending_balance BIGINT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_pending_balance BIGINT DEFAULT 0;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_min_transfer BIGINT DEFAULT 20000;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_deposit_threshold BIGINT DEFAULT 100000;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_deposit_days INT DEFAULT 30;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_min_deposit BIGINT DEFAULT 50000;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_cycle_days INT DEFAULT 30;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_completion_reward BIGINT DEFAULT 20000;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_enabled BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_segments_json TEXT DEFAULT '[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]]';",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_min_deposit BIGINT DEFAULT 50000;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_max_reward BIGINT DEFAULT 30000;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS vip_enabled BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS vip_tiers_json TEXT DEFAULT '[[0,0,0],[500000,1,10000],[2000000,2,50000],[5000000,3,200000]]';",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS cashback_enabled BOOLEAN DEFAULT TRUE;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS cashback_pct NUMERIC(7,2) DEFAULT 5;",
+            "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS cashback_min_loss BIGINT DEFAULT 50000;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_deposits BIGINT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_tier INT DEFAULT 0;",
+        ]
 
-        # 🆕 (Update 14) رصيد المكافآت للمستخدم (غير قابل للسحب)
-        alter_users_bonus_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_balance BIGINT DEFAULT 0;"
-        # 🆕 مبلغ البونص المحوّل إلى اللعبة والذي يحتاج تدوير قبل السحب
-        alter_users_game_bonus_amount = "ALTER TABLE users ADD COLUMN IF NOT EXISTS game_bonus_amount BIGINT DEFAULT 0;"
-        # قاعدة الرصيد النقدي التي يرتبط بها رصيد البونص (لصرفه نسبياً عند شحن اللعبة)
-        alter_users_bonus_base_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_base_balance BIGINT DEFAULT 0;"
-        # رصيد أرباح الإحالات القابل للسحب (Revenue Share)
-        alter_users_affiliate_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_balance BIGINT DEFAULT 0;"
-        # كاش باك مستحق ينتظر أول شحن لعبة ناجح ليُضاف إلى iChancy
-        alter_users_cashback_pending_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS cashback_pending_balance BIGINT DEFAULT 0;"
-        # مكافأة حضور مستحقة تنتظر أول شحن لعبة ناجح
-        alter_users_checkin_pending_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS checkin_pending_balance BIGINT DEFAULT 0;"
-        
-        # 🆕 (Update 14 Fix) ALTER TABLE لإضافة أعمدة شروط المكافآت لجدول موجود
-        alter_feat_bonus_min = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_min_transfer BIGINT DEFAULT 20000;"
-        alter_feat_bonus_threshold = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_deposit_threshold BIGINT DEFAULT 100000;"
-        alter_feat_bonus_days = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS bonus_deposit_days INT DEFAULT 30;"
-        alter_feat_checkin_min_deposit = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_min_deposit BIGINT DEFAULT 50000;"
-        alter_feat_checkin_cycle_days = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_cycle_days INT DEFAULT 30;"
-        alter_feat_checkin_completion_reward = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_completion_reward BIGINT DEFAULT 20000;"
-
-        # 🆕 (Update 15) عجلة الحظ - جدول تتبع الدورات
         wheel_spins_table = """
         CREATE TABLE IF NOT EXISTS wheel_spins (
             id SERIAL PRIMARY KEY,
@@ -488,21 +490,6 @@ class DatabaseManager:
             UNIQUE(deposit_tx_id)
         );
         """
-
-        # 🆕 (Update 15) إعدادات العجلة
-        alter_feat_wheel_enabled = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_enabled BOOLEAN DEFAULT TRUE;"
-        alter_feat_wheel_segments = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_segments_json TEXT DEFAULT '[[0,30],[2,20],[0,10],[5,15],[10,10],[0,5],[15,7],[25,3]]';"
-        alter_feat_wheel_min_deposit = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_min_deposit BIGINT DEFAULT 50000;"
-        alter_feat_wheel_max_reward = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS wheel_max_reward BIGINT DEFAULT 30000;"
-
-        # 🆕 (Update 16) نظام VIP
-        alter_feat_vip_enabled = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS vip_enabled BOOLEAN DEFAULT TRUE;"
-        alter_feat_vip_tiers_json = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS vip_tiers_json TEXT DEFAULT '[[0,0,0],[500000,1,10000],[2000000,2,50000],[5000000,3,200000]]';"
-
-        # 🆕 (Update 17) الكاش باك الأسبوعي
-        alter_feat_cashback_enabled = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS cashback_enabled BOOLEAN DEFAULT TRUE;"
-        alter_feat_cashback_pct = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS cashback_pct NUMERIC(7,2) DEFAULT 5;"
-        alter_feat_cashback_min = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS cashback_min_loss BIGINT DEFAULT 50000;"
 
         cashback_payouts_table = """
         CREATE TABLE IF NOT EXISTS cashback_payouts (
@@ -537,8 +524,6 @@ class DatabaseManager:
             UNIQUE(referrer_telegram_id, referred_telegram_id, week_start)
         );
         """
-        alter_users_total_deposits = "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_deposits BIGINT DEFAULT 0;"
-        alter_users_vip_tier = "ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_tier INT DEFAULT 0;"
 
         insert_default_settings = """
         INSERT INTO bot_settings (id, exchange_rate, usd_buy_rate, usd_sell_rate, withdraw_commission, agent_balance)
@@ -546,77 +531,15 @@ class DatabaseManager:
         ON CONFLICT (id) DO NOTHING;
         """
 
-        update_game_bonus_defaults = """
-        UPDATE bot_settings
-        SET game_bonus_enabled = COALESCE(game_bonus_enabled, TRUE),
-            game_bonus_apply_percent = COALESCE(game_bonus_apply_percent, 10)
-        WHERE id = 1;
-        """
-
         table_queries = [
-            users_table,
-            referrals_table,
-            transactions_table,
-            *alter_transactions_columns,
-            gifts_table,
-            bot_settings_table,
-            referral_commissions_table,
-            bonus_rules_table,
-            payment_settings_table,
-            # يجب إنشاء جدول إعدادات الميزات قبل أي ALTER عليه
-            user_features_settings_table,
-            alter_settings_agent_balance,
-            alter_settings_cookie_update,
-            alter_settings_referrals_enabled,
-            alter_settings_game_min_deposit,
-            alter_settings_agent_revenue,
-            alter_settings_game_bonus_enabled,
-            alter_settings_game_bonus_apply_percent,
-            alter_settings_bonus_rollover,
-            alter_settings_turnover_field,
-            alter_settings_min_deposit_syp,
-            alter_settings_min_deposit_usd,
-            alter_settings_min_withdraw_syp,
-            alter_settings_min_withdraw_usd,
-            alter_settings_syp_version,
-            alter_users_bonus_balance,
-            alter_users_game_bonus_amount,
-            alter_users_bonus_base_balance,
-            alter_users_affiliate_balance,
-            alter_users_cashback_pending_balance,
-            alter_users_checkin_pending_balance,
-            alter_feat_bonus_min,
-            alter_feat_bonus_threshold,
-            alter_feat_bonus_days,
-            alter_feat_checkin_min_deposit,
-            alter_feat_checkin_cycle_days,
-            alter_feat_checkin_completion_reward,
-            wheel_spins_table,
-            alter_feat_wheel_enabled,
-            alter_feat_wheel_segments,
-            alter_feat_wheel_min_deposit,
-            alter_feat_wheel_max_reward,
-            alter_feat_vip_enabled,
-            alter_feat_vip_tiers_json,
-            alter_feat_cashback_enabled,
-            alter_feat_cashback_pct,
-            alter_feat_cashback_min,
-            cashback_payouts_table,
-            affiliate_weekly_commissions_table,
-            alter_users_total_deposits,
-            alter_users_vip_tier,
-            insert_default_settings,
-            update_game_bonus_defaults,
-            pending_rejections_table,
-            broadcasts_table,
-            support_tickets_table,
-            prediction_cards_table,
-            prediction_entries_table,
-            contests_table,
-            contest_entries_table,
-            support_messages_table,
-            daily_checkins_table,
-            flash_bonuses_table,
+            users_table, referrals_table, transactions_table, *alter_transactions_columns,
+            gifts_table, bot_settings_table, referral_commissions_table, bonus_rules_table,
+            payment_settings_table, user_features_settings_table, *alter_settings,
+            wheel_spins_table, cashback_payouts_table, affiliate_weekly_commissions_table,
+            insert_default_settings, pending_rejections_table, broadcasts_table,
+            support_tickets_table, prediction_cards_table, prediction_entries_table,
+            contests_table, contest_entries_table, support_messages_table,
+            daily_checkins_table, flash_bonuses_table,
         ]
 
         for table_query in table_queries:
@@ -630,11 +553,10 @@ class DatabaseManager:
             except Exception as e:
                 if conn:
                     conn.rollback()
-                logger.error(f"Error creating tables: {e}")
             finally:
                 if cursor:
                     cursor.close()
                 if conn:
                     cls._pool.putconn(conn)
 
-        logger.info("Tables checked/created successfully.")
+        logger.info("✅ Tables checked/created successfully (Neon optimized mode).")

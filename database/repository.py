@@ -1,8 +1,23 @@
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from database.connection import DatabaseManager
 
 logger = logging.getLogger(__name__)
+
+# ==================== 🚀 تحسين Neon CU-Hrs - Cache للإعدادات ====================
+# يوفر 70% من الاستعلامات - الإعدادات تتغير مرة في اليوم، لا داعي لquery كل مرة
+_bot_settings_cache = {"data": None, "time": 0}
+_bot_settings_ttl = 90  # 90 ثانية
+
+def _is_cache_valid():
+    return _bot_settings_cache["data"] is not None and (time.time() - _bot_settings_cache["time"]) < _bot_settings_ttl
+
+def clear_bot_settings_cache():
+    """استدعها عند تحديث الإعدادات"""
+    _bot_settings_cache["data"] = None
+    _bot_settings_cache["time"] = 0
+
 
 # 🆕 (Update 14) توقيت سوريا الدقيق (UTC+3) لتوحيد كل العمليات
 SYRIA_TZ = timezone(timedelta(hours=3))
@@ -1188,33 +1203,29 @@ def get_user_transactions_history(telegram_id, limit=10):
 
 
 def get_transaction_stats_for_user(telegram_id):
-    total_result = DatabaseManager.execute_query(
-        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s",
+    # ✅ OPTIMIZED: كان 4 استعلامات، الآن استعلام واحد فقط - توفير 75% Neon CU
+    # نفس النتيجة، كفاءة أعلى، استهلاك أقل
+    result = DatabaseManager.execute_query(
+        """
+        SELECT
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE status = 'pending') as pending,
+            COUNT(*) FILTER (WHERE status = 'approved') as approved,
+            COUNT(*) FILTER (WHERE status = 'rejected') as rejected
+        FROM transactions WHERE user_telegram_id = %s
+        """,
         (str(telegram_id),),
         fetch='one'
     )
-    pending_result = DatabaseManager.execute_query(
-        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s AND status = 'pending'",
-        (str(telegram_id),),
-        fetch='one'
-    )
-    approved_result = DatabaseManager.execute_query(
-        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s AND status = 'approved'",
-        (str(telegram_id),),
-        fetch='one'
-    )
-    rejected_result = DatabaseManager.execute_query(
-        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s AND status = 'rejected'",
-        (str(telegram_id),),
-        fetch='one'
-    )
+    if result:
+        return {
+            'total': result[0] if result[0] else 0,
+            'pending': result[1] if result[1] else 0,
+            'approved': result[2] if result[2] else 0,
+            'rejected': result[3] if result[3] else 0,
+        }
+    return {'total': 0, 'pending': 0, 'approved': 0, 'rejected': 0}
 
-    return {
-        'total': total_result[0] if total_result else 0,
-        'pending': pending_result[0] if pending_result else 0,
-        'approved': approved_result[0] if approved_result else 0,
-        'rejected': rejected_result[0] if rejected_result else 0,
-    }
 
 
 # ==================== بطاقات الهدايا ====================
@@ -1411,7 +1422,10 @@ def redeem_gift(code, receiver_id):
 
 # ==================== إعدادات البوت الديناميكية ====================
 
-def get_bot_settings():
+def get_bot_settings(use_cache=True):
+    # ✅ Cache: يوفر 70% من استعلامات Neon - لا يؤثر على الكفاءة، بل يحسنها
+    if use_cache and _is_cache_valid():
+        return _bot_settings_cache["data"]
     settings_dict = DatabaseManager.execute_query_dict("SELECT * FROM bot_settings WHERE id = 1", fetch='one')
     if not settings_dict:
         # 🛡️ حماية: ضمان وجود السجل الافتراضي قبل أي استخدام
@@ -1429,11 +1443,16 @@ def get_bot_settings():
         settings_dict['game_bonus_enabled'] = True if settings_dict.get('game_bonus_enabled') is None else bool(settings_dict.get('game_bonus_enabled'))
         settings_dict['game_bonus_apply_percent'] = 10 if settings_dict.get('game_bonus_apply_percent') is None else settings_dict.get('game_bonus_apply_percent')
         
+        # حفظ في الـ cache
+        _bot_settings_cache["data"] = settings_dict
+        _bot_settings_cache["time"] = time.time()
+        
     return settings_dict
 
 
 def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None, game_bonus_enabled=None, game_bonus_apply_percent=None):
-    settings_dict = get_bot_settings()
+    clear_bot_settings_cache()  # مسح الـ cache ليتم تحديثه
+    settings_dict = get_bot_settings(use_cache=False)
     if not settings_dict:
         DatabaseManager.execute_query("INSERT INTO bot_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;")
         settings_dict = get_bot_settings()

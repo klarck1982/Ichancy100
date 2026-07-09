@@ -122,7 +122,7 @@ async def cookie_watchdog_task(bot: Bot):
         except Exception as e:
             logger.error(f"⚠️ Watchdog error: {e}")
 
-        await asyncio.sleep(300)
+        await asyncio.sleep(1800)  # OPTIMIZED: was 300 (5min) -> 1800 (30min) for Neon CU saving - session valid for hours, webhook check 30min is enough
 
 
 async def ensure_webhook(bot: Bot):
