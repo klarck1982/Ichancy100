@@ -60,11 +60,37 @@ daily_report_task = None
 routers_registered = False
 last_cookie_warning_sent = None  # 🆕 يمنع تكرار تنبيه الكوكيز
 SERVER_START_TS = time.time()
+last_agent_balance_db_update_ts = 0
+last_agent_balance_db_value = None
+
+
+def _should_update_agent_balance_cache(new_balance):
+    """تقليل الكتابة على Neon: لا نحدّث رصيد الكاشيرة إلا إذا تغير أو مر وقت كافٍ."""
+    global last_agent_balance_db_update_ts, last_agent_balance_db_value
+    try:
+        new_balance = int(new_balance)
+    except Exception:
+        return False
+    now = time.time()
+    min_interval = int(getattr(settings, 'WATCHDOG_AGENT_BALANCE_DB_UPDATE_SECONDS', 3600) or 3600)
+    if last_agent_balance_db_value is None:
+        last_agent_balance_db_value = new_balance
+        last_agent_balance_db_update_ts = now
+        return True
+    if new_balance != last_agent_balance_db_value:
+        last_agent_balance_db_value = new_balance
+        last_agent_balance_db_update_ts = now
+        return True
+    if now - last_agent_balance_db_update_ts >= min_interval:
+        last_agent_balance_db_update_ts = now
+        return True
+    return False
 
 
 async def cookie_watchdog_task(bot: Bot):
-    """فحص دوري للويبهوك وجلسة iChancy"""
-    logger.info("🍪 Watchdog started (interval: 5 min).")
+    """فحص دوري للويبهوك وجلسة iChancy مع إعدادات مخففة للخطة المجانية."""
+    interval = max(300, int(getattr(settings, 'WATCHDOG_INTERVAL_SECONDS', 1800) or 1800))
+    logger.info(f"🍪 Watchdog started (interval: {interval} sec).")
     while True:
         try:
             try:
@@ -86,7 +112,7 @@ async def cookie_watchdog_task(bot: Bot):
                     logger.info("✅ Watchdog: session refreshed!")
                     repo.update_cookie_timestamp()
                     admin_balance = await ichancy_api_client.get_admin_balance()
-                    if admin_balance is not None:
+                    if admin_balance is not None and _should_update_agent_balance_cache(admin_balance):
                         repo.update_bot_settings(agent_balance=admin_balance)
                 else:
                     logger.error("❌ Watchdog: auto-login failed!")
@@ -94,8 +120,11 @@ async def cookie_watchdog_task(bot: Bot):
                 logger.info("🟢 Watchdog: session healthy.")
                 admin_balance = await ichancy_api_client.get_admin_balance()
                 if admin_balance is not None:
-                    repo.update_bot_settings(agent_balance=admin_balance)
-                    logger.info(f"💰 Watchdog: cached agent balance = {admin_balance:,} NSP")
+                    if _should_update_agent_balance_cache(admin_balance):
+                        repo.update_bot_settings(agent_balance=admin_balance)
+                        logger.info(f"💰 Watchdog: cached agent balance = {admin_balance:,} NSP")
+                    else:
+                        logger.info(f"💰 Watchdog: agent balance unchanged/skipped DB write = {admin_balance:,} NSP")
 
             # 🆕 فحص رصيد الكاشيرة بشكل دوري
             await check_agent_balance_periodic(bot)
@@ -122,7 +151,7 @@ async def cookie_watchdog_task(bot: Bot):
         except Exception as e:
             logger.error(f"⚠️ Watchdog error: {e}")
 
-        await asyncio.sleep(1800)  # OPTIMIZED: was 300 (5min) -> 1800 (30min) for Neon CU saving - session valid for hours, webhook check 30min is enough
+        await asyncio.sleep(interval)
 
 
 async def ensure_webhook(bot: Bot):
@@ -460,8 +489,11 @@ async def on_startup(dispatcher: Dispatcher, bot: Bot):
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
 
-    if watchdog_task is None or watchdog_task.done():
-        watchdog_task = asyncio.create_task(cookie_watchdog_task(bot))
+    if getattr(settings, 'WATCHDOG_ENABLED', True):
+        if watchdog_task is None or watchdog_task.done():
+            watchdog_task = asyncio.create_task(cookie_watchdog_task(bot))
+    else:
+        logger.warning("🍪 Watchdog disabled by WATCHDOG_ENABLED=false (Neon free optimization).")
 
     if ensure_webhook_task is None or ensure_webhook_task.done():
         ensure_webhook_task = asyncio.create_task(ensure_webhook(bot))
@@ -747,6 +779,8 @@ async def admin_settings_get_handler(request):
             'agent_revenue_percent': float(bot_settings.get('agent_revenue_percent') or 30),
             'game_bonus_enabled': bool(bot_settings.get('game_bonus_enabled', True)),
             'game_bonus_apply_percent': float(bot_settings.get('game_bonus_apply_percent') or 10),
+            'syriatel_auto_mode': str(bot_settings.get('syriatel_auto_mode') or getattr(settings, 'SYRIATEL_AUTO_MODE', 'off') or 'off'),
+            'syriatel_auto_channel_id': str(bot_settings.get('syriatel_auto_channel_id') or getattr(settings, 'SYRIATEL_AUTO_CHANNEL_ID', '') or ''),
             'min_deposit_syp': int(bot_settings.get('min_deposit_syp') or 20000),
             'min_deposit_usd': int(bot_settings.get('min_deposit_usd') or 5),
             'min_withdraw_syp': int(bot_settings.get('min_withdraw_syp') or 25000),
@@ -780,6 +814,10 @@ async def admin_settings_post_handler(request):
             game_bonus_enabled_raw = payload.get('game_bonus_enabled', True)
             game_bonus_enabled = str(game_bonus_enabled_raw).lower() in ('1', 'true', 'yes', 'on') if not isinstance(game_bonus_enabled_raw, bool) else game_bonus_enabled_raw
             game_bonus_apply_percent = float(str(payload.get('game_bonus_apply_percent', '10')).replace('%', '').replace(',', '.'))
+            syriatel_auto_mode = str(payload.get('syriatel_auto_mode', 'off')).strip()
+            if syriatel_auto_mode not in ('off', 'verify_only', 'auto_approve'):
+                syriatel_auto_mode = 'off'
+            syriatel_auto_channel_id = str(payload.get('syriatel_auto_channel_id') or '').strip()
             # 🆕 حدود الإيداع والسحب الدنيا
             min_deposit_syp = int(str(payload.get('min_deposit_syp', '')).replace(',', ''))
             min_deposit_usd = int(str(payload.get('min_deposit_usd', '')).replace(',', ''))
@@ -807,6 +845,8 @@ async def admin_settings_post_handler(request):
                 agent_revenue_percent=agent_revenue_percent,
                 game_bonus_enabled=game_bonus_enabled,
                 game_bonus_apply_percent=game_bonus_apply_percent,
+                syriatel_auto_mode=syriatel_auto_mode,
+                syriatel_auto_channel_id=syriatel_auto_channel_id,
                 referrals_enabled=referrals_enabled,
                 min_deposit_syp=min_deposit_syp,
                 min_deposit_usd=min_deposit_usd,

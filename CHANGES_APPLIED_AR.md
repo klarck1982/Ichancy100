@@ -355,3 +355,110 @@ python -m pyflakes .
 - تمت إضافة عمود `bonus_base_added_syp` إلى جدول `transactions` لتتبع هل أضافت هذه المعاملة قاعدة صرف للبونص أم لا.
 
 بهذا لا يضطر المستخدم لشحن ضعف الإيداع للحصول على مكافآت جاءت من نفس الإيداع.
+
+---
+
+# دمج التحقق التلقائي لإيداعات Syriatel Cash
+
+تمت إضافة تكامل Syriatel Cash API:
+
+## الإعدادات الجديدة
+
+في متغيرات البيئة:
+
+```env
+SYRIATEL_API_TOKEN=
+SYRIATEL_API_QUERY=
+SYRIATEL_AUTO_VERIFY_ENABLED=true
+SYRIATEL_AUTO_APPROVE_ENABLED=true
+```
+
+- `SYRIATEL_API_TOKEN`: توكن API، لا يوضع في GitHub.
+- `SYRIATEL_API_QUERY`: رقم Syriatel Cash أو secret code حسب اشتراك API.
+- `SYRIATEL_AUTO_VERIFY_ENABLED`: تفعيل التحقق التلقائي.
+- `SYRIATEL_AUTO_APPROVE_ENABLED`: إذا نجح التحقق يتم قبول الإيداع تلقائياً.
+
+## المنطق
+
+عند إيداع Syriatel Cash:
+
+- يستخدم البوت رقم العملية أو رقم الهاتف الذي يرسله المستخدم في حقل الإثبات.
+- يستدعي `/IncomingHistory` من API.
+- يبحث عن حوالة مطابقة:
+  - رقم العملية أو رقم المرسل.
+  - المبلغ.
+  - حالة ناجحة `status = 1`.
+  - رقم العملية غير مستخدم سابقاً.
+- عند التطابق، يقبل الإيداع تلقائياً باستخدام نفس منطق البونصات وVIP والإحالات.
+- إذا لم يتم التحقق، يبقى الطلب pending للمراجعة اليدوية.
+
+## الأمان
+
+- يتم تخزين رقم العملية في `transactions.external_ref`.
+- يتم منع استخدام نفس رقم العملية مرتين.
+- إذا فشل API أو rate limit، لا يتم رفض الطلب؛ يبقى للمراجعة اليدوية.
+
+---
+
+# تحديث التحكم بأتمتة Syriatel Cash من لوحة المشرف
+
+تمت إضافة تحكم مباشر من Mini App في أتمتة إيداعات Syriatel Cash:
+
+## أوضاع التشغيل
+
+- `off`: يدوي بالكامل، لا يتم استدعاء API.
+- `verify_only`: يتحقق من API ويضيف ملاحظة/إشعار، لكن المشرف يقبل يدوياً.
+- `auto_approve`: يتحقق من API، وإذا وجد حوالة مطابقة يقبل الإيداع تلقائياً.
+
+## قناة خاصة
+
+تمت إضافة حقل قناة إشعارات Syriatel Auto:
+
+- يمكن ضبط `syriatel_auto_channel_id` من Mini App.
+- طلبات Syriatel وإشعارات التحقق تُرسل إلى هذه القناة إذا تم ضبطها.
+- إذا لم تُضبط قناة خاصة، يبقى السلوك الافتراضي.
+
+## متغيرات البيئة
+
+تمت إضافة fallback في متغيرات البيئة:
+
+```env
+SYRIATEL_AUTO_MODE=off
+SYRIATEL_AUTO_CHANNEL_ID=
+```
+
+ملاحظة: التوكن ورقم الاستعلام ما زالا في البيئة فقط:
+
+```env
+SYRIATEL_API_TOKEN=
+SYRIATEL_API_QUERY=
+```
+
+---
+
+# تحسين استهلاك Neon Free / تقليل CU-hours
+
+تمت إضافة إعدادات لتخفيف استهلاك Neon على الخطة المجانية:
+
+## متغيرات البيئة الجديدة
+
+```env
+WATCHDOG_ENABLED=true
+WATCHDOG_INTERVAL_SECONDS=1800
+WATCHDOG_AGENT_BALANCE_DB_UPDATE_SECONDS=3600
+DB_POOL_MINCONN=1
+DB_POOL_MAXCONN=5
+DB_VALIDATE_CONNECTION=false
+```
+
+## التغييرات
+
+- تقليل Watchdog الافتراضي من 5 دقائق إلى 30 دقيقة.
+- إمكانية تعطيل Watchdog بالكامل عبر `WATCHDOG_ENABLED=false`.
+- تقليل تحديث رصيد الكاشيرة في قاعدة البيانات؛ لا يتم الحفظ إلا عند تغير الرصيد أو بعد مدة محددة.
+- تخفيض الحد الأقصى لاتصالات قاعدة البيانات من 20 إلى 5 افتراضياً.
+- تعطيل فحص `SELECT 1` عند كل اتصال افتراضياً لتقليل الاستعلامات الزائدة.
+
+## ملاحظة
+
+استخدام UptimeRobot مع Watchdog كل 5 دقائق كان يبقي Render نشطاً، وبالتالي تبقى Neon مستيقظة وتستهلك CU-hours. الإعدادات الجديدة مناسبة أكثر للخطة المجانية.

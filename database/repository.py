@@ -1,23 +1,8 @@
 import logging
-import time
 from datetime import datetime, timezone, timedelta
 from database.connection import DatabaseManager
 
 logger = logging.getLogger(__name__)
-
-# ==================== 🚀 تحسين Neon CU-Hrs - Cache للإعدادات ====================
-# يوفر 70% من الاستعلامات - الإعدادات تتغير مرة في اليوم، لا داعي لquery كل مرة
-_bot_settings_cache = {"data": None, "time": 0}
-_bot_settings_ttl = 90  # 90 ثانية
-
-def _is_cache_valid():
-    return _bot_settings_cache["data"] is not None and (time.time() - _bot_settings_cache["time"]) < _bot_settings_ttl
-
-def clear_bot_settings_cache():
-    """استدعها عند تحديث الإعدادات"""
-    _bot_settings_cache["data"] = None
-    _bot_settings_cache["time"] = 0
-
 
 # 🆕 (Update 14) توقيت سوريا الدقيق (UTC+3) لتوحيد كل العمليات
 SYRIA_TZ = timezone(timedelta(hours=3))
@@ -1121,6 +1106,33 @@ def has_pending_transaction(telegram_id, tx_type=None):
     rows = get_user_pending_transactions(telegram_id, tx_type=tx_type)
     return len(rows) > 0
 
+def is_external_ref_used(external_ref, exclude_tx_id=None):
+    ref = str(external_ref or '').strip()
+    if not ref:
+        return False
+    if exclude_tx_id:
+        result = DatabaseManager.execute_query(
+            """SELECT id FROM transactions
+               WHERE external_ref = %s AND id <> %s AND status IN ('approved','completed')
+               LIMIT 1""",
+            (ref, int(exclude_tx_id)), fetch='one'
+        )
+    else:
+        result = DatabaseManager.execute_query(
+            """SELECT id FROM transactions
+               WHERE external_ref = %s AND status IN ('approved','completed')
+               LIMIT 1""",
+            (ref,), fetch='one'
+        )
+    return result is not None
+
+
+def set_transaction_external_ref(tx_id, external_ref):
+    DatabaseManager.execute_query(
+        "UPDATE transactions SET external_ref = %s WHERE id = %s",
+        (str(external_ref), int(tx_id))
+    )
+
 
 def update_transaction_status(tx_id, status, reviewed_by=None):
     query = """
@@ -1203,29 +1215,33 @@ def get_user_transactions_history(telegram_id, limit=10):
 
 
 def get_transaction_stats_for_user(telegram_id):
-    # ✅ OPTIMIZED: كان 4 استعلامات، الآن استعلام واحد فقط - توفير 75% Neon CU
-    # نفس النتيجة، كفاءة أعلى، استهلاك أقل
-    result = DatabaseManager.execute_query(
-        """
-        SELECT
-            COUNT(*) as total,
-            COUNT(*) FILTER (WHERE status = 'pending') as pending,
-            COUNT(*) FILTER (WHERE status = 'approved') as approved,
-            COUNT(*) FILTER (WHERE status = 'rejected') as rejected
-        FROM transactions WHERE user_telegram_id = %s
-        """,
+    total_result = DatabaseManager.execute_query(
+        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s",
         (str(telegram_id),),
         fetch='one'
     )
-    if result:
-        return {
-            'total': result[0] if result[0] else 0,
-            'pending': result[1] if result[1] else 0,
-            'approved': result[2] if result[2] else 0,
-            'rejected': result[3] if result[3] else 0,
-        }
-    return {'total': 0, 'pending': 0, 'approved': 0, 'rejected': 0}
+    pending_result = DatabaseManager.execute_query(
+        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s AND status = 'pending'",
+        (str(telegram_id),),
+        fetch='one'
+    )
+    approved_result = DatabaseManager.execute_query(
+        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s AND status = 'approved'",
+        (str(telegram_id),),
+        fetch='one'
+    )
+    rejected_result = DatabaseManager.execute_query(
+        "SELECT COUNT(*) FROM transactions WHERE user_telegram_id = %s AND status = 'rejected'",
+        (str(telegram_id),),
+        fetch='one'
+    )
 
+    return {
+        'total': total_result[0] if total_result else 0,
+        'pending': pending_result[0] if pending_result else 0,
+        'approved': approved_result[0] if approved_result else 0,
+        'rejected': rejected_result[0] if rejected_result else 0,
+    }
 
 
 # ==================== بطاقات الهدايا ====================
@@ -1422,10 +1438,7 @@ def redeem_gift(code, receiver_id):
 
 # ==================== إعدادات البوت الديناميكية ====================
 
-def get_bot_settings(use_cache=True):
-    # ✅ Cache: يوفر 70% من استعلامات Neon - لا يؤثر على الكفاءة، بل يحسنها
-    if use_cache and _is_cache_valid():
-        return _bot_settings_cache["data"]
+def get_bot_settings():
     settings_dict = DatabaseManager.execute_query_dict("SELECT * FROM bot_settings WHERE id = 1", fetch='one')
     if not settings_dict:
         # 🛡️ حماية: ضمان وجود السجل الافتراضي قبل أي استخدام
@@ -1442,17 +1455,14 @@ def get_bot_settings(use_cache=True):
         # مهم للمشاريع القائمة: إذا أُضيفت الأعمدة لاحقاً وكانت NULL نعتبرها مفعلة و10% افتراضياً.
         settings_dict['game_bonus_enabled'] = True if settings_dict.get('game_bonus_enabled') is None else bool(settings_dict.get('game_bonus_enabled'))
         settings_dict['game_bonus_apply_percent'] = 10 if settings_dict.get('game_bonus_apply_percent') is None else settings_dict.get('game_bonus_apply_percent')
-        
-        # حفظ في الـ cache
-        _bot_settings_cache["data"] = settings_dict
-        _bot_settings_cache["time"] = time.time()
+        settings_dict['syriatel_auto_mode'] = settings_dict.get('syriatel_auto_mode') or 'off'
+        settings_dict['syriatel_auto_channel_id'] = settings_dict.get('syriatel_auto_channel_id') or ''
         
     return settings_dict
 
 
-def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None, game_bonus_enabled=None, game_bonus_apply_percent=None):
-    clear_bot_settings_cache()  # مسح الـ cache ليتم تحديثه
-    settings_dict = get_bot_settings(use_cache=False)
+def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None, game_bonus_enabled=None, game_bonus_apply_percent=None, syriatel_auto_mode=None, syriatel_auto_channel_id=None):
+    settings_dict = get_bot_settings()
     if not settings_dict:
         DatabaseManager.execute_query("INSERT INTO bot_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;")
         settings_dict = get_bot_settings()
@@ -1475,10 +1485,12 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
     new_field = turnover_field_name if turnover_field_name is not None else settings_dict.get('turnover_field_name', 'totalBet')
     new_game_bonus_enabled = game_bonus_enabled if game_bonus_enabled is not None else settings_dict.get('game_bonus_enabled', True)
     new_game_bonus_apply_percent = game_bonus_apply_percent if game_bonus_apply_percent is not None else settings_dict.get('game_bonus_apply_percent', 10)
+    new_syriatel_auto_mode = syriatel_auto_mode if syriatel_auto_mode is not None else settings_dict.get('syriatel_auto_mode', 'off')
+    new_syriatel_auto_channel_id = syriatel_auto_channel_id if syriatel_auto_channel_id is not None else settings_dict.get('syriatel_auto_channel_id', '')
 
     query = """
     UPDATE bot_settings
-    SET exchange_rate = %s, usd_buy_rate = %s, usd_sell_rate = %s, withdraw_commission = %s, ichancy_cookie = %s, agent_balance = %s, referrals_enabled = %s, game_min_deposit_syp = %s, agent_revenue_percent = %s, min_deposit_syp = %s, min_deposit_usd = %s, min_withdraw_syp = %s, min_withdraw_usd = %s, syp_version = %s, bonus_rollover_multiplier = %s, turnover_field_name = %s, game_bonus_enabled = %s, game_bonus_apply_percent = %s
+    SET exchange_rate = %s, usd_buy_rate = %s, usd_sell_rate = %s, withdraw_commission = %s, ichancy_cookie = %s, agent_balance = %s, referrals_enabled = %s, game_min_deposit_syp = %s, agent_revenue_percent = %s, min_deposit_syp = %s, min_deposit_usd = %s, min_withdraw_syp = %s, min_withdraw_usd = %s, syp_version = %s, bonus_rollover_multiplier = %s, turnover_field_name = %s, game_bonus_enabled = %s, game_bonus_apply_percent = %s, syriatel_auto_mode = %s, syriatel_auto_channel_id = %s
     WHERE id = 1
     """
     DatabaseManager.execute_query(
@@ -1501,7 +1513,9 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
             float(new_rollover),
             str(new_field),
             bool(new_game_bonus_enabled),
-            float(new_game_bonus_apply_percent)
+            float(new_game_bonus_apply_percent),
+            str(new_syriatel_auto_mode or 'off'),
+            str(new_syriatel_auto_channel_id or '')
         )
     )
 

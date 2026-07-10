@@ -95,3 +95,23 @@ def validate_config():
     # 🆕 جديد - تحذير لأسعار الصرف
     if not EXCHANGE_RATE_BUY or not EXCHANGE_RATE_SELL:
         print("⚠️ WARNING: Exchange rates not properly configured")
+
+
+# Syriatel Cash API auto verification
+SYRIATEL_API_TOKEN = os.getenv('SYRIATEL_API_TOKEN')
+SYRIATEL_API_QUERY = os.getenv('SYRIATEL_API_QUERY')  # phone number or secret code subscribed in API
+SYRIATEL_AUTO_VERIFY_ENABLED = os.getenv('SYRIATEL_AUTO_VERIFY_ENABLED', 'false').lower() == 'true'
+SYRIATEL_AUTO_APPROVE_ENABLED = os.getenv('SYRIATEL_AUTO_APPROVE_ENABLED', 'true').lower() == 'true'
+
+# Optional defaults for Syriatel Cash automation; DB/Mini App settings override these.
+SYRIATEL_AUTO_MODE = os.getenv('SYRIATEL_AUTO_MODE', 'off')  # off | verify_only | auto_approve
+SYRIATEL_AUTO_CHANNEL_ID = os.getenv('SYRIATEL_AUTO_CHANNEL_ID')
+
+
+# Free-tier / Neon optimization
+WATCHDOG_ENABLED = os.getenv('WATCHDOG_ENABLED', 'true').lower() == 'true'
+WATCHDOG_INTERVAL_SECONDS = int(os.getenv('WATCHDOG_INTERVAL_SECONDS', '1800'))  # 30 minutes default instead of 5
+WATCHDOG_AGENT_BALANCE_DB_UPDATE_SECONDS = int(os.getenv('WATCHDOG_AGENT_BALANCE_DB_UPDATE_SECONDS', '3600'))
+DB_POOL_MINCONN = int(os.getenv('DB_POOL_MINCONN', '1'))
+DB_POOL_MAXCONN = int(os.getenv('DB_POOL_MAXCONN', '5'))
+DB_VALIDATE_CONNECTION = os.getenv('DB_VALIDATE_CONNECTION', 'false').lower() == 'true'
