@@ -115,3 +115,8 @@ WATCHDOG_AGENT_BALANCE_DB_UPDATE_SECONDS = int(os.getenv('WATCHDOG_AGENT_BALANCE
 DB_POOL_MINCONN = int(os.getenv('DB_POOL_MINCONN', '1'))
 DB_POOL_MAXCONN = int(os.getenv('DB_POOL_MAXCONN', '5'))
 DB_VALIDATE_CONNECTION = os.getenv('DB_VALIDATE_CONNECTION', 'false').lower() == 'true'
+
+# iChancy safety: verify player balance after transfer/withdraw before telling user it succeeded
+VERIFY_ICHANCY_TRANSFER = os.getenv('VERIFY_ICHANCY_TRANSFER', 'true').lower() == 'true'
+ICHANCY_TRANSFER_VERIFY_ATTEMPTS = int(os.getenv('ICHANCY_TRANSFER_VERIFY_ATTEMPTS', '3'))
+ICHANCY_TRANSFER_VERIFY_DELAY_SECONDS = float(os.getenv('ICHANCY_TRANSFER_VERIFY_DELAY_SECONDS', '1.0'))

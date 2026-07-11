@@ -63,6 +63,35 @@ class IChancyClient:
             return msg in {"unauthorized", "expired", "session_expired", "ex", "not_authorized"}
         return False
 
+    @staticmethod
+    def _extract_balance_from_result(result_data):
+        """استخراج balance من أشكال ردود iChancy المختلفة. يرجع None إذا لا يوجد balance صريح."""
+        if result_data is None:
+            return None
+        if isinstance(result_data, (int, float)):
+            return int(result_data)
+        if isinstance(result_data, list):
+            for item in result_data:
+                val = IChancyClient._extract_balance_from_result(item)
+                if val is not None:
+                    return val
+            return None
+        if isinstance(result_data, dict):
+            for key in ('balance', 'Balance', 'amount', 'walletBalance', 'currentBalance'):
+                if key in result_data:
+                    try:
+                        return int(float(result_data.get(key) or 0))
+                    except Exception:
+                        return None
+            for key in ('record', 'player', 'data', 'result'):
+                if key in result_data:
+                    val = IChancyClient._extract_balance_from_result(result_data.get(key))
+                    if val is not None:
+                        return val
+            if 'records' in result_data:
+                return IChancyClient._extract_balance_from_result(result_data.get('records'))
+        return None
+
     def load_cookie_from_db(self):
         try:
             from database.connection import DatabaseManager
@@ -400,13 +429,17 @@ class IChancyClient:
                     response = self.session.post(url, json=payload, timeout=30)
                     data = response.json()
                     result_data = data.get('result')
-            results = result_data if isinstance(result_data, list) else []
-            if results:
-                return int(results[0].get('balance', 0))
-            return 0
+            if self._is_invalid_session_result(result_data):
+                logger.warning(f"Invalid session result on player balance after retry: {result_data}")
+                return None
+            balance = self._extract_balance_from_result(result_data)
+            if balance is not None:
+                return int(balance)
+            logger.warning(f"Player balance response did not contain a balance field: {data}")
+            return None
         except Exception as e:
             logger.error(f"Error fetching player balance: {e}")
-            return 0
+            return None
 
     def _transfer_money(self, player_id, amount, comment=None):
         url = f"{self.BASE_URL}/global/api/Player/depositToPlayer"
@@ -486,6 +519,9 @@ class IChancyClient:
     async def get_player_id(self, target_username):
         return await asyncio.to_thread(self._get_player_id, target_username)
 
+    async def login_agent(self):
+        return await asyncio.to_thread(self._login_agent)
+
     async def get_admin_balance(self):
         return await asyncio.to_thread(self._get_admin_balance)
 
@@ -534,23 +570,43 @@ class IChancyClient:
     # ================================================================
 
     async def deposit_to_player(self, player_id, amount, comment=None):
-        """إيداع مبلغ في حساب اللاعب — يعيد {'success': bool, 'message': str}."""
+        """إيداع مبلغ في حساب اللاعب مع تحقق رصيد بعد العملية قبل إعلان النجاح."""
         try:
+            before_balance = await self.get_player_balance(player_id) if getattr(settings, 'VERIFY_ICHANCY_TRANSFER', True) else None
             ok = await asyncio.to_thread(self._transfer_money, player_id, amount, comment)
-            if ok:
-                return {'success': True, 'message': 'تم الإيداع في حساب اللاعب بنجاح.', 'player_id': player_id, 'amount': amount}
-            return {'success': False, 'message': 'فشل الإيداع في حساب اللاعب (لم يؤكد الـ API العملية).'}
+            if not ok:
+                return {'success': False, 'message': 'فشل الإيداع في حساب اللاعب (لم يؤكد الـ API العملية).'}
+            if getattr(settings, 'VERIFY_ICHANCY_TRANSFER', True):
+                attempts = int(getattr(settings, 'ICHANCY_TRANSFER_VERIFY_ATTEMPTS', 3) or 3)
+                delay = float(getattr(settings, 'ICHANCY_TRANSFER_VERIFY_DELAY_SECONDS', 1.0) or 1.0)
+                for _ in range(max(1, attempts)):
+                    await asyncio.sleep(delay)
+                    after_balance = await self.get_player_balance(player_id)
+                    if before_balance is not None and after_balance is not None and int(after_balance) >= int(before_balance) + int(amount):
+                        return {'success': True, 'message': 'تم الإيداع وتحقق الرصيد بنجاح.', 'player_id': player_id, 'amount': amount, 'before_balance': before_balance, 'after_balance': after_balance}
+                return {'success': False, 'uncertain': True, 'message': f'أرسل API نتيجة نجاح، لكن لم يتم تأكيد زيادة رصيد اللاعب بعد التحقق. قبل={before_balance}'}
+            return {'success': True, 'message': 'تم الإيداع في حساب اللاعب بنجاح.', 'player_id': player_id, 'amount': amount}
         except Exception as e:
             logger.error(f"deposit_to_player exception: {e}")
             return {'success': False, 'message': str(e)}
 
     async def withdraw_from_player(self, player_id, amount, comment=None):
-        """سحب مبلغ من حساب اللاعب — يعيد {'success': bool, 'message': str}."""
+        """سحب مبلغ من حساب اللاعب مع تحقق رصيد بعد العملية قبل إعلان النجاح."""
         try:
+            before_balance = await self.get_player_balance(player_id) if getattr(settings, 'VERIFY_ICHANCY_TRANSFER', True) else None
             ok = await asyncio.to_thread(self._withdraw_money, player_id, amount, comment)
-            if ok:
-                return {'success': True, 'message': 'تم السحب من حساب اللاعب بنجاح.', 'player_id': player_id, 'amount': amount}
-            return {'success': False, 'message': 'فشل السحب من حساب اللاعب (لم يؤكد الـ API العملية).'}
+            if not ok:
+                return {'success': False, 'message': 'فشل السحب من حساب اللاعب (لم يؤكد الـ API العملية).'}
+            if getattr(settings, 'VERIFY_ICHANCY_TRANSFER', True):
+                attempts = int(getattr(settings, 'ICHANCY_TRANSFER_VERIFY_ATTEMPTS', 3) or 3)
+                delay = float(getattr(settings, 'ICHANCY_TRANSFER_VERIFY_DELAY_SECONDS', 1.0) or 1.0)
+                for _ in range(max(1, attempts)):
+                    await asyncio.sleep(delay)
+                    after_balance = await self.get_player_balance(player_id)
+                    if before_balance is not None and after_balance is not None and int(after_balance) <= max(0, int(before_balance) - int(amount)):
+                        return {'success': True, 'message': 'تم السحب وتحقق الرصيد بنجاح.', 'player_id': player_id, 'amount': amount, 'before_balance': before_balance, 'after_balance': after_balance}
+                return {'success': False, 'uncertain': True, 'message': f'أرسل API نتيجة نجاح، لكن لم يتم تأكيد انخفاض رصيد اللاعب بعد التحقق. قبل={before_balance}'}
+            return {'success': True, 'message': 'تم السحب من حساب اللاعب بنجاح.', 'player_id': player_id, 'amount': amount}
         except Exception as e:
             logger.error(f"withdraw_from_player exception: {e}")
             return {'success': False, 'message': str(e)}

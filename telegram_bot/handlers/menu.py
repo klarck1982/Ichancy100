@@ -484,7 +484,22 @@ async def deposit_to_player_game(
         if not deposit_result or not deposit_result.get('success'):
             error_msg = deposit_result.get('message', 'Unknown error') if deposit_result else 'No response from API'
             logger.error(f"❌ depositToPlayer API failed: {error_msg}")
-            # 🔒 إعادة الرصيد فوراً بعد فشل الـ API
+            if deposit_result and deposit_result.get('uncertain'):
+                # لا نعيد الرصيد تلقائياً لأن API قد يكون نفذ الشحن لكن التحقق من الرصيد فشل/تأخر.
+                # نترك المعاملة pending للمراجعة اليدوية حتى لا يحدث شحن فعلي + رد رصيد للمستخدم.
+                log_text = (
+                    f"⚠️ <b>شحن لعبة غير مؤكد ويحتاج مراجعة</b>\n\n"
+                    f"👤 المستخدم: {username} ({user_id})\n"
+                    f"🎮 حساب اللعبة: {player_id}\n"
+                    f"💰 المبلغ النقدي: {cash_amount:,} SYP\n"
+                    f"🎁 البونص المرفق: {bonus_amount:,} SYP\n"
+                    f"🎮 الإجمالي المطلوب: {total_to_game:,} NSP\n"
+                    f"⚠️ السبب: {error_msg}\n"
+                    f"📌 المعاملة بقيت pending: <code>#{tx_id}</code>"
+                )
+                await send_log_message(bot, log_text)
+                return {'success': False, 'uncertain': True, 'tx_id': tx_id, 'message': error_msg}
+            # 🔒 إعادة الرصيد فوراً بعد فشل مؤكد للـ API
             repo.revert_game_transaction(tx_id)
             log_text = (
                 f"❌ <b>فشل شحن اللعبة - خطأ API (تم إعادة الرصيد)</b>\n\n"
@@ -2566,14 +2581,25 @@ async def confirm_game_deposit_callback(callback: CallbackQuery, state: FSMConte
         )
         await safe_answer_callback(callback, "تم الشحن بنجاح!")
     else:
-        await safe_edit_text(
-            callback.message,
-            "❌ <b>فشلت عملية الشحن!</b>\n\nلم يتم خصم أي رصيد. قد يكون السبب:\n"
-            "• فشل الاتصال بخوادم iChancy\n• خطأ مؤقت في الجلسة أو الشبكة\n\nحاول مجدداً بعد قليل.",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id),
-            parse_mode="HTML"
-        )
-        await safe_answer_callback(callback, "فشل الشحن.", show_alert=True)
+        if isinstance(result, dict) and result.get('uncertain'):
+            await safe_edit_text(
+                callback.message,
+                "⚠️ <b>عملية الشحن قيد التحقق اليدوي</b>\n\n"
+                "أرسل iChancy نتيجة غير مؤكدة: قد يكون الشحن تم فعلاً لكن لم نتمكن من تأكيد تغير الرصيد فوراً.\n"
+                "تم إبقاء العملية معلّقة وسيقوم المشرف بمراجعتها. لم يتم رد الرصيد تلقائياً لحماية حسابك من أي تضارب.",
+                reply_markup=get_user_menu_keyboard(callback.from_user.id),
+                parse_mode="HTML"
+            )
+            await safe_answer_callback(callback, "قيد التحقق", show_alert=True)
+        else:
+            await safe_edit_text(
+                callback.message,
+                "❌ <b>فشلت عملية الشحن!</b>\n\nتمت إعادة الرصيد إذا لم يتم تنفيذ العملية. قد يكون السبب:\n"
+                "• فشل الاتصال بخوادم iChancy\n• خطأ مؤقت في الجلسة أو الشبكة\n\nحاول مجدداً بعد قليل.",
+                reply_markup=get_user_menu_keyboard(callback.from_user.id),
+                parse_mode="HTML"
+            )
+            await safe_answer_callback(callback, "فشل الشحن.", show_alert=True)
 
 
 @router.callback_query(F.data == "withdraw_game_acc")
