@@ -54,6 +54,15 @@ class IChancyClient:
                 cookies[name.strip()] = value.strip()
         return cookies
 
+    @staticmethod
+    def _is_invalid_session_result(result_data):
+        if isinstance(result_data, str):
+            return result_data.lower() in {"unauthorized", "expired", "session_expired", "ex", "not_authorized"}
+        if isinstance(result_data, dict):
+            msg = str(result_data.get('message') or result_data.get('error') or '').lower()
+            return msg in {"unauthorized", "expired", "session_expired", "ex", "not_authorized"}
+        return False
+
     def load_cookie_from_db(self):
         try:
             from database.connection import DatabaseManager
@@ -112,7 +121,7 @@ class IChancyClient:
             cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
             try:
                 from database.connection import DatabaseManager
-                DatabaseManager.execute_query("UPDATE bot_settings SET ichancy_cookie = %s WHERE id = 1", (cookie_str,))
+                DatabaseManager.execute_query("UPDATE bot_settings SET ichancy_cookie = %s, last_cookie_update = CURRENT_TIMESTAMP WHERE id = 1", (cookie_str,))
             except Exception as db_err:
                 logger.warning(f"Failed to persist cookie to DB: {db_err}")
             self.update_headers_and_cookies(cookie_str)
@@ -134,7 +143,7 @@ class IChancyClient:
                 return False
             data = response.json()
             result_data = data.get('result')
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired", "ex"]:
+            if self._is_invalid_session_result(result_data):
                 return False
             return bool(result_data)
         except Exception:
@@ -245,7 +254,7 @@ class IChancyClient:
             result_data = response_json.get("result")
 
             is_invalid_session = False
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired", "ex"]:
+            if self._is_invalid_session_result(result_data):
                 if not self._check_session_validity():
                     is_invalid_session = True
             elif not result_data:
@@ -297,7 +306,7 @@ class IChancyClient:
             response.raise_for_status()
             data = response.json()
             result_data = data.get('result')
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired"]:
+            if self._is_invalid_session_result(result_data):
                 logger.warning("Session invalid on admin balance! Retrying login...")
                 if self._login_agent():
                     response = self.session.post(url, json=payload, timeout=30)
@@ -362,7 +371,7 @@ class IChancyClient:
             response.raise_for_status()
             data = response.json()
             result_data = data.get('result')
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired", "ex"]:
+            if self._is_invalid_session_result(result_data):
                 logger.warning("Session invalid on agent transaction list. Retrying login...")
                 if self._login_agent():
                     response = self.session.post(url, json=payload, timeout=45)
@@ -385,7 +394,7 @@ class IChancyClient:
             response.raise_for_status()
             data = response.json()
             result_data = data.get('result')
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired"]:
+            if self._is_invalid_session_result(result_data):
                 logger.warning("Session invalid on player balance! Retrying login...")
                 if self._login_agent():
                     response = self.session.post(url, json=payload, timeout=30)
@@ -417,15 +426,19 @@ class IChancyClient:
             response.raise_for_status()
             response_json = response.json()
             result_data = response_json.get("result")
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired"]:
+            if self._is_invalid_session_result(result_data):
                 logger.warning("Session invalid on money transfer! Retrying login...")
                 if self._login_agent():
                     response = self.session.post(url, json=payload, timeout=30)
                     response_json = response.json()
                     result_data = response_json.get("result")
+            if self._is_invalid_session_result(result_data):
+                logger.error(f"Transfer failed after re-login: invalid session result={result_data}")
+                return False
             if result_data:
                 logger.info(f"Successfully transferred +{amount} NSP to Player: {player_id}")
                 return True
+            logger.error(f"Transfer failed: empty/false result response={response_json}")
             return False
         except Exception as e:
             logger.error(f"Error transferring money: {e}")
@@ -442,18 +455,26 @@ class IChancyClient:
         }
         try:
             response = self.session.post(url, json=payload, timeout=30)
+            if response.status_code in [401, 403]:
+                logger.warning("Session expired while withdrawing money. Re-login...")
+                if self._login_agent():
+                    response = self.session.post(url, json=payload, timeout=30)
             response.raise_for_status()
             response_json = response.json()
             result_data = response_json.get("result")
-            if isinstance(result_data, str) and result_data in ["unauthorized", "expired", "session_expired"]:
+            if self._is_invalid_session_result(result_data):
                 logger.warning("Session invalid on money withdrawal! Retrying login...")
                 if self._login_agent():
                     response = self.session.post(url, json=payload, timeout=30)
                     response_json = response.json()
                     result_data = response_json.get("result")
+            if self._is_invalid_session_result(result_data):
+                logger.error(f"Withdraw failed after re-login: invalid session result={result_data}")
+                return False
             if result_data:
                 logger.info(f"Successfully withdrew -{amount} NSP from Player: {player_id}")
                 return True
+            logger.error(f"Withdraw failed: empty/false result response={response_json}")
             return False
         except Exception as e:
             logger.error(f"Error withdrawing money: {e}")
