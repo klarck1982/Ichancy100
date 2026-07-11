@@ -93,6 +93,7 @@ async def cookie_watchdog_task(bot: Bot):
     logger.info(f"🍪 Watchdog started (interval: {interval} sec).")
     while True:
         try:
+            admin_balance = None
             try:
                 webhook_info = await bot.get_webhook_info()
                 if not webhook_info.url:
@@ -126,8 +127,12 @@ async def cookie_watchdog_task(bot: Bot):
                     else:
                         logger.info(f"💰 Watchdog: agent balance unchanged/skipped DB write = {admin_balance:,} NSP")
 
-            # 🆕 فحص رصيد الكاشيرة بشكل دوري
-            await check_agent_balance_periodic(bot)
+            # 🆕 فحص رصيد الكاشيرة فقط إذا حصلنا على قراءة صالحة من iChancy.
+            # هذا يمنع إطلاق تنبيه كاذب إذا انتهت الجلسة أو رجع API برد فارغ.
+            if admin_balance is not None:
+                await check_agent_balance_periodic(bot)
+            else:
+                logger.info("Skipping periodic agent balance alert: no valid live balance was fetched.")
 
             # تنبيه ذكي: لا نطلب تحديث الكوكيز طالما الجلسة نشطة، حتى لو عمرها طويل.
             global last_cookie_warning_sent

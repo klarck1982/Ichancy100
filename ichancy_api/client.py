@@ -303,15 +303,19 @@ class IChancyClient:
                     response = self.session.post(url, json=payload, timeout=30)
                     data = response.json()
                     result_data = data.get('result')
-            if result_data:
-                if isinstance(result_data, list) and len(result_data) > 0:
-                    return int(result_data[0].get('balance', 0))
-                elif isinstance(result_data, dict):
-                    return int(result_data.get('balance', 0))
-            return 0
+            if result_data is not None:
+                if isinstance(result_data, list) and len(result_data) > 0 and isinstance(result_data[0], dict):
+                    if 'balance' in result_data[0]:
+                        return int(result_data[0].get('balance') or 0)
+                elif isinstance(result_data, dict) and 'balance' in result_data:
+                    return int(result_data.get('balance') or 0)
+
+            # مهم: لا نعيد 0 عند فشل/فراغ الرد، لأن ذلك يصفّر رصيد الكاشيرة المخزن ويطلق إنذاراً خاطئاً.
+            logger.warning(f"Admin balance response did not contain a balance field: {data}")
+            return None
         except Exception as e:
             logger.error(f"Error fetching admin balance: {e}")
-            return 0
+            return None
 
     def _get_agent_transaction_list(self, from_date, to_date, limit=1000, start=0, is_to_me=False, affiliate_id=None):
         """جلب سجل حركات الكاشيرة/الوكيل من iChancy."""
