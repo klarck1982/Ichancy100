@@ -2827,6 +2827,43 @@ def pick_random_contest_winners(contest_id, winners_count=1):
     return rows
 
 
+# ==================== 📊 لوحة الصدارة (Leaderboard) ====================
+
+def get_leaderboard(limit=10, telegram_id=None):
+    """جلب أعلى المستخدمين حسب رصيد البوت مع ترتيب المستخدم الحالي.
+
+    دالة خفيفة لإزالة تحذير user_me، وتستخدم الرصيد النقدي فقط.
+    """
+    rows = DatabaseManager.execute_query_dict(
+        """SELECT telegram_id, telegram_username, bot_balance
+           FROM users
+           WHERE terms_accepted = TRUE
+           ORDER BY bot_balance DESC NULLS LAST
+           LIMIT %s""",
+        (int(limit),), fetch='all'
+    ) or []
+    top = []
+    for idx, row in enumerate(rows, start=1):
+        top.append({
+            'rank': idx,
+            'telegram_id': str(row.get('telegram_id')),
+            'username': row.get('telegram_username') or str(row.get('telegram_id')),
+            'balance': int(row.get('bot_balance') or 0),
+        })
+    result = {'top': top}
+    if telegram_id:
+        rank_row = DatabaseManager.execute_query(
+            """SELECT COUNT(*) + 1 FROM users
+               WHERE terms_accepted = TRUE
+               AND COALESCE(bot_balance, 0) > COALESCE((SELECT bot_balance FROM users WHERE telegram_id = %s), 0)""",
+            (str(telegram_id),), fetch='one'
+        )
+        my_user = get_user(telegram_id)
+        result['my_rank'] = int(rank_row[0] or 0) if rank_row else None
+        result['my_balance'] = int((my_user or {}).get('bot_balance') or 0)
+    return result
+
+
 # ==================== 📅 الحضور اليومي (Daily Check-in) ====================
 
 def get_checkin_info(telegram_id):
@@ -3508,34 +3545,35 @@ def update_cashback_settings(enabled=None, pct=None, min_loss=None):
 
 
 def get_user_weekly_game_activity(telegram_id, current_game_balance=None):
-    """حساب نشاط المستخدم في اللعبة هذا الأسبوع.
+    """حساب نشاط المستخدم في اللعبة هذا الأسبوع على المال الحقيقي فقط.
 
-    إن مُرّر current_game_balance (الرصيد الحيّ في اللعبة) تُحسب الخسارة الحقيقية
-    (الحرق) = الشحن − السحب − الرصيد المتبقّي، وهو الأدق مالياً.
+    مهم جداً بعد نظام البونصات:
+    - إيداع اللعبة `amount` قد يشمل بونص/كاش باك/حضور؛ لذلك نستخدم `original_amount` كقيمة الشحن النقدي الحقيقي.
+    - سحب اللعبة `amount` هو الإجمالي المسحوب من iChancy، لكن الصافي الذي عاد للمستخدم بعد خصم البونص النشط محفوظ في `converted_amount_syp`.
+
+    الحرق الحقيقي = الشحن النقدي الحقيقي − الصافي العائد للمستخدم − الرصيد المتبقي في اللعبة.
     """
     tid = str(telegram_id)
     deposits = DatabaseManager.execute_query(
-        """SELECT COALESCE(SUM(amount), 0) FROM transactions
+        """SELECT COALESCE(SUM(COALESCE(original_amount, amount)), 0) FROM transactions
            WHERE user_telegram_id = %s AND type = 'deposit_to_game'
            AND status IN ('completed', 'approved')
            AND created_at >= CURRENT_DATE - INTERVAL '7 days'""",
         (tid,), fetch='one'
     )
     withdrawals = DatabaseManager.execute_query(
-        """SELECT COALESCE(SUM(amount), 0) FROM transactions
+        """SELECT COALESCE(SUM(COALESCE(converted_amount_syp, amount)), 0) FROM transactions
            WHERE user_telegram_id = %s AND type = 'withdraw_from_game'
            AND status IN ('completed', 'approved')
            AND created_at >= CURRENT_DATE - INTERVAL '7 days'""",
         (tid,), fetch='one'
     )
-    dep = int(deposits[0]) if deposits else 0
-    wd = int(withdrawals[0]) if withdrawals else 0
-    # 🎯 الخسارة الحقيقية (الحرق) = الشحن − السحب − الرصيد المتبقّي في اللعبة.
-    #    الرصيد المتبقّي مالٌ لم يُخسَر بعد، فلا يجوز دفع كاش باك عليه.
-    #    إن لم يُمرّر الرصيد (None) نتراجع للحساب القديم (شحن−سحب) مع تحذير منطقي.
+    dep = int(float(deposits[0] or 0)) if deposits else 0
+    wd = int(float(withdrawals[0] or 0)) if withdrawals else 0
     if current_game_balance is not None:
         net_loss = dep - wd - int(current_game_balance)
     else:
+        # بدون رصيد حي لا يمكن تقدير الحرق بدقة، لكن نبقي fallback محافظاً.
         net_loss = dep - wd
     return {
         'deposited': dep,

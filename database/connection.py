@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     _pool = None
+    _tables_checked = False
 
     @classmethod
     def initialize_pool(cls):
@@ -22,7 +23,9 @@ class DatabaseManager:
                     dsn=settings.DATABASE_URL
                 )
                 logger.info("Database connection pool initialized successfully.")
-                cls.create_tables()
+                if not cls._tables_checked:
+                    cls.create_tables()
+                    cls._tables_checked = True
             except Exception as e:
                 logger.error(f"Error initializing database pool: {e}")
                 raise e

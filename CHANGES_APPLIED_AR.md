@@ -527,3 +527,19 @@ unauthorized, expired, session_expired, ex, not_authorized
 ```
 
 وعند نجاح auto-login يتم تحديث `last_cookie_update`.
+
+---
+
+# إصلاح حساب الكاش باك ومنع تقدير الحرق الخاطئ
+
+تم إصلاح حساب نشاط اللعبة الأسبوعي بحيث يعتمد على المال الحقيقي فقط:
+
+- شحن اللعبة يستخدم `original_amount` بدلاً من `amount`، لأن `amount` قد يشمل بونصات وكاش باك وحضور.
+- سحب اللعبة يستخدم `converted_amount_syp` بدلاً من `amount`، لأنه يمثل الصافي الذي عاد للمستخدم بعد خصم البونص النشط.
+
+بهذا إذا شحن المستخدم اللعبة ثم سحب نفس القيمة دون لعب، يصبح الحرق = 0 ولا يظهر كاش باك خاطئ.
+
+كما تمت إضافة دالة `get_leaderboard` الخفيفة لإزالة تحذير:
+`module database.repository has no attribute get_leaderboard`.
+
+وتم منع إعادة تنفيذ `create_tables()` عند كل إعادة إنشاء connection pool بعد انقطاع SSL، لتخفيف الضغط على Neon.
