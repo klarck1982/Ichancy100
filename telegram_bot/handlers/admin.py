@@ -179,6 +179,11 @@ class AdminStates(StatesGroup):
 def get_admin_keyboard():
     keyboard = [
         [InlineKeyboardButton(text="👑 لوحة التحكم الرئيسية", callback_data="caesar_control_panel")],
+        [
+            InlineKeyboardButton(text="🩺 فحص النبض والمحاكاة", callback_data="adm_system_probe"),
+            InlineKeyboardButton(text="🔄 تصفير حسابي الاختباري", callback_data="adm_reset_my_test_balance")
+        ],
+        [InlineKeyboardButton(text="🗑️ تصفير كل أرصدة قاعدة البيانات (Reset DB)", callback_data="adm_reset_all_db")],
         [InlineKeyboardButton(text="💱 تعديل أسعار الصرف", callback_data="adm_rates_menu")],
         [
             InlineKeyboardButton(text="🏷️ نسبة عمولة السحب", callback_data="adm_comm_menu"),
@@ -217,6 +222,7 @@ def get_admin_dashboard_keyboard(refresh_callback="caesar_control_panel"):
             InlineKeyboardButton(text="🩺 فحص النبض والمحاكاة", callback_data="adm_system_probe"),
             InlineKeyboardButton(text="🔄 تصفير حسابي الاختباري", callback_data="adm_reset_my_test_balance")
         ],
+        [InlineKeyboardButton(text="🗑️ تصفير كل أرصدة قاعدة البيانات (Reset DB)", callback_data="adm_reset_all_db")],
         [
             InlineKeyboardButton(text="🎫 إنشاء كود هدية", callback_data="adm_create_bot_gift"),
             InlineKeyboardButton(text="🎁 البونصات", callback_data="adm_bonus_menu")
@@ -542,8 +548,13 @@ async def adm_system_probe_callback(callback: CallbackQuery):
         logger.warning(f"Probe DB error: {e}")
 
     t1 = time.perf_counter()
-    session_ok = await ichancy_api_client.check_session_validity()
-    api_latency = round((time.perf_counter() - t1) * 1000, 1)
+    session_ok = False
+    api_latency = 0
+    try:
+        session_ok = await ichancy_api_client.check_session_validity()
+        api_latency = round((time.perf_counter() - t1) * 1000, 1)
+    except Exception as e:
+        logger.warning(f"Probe API error: {e}")
 
     dry_run_ok = False
     try:
@@ -601,6 +612,56 @@ async def adm_reset_my_test_balance_callback(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Reset test balance error: {e}")
         await safe_answer_callback(callback, "❌ تعذر تصفير الرصيد الاختباري", show_alert=True)
+
+
+@router.callback_query(F.data == "adm_reset_all_db")
+async def adm_reset_all_db_confirm(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    await safe_edit_text(
+        callback.message,
+        "⚠️ <b>تنبيه حاسم: تصفير أرصدة كل قاعدة البيانات</b>\n\n"
+        "هل أنت متأكد من رغبتك في تصفير جميع الأرصدة (النقدية، المكافآت، بونص اللعب، وبونص الشحن) لجميع المستخدمين في قاعدة البيانات؟\n\n"
+        "سيتم إعادة جميع الأرصدة إلى <code>0 ل.س</code>، وتنظيف المعاملات المؤقتة والاختبارية.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑️ نعم، صَفّر كل الأرصدة الآن", callback_data="adm_reset_all_db_confirmed")],
+            [InlineKeyboardButton(text="❌ إلغاء وعودة", callback_data="caesar_control_panel")]
+        ]),
+        parse_mode="HTML"
+    )
+    await safe_answer_callback(callback)
+
+
+@router.callback_query(F.data == "adm_reset_all_db_confirmed")
+async def adm_reset_all_db_execute(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    try:
+        DatabaseManager.execute_query("""
+            UPDATE users SET bot_balance = 0, bonus_balance = 0, game_bonus_amount = 0, bonus_base_balance = 0, cashback_pending_balance = 0, checkin_pending_balance = 0;
+        """)
+        DatabaseManager.execute_query("""
+            DELETE FROM transactions WHERE status IN ('pending', 'sandbox_test') OR payment_method IN ('game', 'test', 'sandbox');
+        """)
+        await safe_answer_callback(callback, "✅ تم تصفير جميع أرصدة قاعدة البيانات وتنظيف السجلات بنجاح!", show_alert=True)
+        await caesar_control_panel(callback)
+    except Exception as e:
+        logger.error(f"Reset all DB error: {e}")
+        await safe_answer_callback(callback, "❌ خطأ في تصفير قاعدة البيانات", show_alert=True)
+
+
+@router.message(Command("reset_db"))
+async def reset_db_cmd(message: Message):
+    if not is_admin_user(message.from_user.id):
+        return
+    await message.answer(
+        "⚠️ <b>تصفير أرصدة كل قاعدة البيانات</b>\n\nاضغط لتأكيد التصفير الشامل:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑️ نعم، صَفّر كل الأرصدة الآن", callback_data="adm_reset_all_db_confirmed")],
+            [InlineKeyboardButton(text="❌ إلغاء وعودة", callback_data="caesar_control_panel")]
+        ]),
+        parse_mode="HTML"
+    )
 
 
 @router.message(Command("admin"))
