@@ -1470,7 +1470,10 @@ def redeem_gift(code, receiver_id):
 # ==================== إعدادات البوت الديناميكية ====================
 
 def get_bot_settings():
-    settings_dict = DatabaseManager.execute_query_dict("SELECT * FROM bot_settings WHERE id = 1", fetch='one')
+    if hasattr(DatabaseManager, 'get_bot_settings_cached'):
+        settings_dict = DatabaseManager.get_bot_settings_cached()
+    else:
+        settings_dict = DatabaseManager.execute_query_dict("SELECT * FROM bot_settings WHERE id = 1", fetch='one')
     if not settings_dict:
         # 🛡️ حماية: ضمان وجود السجل الافتراضي قبل أي استخدام
         DatabaseManager.execute_query(
@@ -1549,6 +1552,8 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
             str(new_syriatel_auto_channel_id or '')
         )
     )
+    if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+        DatabaseManager.invalidate_settings_cache()
 
 
 # ==================== دوال إضافية للوحة الأدمن ====================

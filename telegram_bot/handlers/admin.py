@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import time
 import random
 import string
 from datetime import datetime
@@ -607,6 +608,8 @@ async def adm_reset_my_test_balance_callback(callback: CallbackQuery):
             "DELETE FROM transactions WHERE user_telegram_id = %s AND (payment_method IN ('game', 'test', 'sandbox') OR reviewed_by = %s OR reviewed_by = 'auto_syriatel')",
             (tid, str(callback.from_user.id))
         )
+        if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+            DatabaseManager.invalidate_settings_cache()
         await safe_answer_callback(callback, "✅ تم تصفير حسابك الاختباري وتنظيف المعاملات التجريبية بنجاح!", show_alert=True)
         await caesar_control_panel(callback)
     except Exception as e:
@@ -687,6 +690,8 @@ async def adm_reset_all_db_execute(callback: CallbackQuery):
 
         # 3) تصفير إحصائيات رصيد الوكيل في إعدادات البوت
         DatabaseManager.execute_query("UPDATE bot_settings SET agent_balance = 0 WHERE id = 1;")
+        if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+            DatabaseManager.invalidate_settings_cache()
         
         await safe_edit_text(
             callback.message,

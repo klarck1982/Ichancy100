@@ -51,6 +51,8 @@ def reset_all_database_balances():
             print("✅ تم مسح جميع سجلات الجداول المالية (DELETE).")
 
         DatabaseManager.execute_query("UPDATE bot_settings SET agent_balance = 0 WHERE id = 1;")
+        if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+            DatabaseManager.invalidate_settings_cache()
         print("✅ تم تصفير مؤشرات رصيد الكاشيرة في الإعدادات.")
 
         print("\n🎉 قاعدة البيانات الآن مصَفّرة ونظيفة 100% (مع الحفاظ على أسماء وحسابات المستخدمين) ومستعدة للانطلاق الحقيقي!")

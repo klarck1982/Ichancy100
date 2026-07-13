@@ -13,6 +13,25 @@ class DatabaseManager:
     _tables_checked = False
     _pool_lock = threading.Lock()
     _last_activity = time.time()
+    _settings_cache = None
+    _settings_cache_time = 0
+    SETTINGS_CACHE_TTL = 60
+
+    @classmethod
+    def get_bot_settings_cached(cls):
+        now = time.time()
+        if cls._settings_cache and (now - cls._settings_cache_time) < cls.SETTINGS_CACHE_TTL:
+            return cls._settings_cache
+        result = cls.execute_query_dict("SELECT * FROM bot_settings WHERE id = 1", fetch='one')
+        if result:
+            cls._settings_cache = result
+            cls._settings_cache_time = now
+        return result
+
+    @classmethod
+    def invalidate_settings_cache(cls):
+        cls._settings_cache = None
+        cls._settings_cache_time = 0
 
     @classmethod
     def initialize_pool(cls):
