@@ -150,6 +150,10 @@ async def cookie_watchdog_task(bot: Bot):
                             await bot.send_message(chat_id=admin_id, text=warn_text, parse_mode="HTML")
                         except Exception as e:
                             logger.warning(f"Cookie failure notification failed for {admin_id}: {e}")
+
+            # 💤 إغلاق الاتصالات الخاملة بـ Neon بعد 10 دقائق من الخمول للسماح للنظام بالسكون وتوفير الحساب المجاني
+            if hasattr(DatabaseManager, 'close_idle_pool_if_needed'):
+                DatabaseManager.close_idle_pool_if_needed(idle_seconds=600)
         except asyncio.CancelledError:
             logger.info("🛑 Watchdog task cancelled.")
             raise
@@ -1077,9 +1081,13 @@ async def admin_agent_finance_handler(request):
                 p['balance_source'] = 'cached'
             else:
                 current_balance = await ichancy_api_client.get_player_balance(matched_user.get('player_id'))
-                repo.update_user_game_balance(matched_user.get('telegram_id'), current_balance)
-                p['current_balance'] = int(current_balance or 0)
-                p['balance_source'] = 'live'
+                if current_balance is not None:
+                    repo.update_user_game_balance(matched_user.get('telegram_id'), current_balance)
+                    p['current_balance'] = int(current_balance)
+                    p['balance_source'] = 'live'
+                else:
+                    p['current_balance'] = int(matched_user.get('game_balance') or 0)
+                    p['balance_source'] = 'cached'
                 fetched_balances += 1
 
             deposit = Decimal(str(p.get('deposit_to_player') or 0))
@@ -1469,9 +1477,13 @@ async def admin_users_handler(request):
             if not user or not user.get('player_id'):
                 return web.json_response({'error': 'المستخدم غير مرتبط بحساب iChancy'}, status=400)
             balance = await ichancy_api_client.get_player_balance(user.get('player_id'))
-            repo.update_user_game_balance(telegram_id, balance)
+            if balance is not None:
+                repo.update_user_game_balance(telegram_id, balance)
+                cached_bal = int(balance)
+            else:
+                cached_bal = int(user.get('game_balance') or 0)
             user = repo.get_user(telegram_id)
-            return web.json_response({'ok': True, 'game_balance': int(balance or 0), 'user': _user_to_json(user)})
+            return web.json_response({'ok': True, 'game_balance': cached_bal, 'user': _user_to_json(user)})
 
         return web.json_response({'error': 'إجراء غير معروف'}, status=400)
     except ValueError:
@@ -2546,8 +2558,8 @@ async def user_spin_wheel_handler(request):
             )
 
         # التأكد من عدم الدوران المزدوج
-        if not repo.has_wheel_spin(telegram_id, deposit_tx_id):
-            return web.json_response({'error': 'لقد دوّنت العجلة على هذا الإيداع بالفعل!'}, status=400)
+        if not repo.can_spin_wheel_for_deposit(telegram_id, deposit_tx_id):
+            return web.json_response({'error': 'لقد دوّرت العجلة على هذا الإيداع بالفعل!'}, status=400)
 
         # تنفيذ الدوران
         result = repo.spin_wheel_atomic(telegram_id, deposit_tx_id, deposit_amount)

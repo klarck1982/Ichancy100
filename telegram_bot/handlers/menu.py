@@ -25,6 +25,19 @@ from telegram_bot.keyboards.inline import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+# 🔒 قفل حماية ضد النقر المزدوج السريع على أزرار التأكيد (Double-Click Guard)
+_user_action_locks = set()
+
+def _try_acquire_lock(user_id) -> bool:
+    uid = str(user_id)
+    if uid in _user_action_locks:
+        return False
+    _user_action_locks.add(uid)
+    return True
+
+def _release_lock(user_id):
+    _user_action_locks.discard(str(user_id))
+
 MAX_WITHDRAW_SYP = 5_000_000
 
 def _get_min_deposit_syp():
@@ -728,7 +741,8 @@ async def auto_approve_syriatel_deposit(bot, tx_id, external_ref=None):
         deposit_amount=deposit_amount,
         bonus_amount=bonus_amount,
         tx_id=tx_id,
-        reviewed_by='auto_syriatel'
+        reviewed_by='auto_syriatel',
+        new_vip_tier=int(vip_upgrade.get('new_tier_index')) if vip_upgrade.get('upgraded') else None
     )
     if not result.get('ok') or result.get('already_approved'):
         return {'ok': False, 'reason': result.get('reason') or 'approve_failed'}
@@ -864,7 +878,11 @@ async def ichancy_menu_callback(callback: CallbackQuery):
     if user.get('ichancy_username'):
         player_id = user.get('player_id')
         api_balance = await ichancy_api_client.get_player_balance(player_id)
-        repo.update_user_game_balance(telegram_id, api_balance)
+        if api_balance is not None:
+            display_balance = int(api_balance)
+            repo.update_user_game_balance(telegram_id, display_balance)
+        else:
+            display_balance = repo.get_user_game_balance(telegram_id)
 
         status_text = (
             "⚡️ <b>حساب iChancy الخاص بك:</b>\n\n"
@@ -872,7 +890,7 @@ async def ichancy_menu_callback(callback: CallbackQuery):
             f"📧 <b>الإيميل:</b><code>{user['ichancy_email']}</code>\n"
             f"🔒 <b>كلمة المرور:</b><code>{user['ichancy_password']}</code>\n"
             f"🆔 <b>معرف اللاعب (Player ID):</b><code>{player_id}</code>\n\n"
-            f"💰 <b>رصيد اللعبة الفعلي:</b><code>{api_balance:,} NSP</code>"
+            f"💰 <b>رصيد اللعبة الفعلي:</b><code>{display_balance:,} NSP</code>"
         )
         await callback.message.edit_text(status_text, reply_markup=get_ichancy_submenu(has_account=True), parse_mode="HTML")
     else:
@@ -1245,183 +1263,187 @@ async def process_deposit_proof(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_my_deposit")
 async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    if not data:
-        await send_expired_flow_message(callback.message, callback.from_user.id)
-        await safe_answer_callback(callback, "⚠️ انتهت صلاحية الطلب!", show_alert=True)
+    if not _try_acquire_lock(callback.from_user.id):
+        await safe_answer_callback(callback, "⏳ جاري إرسال طلبك، يرجى الانتظار...", show_alert=True)
         return
+    try:
+        data = await state.get_data()
+        if not data:
+            await send_expired_flow_message(callback.message, callback.from_user.id)
+            await safe_answer_callback(callback, "⚠️ انتهت صلاحية الطلب!", show_alert=True)
+            return
 
-    telegram_id = str(callback.from_user.id)
-    if has_pending_transaction(telegram_id, 'deposit_bot'):
-        await callback.message.answer(
-            "⏳ لديك بالفعل طلب إيداع معلق. يرجى انتظار مراجعته قبل إرسال طلب جديد.",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id)
-        )
-        await state.clear()
-        await safe_answer_callback(callback)
-        return
-
-    username = data.get('username')
-    currency = data.get('deposit_currency')
-    gateway = data.get('deposit_gateway')
-    amount = data.get('deposit_amount')
-    amount_to_save_syp = data.get('amount_to_save_syp')
-    short_tx_code = data.get('short_tx_code')
-    transfer_number = data.get('transfer_number')
-    photo_id = data.get('photo_id')
-
-    if not all([currency, gateway, amount, amount_to_save_syp, short_tx_code]):
-        await send_expired_flow_message(callback.message, callback.from_user.id)
-        await state.clear()
-        await safe_answer_callback(callback, "⚠️ بيانات الطلب غير مكتملة.", show_alert=True)
-        return
-
-    tx_id = repo.create_transaction(
-        telegram_id=telegram_id,
-        tx_type='deposit_bot',
-        amount=amount_to_save_syp,
-        payment_method=gateway,
-        transfer_number=f"Code: {short_tx_code} | Info: {transfer_number}",
-        status='pending'
-    )
-
-    # ✅ تحقق تلقائي لإيداعات Syriatel Cash عبر API عند توفر رقم العملية/رقم المرسل
-    auto_verified = False
-    auto_verify_note = ""
-    syriatel_auto_mode, syriatel_auto_channel_id = get_syriatel_auto_config()
-    if (
-        gateway == 'syriatel'
-        and syriatel_auto_mode != 'off'
-        and getattr(settings, 'SYRIATEL_API_TOKEN', None)
-        and getattr(settings, 'SYRIATEL_API_QUERY', None)
-        and transfer_number
-        and transfer_number != "مكتوب داخل الإيصال"
-    ):
-        try:
-            tx_row = repo.get_transaction_by_id(tx_id)
-            verify = await verify_incoming_deposit(
-                expected_amount=amount_to_save_syp,
-                user_reference=transfer_number,
-                created_at=tx_row.get('created_at') if tx_row else None,
+        telegram_id = str(callback.from_user.id)
+        if has_pending_transaction(telegram_id, 'deposit_bot'):
+            await callback.message.answer(
+                "⏳ لديك بالفعل طلب إيداع معلق. يرجى انتظار مراجعته قبل إرسال طلب جديد.",
+                reply_markup=get_user_menu_keyboard(callback.from_user.id)
             )
-            if verify.get('ok'):
-                external_ref = verify.get('external_ref')
-                if repo.is_external_ref_used(external_ref, exclude_tx_id=tx_id):
-                    auto_verify_note = "⚠️ رقم العملية موجود سابقاً، تم تحويل الطلب للمراجعة اليدوية."
-                elif syriatel_auto_mode == 'auto_approve':
-                    approved = await auto_approve_syriatel_deposit(callback.bot, tx_id, external_ref=external_ref)
-                    if approved.get('ok'):
-                        auto_verified = True
-                    else:
-                        auto_verify_note = f"⚠️ تحقق API نجح لكن تعذر القبول التلقائي ({approved.get('reason')}). تم تحويل الطلب للمراجعة اليدوية."
-                else:
-                    repo.set_transaction_external_ref(tx_id, external_ref)
-                    auto_verify_note = f"✅ تم التحقق من الحوالة عبر API. رقم العملية: {external_ref}. بانتظار قبول المشرف."
-            else:
-                auto_verify_note = f"ℹ️ لم يتم التحقق تلقائياً ({verify.get('reason')}). تم إرسال الطلب للمراجعة اليدوية."
-        except Exception as e:
-            logger.error(f"Syriatel auto verify flow failed: {e}", exc_info=True)
-            auto_verify_note = "ℹ️ تعذر التحقق التلقائي مؤقتاً، تم إرسال الطلب للمراجعة اليدوية."
+            await state.clear()
+            await safe_answer_callback(callback)
+            return
 
-    if auto_verify_note:
-        await send_syriatel_auto_message(
-            callback.bot,
-            f"🟡 <b>Syriatel Auto</b>\n\n📌 الطلب: <code>#{tx_id}</code>\n👤 المستخدم: <code>{telegram_id}</code>\n💰 المبلغ: {_fmt_syp_dual(amount_to_save_syp)}\n🔎 النتيجة: {auto_verify_note}"
+        username = data.get('username')
+        currency = data.get('deposit_currency')
+        gateway = data.get('deposit_gateway')
+        amount = data.get('deposit_amount')
+        amount_to_save_syp = data.get('amount_to_save_syp')
+        short_tx_code = data.get('short_tx_code')
+        transfer_number = data.get('transfer_number')
+        photo_id = data.get('photo_id')
+
+        if not all([currency, gateway, amount, amount_to_save_syp, short_tx_code]):
+            await send_expired_flow_message(callback.message, callback.from_user.id)
+            await state.clear()
+            await safe_answer_callback(callback, "⚠️ بيانات الطلب غير مكتملة.", show_alert=True)
+            return
+
+        tx_id = repo.create_transaction(
+            telegram_id=telegram_id,
+            tx_type='deposit_bot',
+            amount=amount_to_save_syp,
+            payment_method=gateway,
+            transfer_number=f"Code: {short_tx_code} | Info: {transfer_number}",
+            status='pending'
         )
 
-    if auto_verified:
+        # ✅ تحقق تلقائي لإيداعات Syriatel Cash عبر API عند توفر رقم العملية/رقم المرسل
+        auto_verified = False
+        auto_verify_note = ""
+        syriatel_auto_mode, syriatel_auto_channel_id = get_syriatel_auto_config()
+        if (
+            gateway == 'syriatel'
+            and syriatel_auto_mode != 'off'
+            and getattr(settings, 'SYRIATEL_API_TOKEN', None)
+            and getattr(settings, 'SYRIATEL_API_QUERY', None)
+            and transfer_number
+            and transfer_number != "مكتوب داخل الإيصال"
+        ):
+            try:
+                tx_row = repo.get_transaction_by_id(tx_id)
+                verify = await verify_incoming_deposit(
+                    expected_amount=amount_to_save_syp,
+                    user_reference=transfer_number,
+                    created_at=tx_row.get('created_at') if tx_row else None,
+                )
+                if verify.get('ok'):
+                    external_ref = verify.get('external_ref')
+                    if repo.is_external_ref_used(external_ref, exclude_tx_id=tx_id):
+                        auto_verify_note = "⚠️ رقم العملية موجود سابقاً، تم تحويل الطلب للمراجعة اليدوية."
+                    elif syriatel_auto_mode == 'auto_approve':
+                        approved = await auto_approve_syriatel_deposit(callback.bot, tx_id, external_ref=external_ref)
+                        if approved.get('ok'):
+                            auto_verified = True
+                        else:
+                            auto_verify_note = f"⚠️ تحقق API نجح لكن تعذر القبول التلقائي ({approved.get('reason')}). تم تحويل الطلب للمراجعة اليدوية."
+                    else:
+                        repo.set_transaction_external_ref(tx_id, external_ref)
+                        auto_verify_note = f"✅ تم التحقق من الحوالة عبر API. رقم العملية: {external_ref}. بانتظار قبول المشرف."
+                else:
+                    auto_verify_note = f"ℹ️ لم يتم التحقق تلقائياً ({verify.get('reason')}). تم إرسال الطلب للمراجعة اليدوية."
+            except Exception as e:
+                logger.error(f"Syriatel auto verify flow failed: {e}", exc_info=True)
+                auto_verify_note = "ℹ️ تعذر التحقق التلقائي مؤقتاً، تم إرسال الطلب للمراجعة اليدوية."
+
+        if auto_verify_note:
+            await send_syriatel_auto_message(
+                callback.bot,
+                f"🟡 <b>Syriatel Auto</b>\n\n📌 الطلب: <code>#{tx_id}</code>\n👤 المستخدم: <code>{telegram_id}</code>\n💰 المبلغ: {_fmt_syp_dual(amount_to_save_syp)}\n🔎 النتيجة: {auto_verify_note}"
+            )
+
+        if auto_verified:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await callback.message.answer(
+                "✅ <b>تم إرسال طلب الإيداع والتحقق منه تلقائياً عبر Syriatel Cash.</b>\n\n"
+                f"📌 رقم الطلب: <code>#{tx_id}</code>\n"
+                "تم قبول الإيداع وإضافة الرصيد إلى حسابك.",
+                reply_markup=get_user_menu_keyboard(callback.from_user.id),
+                parse_mode="HTML"
+            )
+            await state.clear()
+            await safe_answer_callback(callback, "تم التحقق والقبول تلقائياً ✅")
+            return
+
+        success_text = (
+            "✅ <b>تم إرسال طلب الشحن بنجاح للمراجعة!</b>\n\n"
+            f"🔑 <b>رمز التحقق:</b><code>{short_tx_code}</code>\n"
+            f"📌 <b>رقم الطلب:</b><code>#{tx_id}</code>\n"
+            f"💰 <b>المبلغ المطلوب تعبئته:</b><code>{amount:,} {'ل.س' if currency == 'syp' else 'USD'}</code>\n"
+            f"💱 <b>الرصيد المكافئ:</b>{_fmt_syp_dual(amount_to_save_syp)}\n\n"
+            f"{('\n' + auto_verify_note + '\n') if auto_verify_note else ''}"
+            "سيتم تدقيق الطلب والموافقة عليه خلال دقائق وإشعارك تلقائياً!"
+        )
+
         try:
             await callback.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
-        await callback.message.answer(
-            "✅ <b>تم إرسال طلب الإيداع والتحقق منه تلقائياً عبر Syriatel Cash.</b>\n\n"
-            f"📌 رقم الطلب: <code>#{tx_id}</code>\n"
-            "تم قبول الإيداع وإضافة الرصيد إلى حسابك.",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id),
-            parse_mode="HTML"
+        except Exception as e:
+            logger.warning(f"edit_reply_markup ignored: {e}")
+
+        await callback.message.answer(success_text, reply_markup=get_user_menu_keyboard(callback.from_user.id), parse_mode="HTML")
+
+        admin_text = format_deposit_admin_message(
+            tx_id=tx_id,
+            telegram_id=telegram_id,
+            username=username,
+            amount=amount,
+            currency='SYP' if currency == 'syp' else 'USD',
+            gateway=gateway,
+            transfer_number=transfer_number,
+            amount_syp=amount_to_save_syp,
+            user_balance=repo.get_user(telegram_id)['bot_balance'],
+            player_id=repo.get_user(telegram_id).get('player_id'),
+            ichancy_username=repo.get_user(telegram_id).get('ichancy_username')
         )
-        await state.clear()
-        await safe_answer_callback(callback, "تم التحقق والقبول تلقائياً ✅")
-        return
+        if auto_verify_note:
+            admin_text += f"\n\n{auto_verify_note}"
 
-    success_text = (
-        "✅ <b>تم إرسال طلب الشحن بنجاح للمراجعة!</b>\n\n"
-        f"🔑 <b>رمز التحقق:</b><code>{short_tx_code}</code>\n"
-        f"📌 <b>رقم الطلب:</b><code>#{tx_id}</code>\n"
-        f"💰 <b>المبلغ المطلوب تعبئته:</b><code>{amount:,} {'ل.س' if currency == 'syp' else 'USD'}</code>\n"
-        f"💱 <b>الرصيد المكافئ:</b>{_fmt_syp_dual(amount_to_save_syp)}\n\n"
-        f"{('\n' + auto_verify_note + '\n') if auto_verify_note else ''}"
-        "سيتم تدقيق الطلب والموافقة عليه خلال دقائق وإشعارك تلقائياً!"
-    )
-
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception as e:
-        logger.warning(f"edit_reply_markup ignored: {e}")
-
-    await callback.message.answer(success_text, reply_markup=get_user_menu_keyboard(callback.from_user.id), parse_mode="HTML")
-
-    admin_text = format_deposit_admin_message(
-        tx_id=tx_id,
-        telegram_id=telegram_id,
-        username=username,
-        amount=amount,
-        currency='SYP' if currency == 'syp' else 'USD',
-        gateway=gateway,
-        transfer_number=transfer_number,
-        amount_syp=amount_to_save_syp,
-        user_balance=repo.get_user(telegram_id)['bot_balance'],
-        player_id=repo.get_user(telegram_id).get('player_id'),
-        ichancy_username=repo.get_user(telegram_id).get('ichancy_username')
-    )
-    if auto_verify_note:
-        admin_text += f"\n\n{auto_verify_note}"
-
-    # 🆕 (Update 5) زر نسخ ذكي للإيداع — أرقام فقط، حسب نوع العملة
-    if currency == 'usd':
-        # إيداع بالدولار → نسخ المبلغ بالدولار (ما حوّله المستخدم فعلياً)
-        dep_usd = float(amount)
-        copy_button_label = f"📋 نسخ {dep_usd:,.2f} USD"
-        copy_dep_data = f"copy_usd_{dep_usd:.2f}"
-    else:
-        # إيداع بالليرة → نسخ المبلغ بالليرة الجديدة
-        dep_old = int(float(amount_to_save_syp))
-        dep_new = dep_old / 100
-        dep_new_str = f"{int(dep_new):,}" if dep_new == int(dep_new) else f"{dep_new:,.2f}"
-        copy_button_label = f"📋 نسخ {dep_new_str} ل.س جديدة"
-        copy_dep_data = f"copy_amt_{dep_old}"
-    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ قبول", callback_data=f"approve_dep_{tx_id}"),
-            InlineKeyboardButton(text="❌ رفض", callback_data=f"reject_dep_{tx_id}")
-        ],
-        [InlineKeyboardButton(text="👤 تفاصيل المستخدم", callback_data=f"user_details_{telegram_id}")],
-        [InlineKeyboardButton(text=copy_button_label, callback_data=copy_dep_data)]
-    ])
-
-    # طلبات سيرياتيل يمكن إرسالها لقناة خاصة إن تم ضبطها من لوحة المشرف/البيئة
-    _, _syriatel_channel = get_syriatel_auto_config()
-    target_chat = _syriatel_channel if (gateway == 'syriatel' and _syriatel_channel) else (settings.DEPOSIT_CHANNEL_ID if settings.DEPOSIT_CHANNEL_ID else None)
-    try:
-        if target_chat:
-            if photo_id:
-                await callback.bot.send_photo(chat_id=target_chat, photo=photo_id, caption=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-            else:
-                await callback.bot.send_message(chat_id=target_chat, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
+        # 🆕 (Update 5) زر نسخ ذكي للإيداع — أرقام فقط، حسب نوع العملة
+        if currency == 'usd':
+            # إيداع بالدولار → نسخ المبلغ بالدولار (ما حوّله المستخدم فعلياً)
+            dep_usd = float(amount)
+            copy_button_label = f"📋 نسخ {dep_usd:,.2f} USD"
+            copy_dep_data = f"copy_usd_{dep_usd:.2f}"
         else:
-            for admin_id in get_admin_target_chat_ids():
-                try:
-                    if photo_id:
-                        await callback.bot.send_photo(chat_id=admin_id, photo=photo_id, caption=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-                    else:
-                        await callback.bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-                except Exception as inner_e:
-                    logger.warning(f"Failed to notify admin {admin_id}: {inner_e}")
-    except Exception as e:
-        logger.error(f"Failed to post to deposit channel/admin: {e}")
+            # إيداع بالليرة → نسخ المبلغ بالليرة الجديدة
+            dep_old = int(float(amount_to_save_syp))
+            dep_new = dep_old / 100
+            dep_new_str = f"{int(dep_new):,}" if dep_new == int(dep_new) else f"{dep_new:,.2f}"
+            copy_button_label = f"📋 نسخ {dep_new_str} ل.س جديدة"
+            copy_dep_data = f"copy_amt_{dep_old}"
+        admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ قبول", callback_data=f"approve_dep_{tx_id}"),
+                InlineKeyboardButton(text="❌ رفض", callback_data=f"reject_dep_{tx_id}")
+            ],
+            [InlineKeyboardButton(text="👤 تفاصيل المستخدم", callback_data=f"user_details_{telegram_id}")],
+            [InlineKeyboardButton(text=copy_button_label, callback_data=copy_dep_data)]
+        ])
 
-    await send_log_message(
+        # طلبات سيرياتيل يمكن إرسالها لقناة خاصة إن تم ضبطها من لوحة المشرف/البيئة
+        _, _syriatel_channel = get_syriatel_auto_config()
+        target_chat = _syriatel_channel if (gateway == 'syriatel' and _syriatel_channel) else (settings.DEPOSIT_CHANNEL_ID if settings.DEPOSIT_CHANNEL_ID else None)
+        try:
+            if target_chat:
+                if photo_id:
+                    await callback.bot.send_photo(chat_id=target_chat, photo=photo_id, caption=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
+                else:
+                    await callback.bot.send_message(chat_id=target_chat, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
+            else:
+                for admin_id in get_admin_target_chat_ids():
+                    try:
+                        if photo_id:
+                            await callback.bot.send_photo(chat_id=admin_id, photo=photo_id, caption=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
+                        else:
+                            await callback.bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
+                    except Exception as inner_e:
+                        logger.warning(f"Failed to notify admin {admin_id}: {inner_e}")
+        except Exception as e:
+            logger.error(f"Failed to post to deposit channel/admin: {e}")
+
+        await send_log_message(
         callback.bot,
         "📥 <b>طلب إيداع جديد</b>\n\n"
         f"👤 المستخدم: @{callback.from_user.username if callback.from_user.username else callback.from_user.first_name}\n"
@@ -1430,10 +1452,13 @@ async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext
         f"💰 المبلغ الأصلي: <code>{amount}</code> <b>{'SYP' if currency == 'syp' else 'USD'}</b>\n"
         f"💱 المكافئ: <code>{amount_to_save_syp:,} SYP</code>\n"
         f"💳 الوسيلة: <code>{gateway}</code>"
-    )
-    await state.clear()
-    await safe_answer_callback(callback, "تم إرسال الطلب للمراجعة!")
+        )
+        await state.clear()
+        await safe_answer_callback(callback, "تم إرسال الطلب للمراجعة!")
 
+
+    finally:
+        _release_lock(callback.from_user.id)
 
 # ================================================================
 # السحب من البوت (بدون تغيير)
@@ -2617,8 +2642,13 @@ async def withdraw_game_acc_callback(callback: CallbackQuery, state: FSMContext)
 
     # جلب رصيد اللعبة الفعلي مرة واحدة فقط، ثم استخدامه خلال نفس العملية لتقليل البطء.
     await safe_edit_text(callback.message, "⏳ <b>جاري جلب رصيدك الفعلي في اللعبة...</b>", parse_mode="HTML")
-    game_balance = await ichancy_api_client.get_player_balance(user['player_id'])
-    repo.update_user_game_balance(telegram_id, game_balance)
+    api_balance = await ichancy_api_client.get_player_balance(user['player_id'])
+    if api_balance is not None:
+        game_balance = int(api_balance)
+        repo.update_user_game_balance(telegram_id, game_balance)
+    else:
+        game_balance = repo.get_user_game_balance(telegram_id)
+        logger.warning(f"Could not fetch live balance for user {telegram_id}, falling back to DB cached: {game_balance}")
     await state.update_data(game_withdraw_balance=game_balance)
 
     if game_balance <= 0:

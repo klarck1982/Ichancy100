@@ -58,9 +58,15 @@ def find_matching_transaction(transactions, expected_amount, user_reference, cre
     expected = int(Decimal(str(expected_amount or 0)))
     ref = _normalize_ref(user_reference)
     is_phone = ref.startswith('09') and len(ref) == 10 and ref.isdigit()
-    created_dt = created_at.replace(tzinfo=None) if hasattr(created_at, 'replace') else None
-    if created_dt and getattr(created_at, 'tzinfo', None):
-        created_dt = created_at.replace(tzinfo=None)
+    created_dt = None
+    if created_at:
+        if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+            # تحويل الطابع إلى توقيت سوريا أولاً ثم تجريده، ليطابق توقيت خوادم الحوالات السورية (UTC+3)
+            from datetime import timezone as _tz, timedelta as _td
+            syria_tz = _tz(_td(hours=3))
+            created_dt = created_at.astimezone(syria_tz).replace(tzinfo=None)
+        elif hasattr(created_at, 'replace'):
+            created_dt = created_at.replace(tzinfo=None)
 
     for tx in transactions:
         try:
@@ -79,10 +85,15 @@ def find_matching_transaction(transactions, expected_amount, user_reference, cre
                     continue
             tx_date = _parse_date(tx.get('date'))
             if created_dt and tx_date:
-                # Allow transfer a little before request, but reject very old matches
-                if tx_date < created_dt - timedelta(minutes=10):
+                # نأخذ بعين الاعتبار احتمالية اختلاف التوقيت بين الخادم (UTC) وشركة الحوالات (UTC+3)
+                # نسمح بالحوالة إذا كانت ضمن نافذة زمنية مرنة وتسامحية تغطي فارق الـ 3 ساعات
+                diff_minutes = (tx_date - created_dt).total_seconds() / 60.0
+                # إذا كانت الحوالة أقدم من وقت الطلب بـ 190 دقيقة (3 ساعات فارق توقيت + 10 دقائق مرونة) تُرفض
+                if diff_minutes < -190:
                     continue
-                if tx_date > created_dt + timedelta(minutes=tolerance_minutes):
+                # إذا كانت الحوالة في المستقبل بأكثر من التسامح + 3 ساعات تُرفض
+                if diff_minutes > (tolerance_minutes + 180):
+                    continue
                     continue
             return {'ok': True, 'transaction': tx, 'external_ref': tx_no or ref}
         except Exception:

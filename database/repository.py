@@ -97,8 +97,14 @@ def adjust_user_bot_balance(telegram_id, delta):
 
 
 def update_user_game_balance(telegram_id, new_balance):
+    if new_balance is None:
+        return
+    try:
+        val = int(new_balance)
+    except (ValueError, TypeError):
+        return
     query = "UPDATE users SET game_balance = %s WHERE telegram_id = %s"
-    DatabaseManager.execute_query(query, (int(new_balance), str(telegram_id)))
+    DatabaseManager.execute_query(query, (val, str(telegram_id)))
 
 
 def get_user_game_balance(telegram_id):
@@ -940,7 +946,7 @@ def settle_game_withdraw_with_active_bonus(telegram_id, withdraw_amount, tx_id=N
             DatabaseManager.put_connection(conn)
 
 
-def approve_deposit_atomic(telegram_id, deposit_amount, bonus_amount, tx_id, reviewed_by=None):
+def approve_deposit_atomic(telegram_id, deposit_amount, bonus_amount, tx_id, reviewed_by=None, new_vip_tier=None):
     """اعتماد إيداع بشكل ذري كامل: القفل + الإضافة + التعليم.
 
     تنفّذ داخل معاملة واحدة لا تُخترق:
@@ -988,10 +994,11 @@ def approve_deposit_atomic(telegram_id, deposit_amount, bonus_amount, tx_id, rev
             """UPDATE users
                SET bot_balance = COALESCE(bot_balance, 0) + %s,
                    bonus_balance = COALESCE(bonus_balance, 0) + %s,
-                   bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s
+                   bonus_base_balance = COALESCE(bonus_base_balance, 0) + %s,
+                   vip_tier = COALESCE(%s, vip_tier)
                WHERE telegram_id = %s
                RETURNING bot_balance, bonus_balance""",
-            (deposit_added, bonus_added, bonus_base_added, tid)
+            (deposit_added, bonus_added, bonus_base_added, new_vip_tier, tid)
         )
         new_row = cursor.fetchone()
         new_balance = int(new_row[0]) if new_row else 0
@@ -1686,10 +1693,14 @@ async def process_weekly_affiliate_commissions(bot=None):
         try:
             pid = row.get('player_id')
             if pid:
-                live_balance = int(await ichancy_api_client.get_player_balance(pid) or 0)
+                raw_bal = await ichancy_api_client.get_player_balance(pid)
+                if raw_bal is not None:
+                    live_balance = int(raw_bal)
+                else:
+                    live_balance = get_user_game_balance(referred_id)
         except Exception as e:
             logger.warning(f"affiliate: failed live balance for {referred_id}: {e}")
-            live_balance = None
+            live_balance = get_user_game_balance(referred_id)
         activity = get_user_weekly_game_activity(referred_id, current_game_balance=live_balance)
         checked += 1
         if int(activity.get('net_loss') or 0) <= 0:
@@ -2889,8 +2900,15 @@ def can_checkin_today(telegram_id):
     if not info.get('last_checkin_date'):
         return True
     last = info['last_checkin_date']
+    if hasattr(last, 'year'):
+        last_date = last if hasattr(last, 'day') and not hasattr(last, 'hour') else last.date()
+    else:
+        try:
+            last_date = datetime.strptime(str(last).split(' ')[0], '%Y-%m-%d').date()
+        except Exception:
+            return True
     today = get_syria_now().date()  # 🆕 (Update 14) توقيت سوريا
-    return last < today
+    return last_date < today
 
 
 def do_daily_checkin(telegram_id):
@@ -3256,14 +3274,19 @@ def update_wheel_settings(wheel_enabled=None, segments=None):
     """, (bool(new_enabled), seg_json))
 
 
-def has_wheel_spin(telegram_id, deposit_tx_id):
-    """هل المستخدم لديه لفة متاحة لهذا الإيداع؟"""
+def can_spin_wheel_for_deposit(telegram_id, deposit_tx_id):
+    """هل يحق للمستخدم الدوران على هذا الإيداع؟ (True إذا لم يدُر سابقاً)"""
     tid = str(telegram_id)
     result = DatabaseManager.execute_query(
         "SELECT id FROM wheel_spins WHERE telegram_id = %s AND deposit_tx_id = %s",
         (tid, int(deposit_tx_id)), fetch='one'
     )
     return result is None
+
+
+def has_wheel_spin(telegram_id, deposit_tx_id):
+    """(Alias/Backward Compatibility) هل يحق للمستخدم لفة على هذا الإيداع؟"""
+    return can_spin_wheel_for_deposit(telegram_id, deposit_tx_id)
 
 
 def get_spun_deposit_ids(telegram_id):
@@ -3686,11 +3709,14 @@ async def process_all_weekly_cashbacks(bot=None):
             u = get_user(tid)
             pid = u.get('player_id') if u else None
             if pid:
-                live_balance = await ichancy_api_client.get_player_balance(pid)
-                live_balance = int(live_balance or 0)
+                raw_bal = await ichancy_api_client.get_player_balance(pid)
+                if raw_bal is not None:
+                    live_balance = int(raw_bal)
+                else:
+                    live_balance = get_user_game_balance(tid)
         except Exception as e:
             logger.warning(f"cashback: failed to fetch live balance for {tid}: {e}")
-            live_balance = None  # يتراجع للحساب المبسّط بأمان
+            live_balance = get_user_game_balance(tid)
         result = process_weekly_cashback_for_user(tid, current_game_balance=live_balance)
         if result.get('ok'):
             processed += 1

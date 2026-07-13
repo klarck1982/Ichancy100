@@ -87,10 +87,15 @@ async def ensure_admin_message(message: Message, state: FSMContext | None = None
     return True
 
 
-# 🆕 فلتر يطابق رسائل المشرف فقط عند وجود طلب رفض مخصص معلّق
+# 🆕 فلتر يطابق رسائل المشرف فقط عند وجود طلب رفض مخصص معلّق (مع استثناء الأوامر)
 class HasPendingRejection(Filter):
     async def __call__(self, message: Message) -> bool:
         if not is_admin_user(message.from_user.id):
+            return False
+        # إذا كانت الرسالة أمراً يبدأ بـ / فإننا لا نعتبرها سبب رفض أبداً
+        if message.text and message.text.strip().startswith('/'):
+            if message.text.strip().lower() in ('/cancel', '/cancel_rejection', '/home', '/admin'):
+                repo.clear_pending_rejection(message.from_user.id)
             return False
         return repo.get_pending_rejection(message.from_user.id) is not None
 
@@ -469,7 +474,8 @@ async def adm_sync_liquidity_callback(callback: CallbackQuery):
                 try:
                     # جلب الرصيد وتحديثه في قاعدة البيانات
                     balance = await ichancy_api_client.get_player_balance(pid)
-                    repo.update_user_game_balance(tid, balance)
+                    if balance is not None:
+                        repo.update_user_game_balance(tid, balance)
                 except Exception as e:
                     logger.warning(f"Failed to sync balance for {tid}: {e}")
             
@@ -587,7 +593,8 @@ async def approve_dep_callback(callback: CallbackQuery):
         deposit_amount=deposit_amount,
         bonus_amount=bonus_amount,
         tx_id=tx_id,
-        reviewed_by=callback.from_user.id
+        reviewed_by=callback.from_user.id,
+        new_vip_tier=int(vip_upgrade.get('new_tier_index')) if vip_upgrade.get('upgraded') else None
     )
     if not result.get('ok'):
         logger.error(f"approve_deposit_atomic failed for tx #{tx_id}: {result.get('reason')}")
@@ -815,6 +822,11 @@ async def process_custom_rejection(message: Message):
         return
 
     reason = (message.text or '').strip()
+    if reason.startswith('/'):
+        if reason.lower() in ('/cancel', '/cancel_rejection', '/home', '/admin'):
+            repo.clear_pending_rejection(message.from_user.id)
+            await message.answer("❌ تم إلغاء عملية الرفض المخصص.")
+        return
     if not reason:
         await message.answer("❌ الرجاء إرسال سبب رفض واضح (نص):")
         return
@@ -934,6 +946,15 @@ async def process_custom_rejection(message: Message):
     repo.clear_pending_rejection(message.from_user.id)
 
 
+@router.callback_query(F.data == "adm_cancel_rejection")
+async def adm_cancel_rejection_callback(callback: CallbackQuery):
+    if not is_admin_user(callback.from_user.id):
+        return
+    repo.clear_pending_rejection(callback.from_user.id)
+    await safe_edit_text(callback.message, "❌ تم إلغاء طلب الرفض المخصص.", parse_mode="HTML")
+    await safe_answer_callback(callback, "تم الإلغاء")
+
+
 
 
 @router.callback_query(F.data.startswith("dep_reject_reason|"))
@@ -950,7 +971,12 @@ async def dep_reject_reason_callback(callback: CallbackQuery, state: FSMContext)
         repo.set_pending_rejection(callback.from_user.id, tx_id, 'deposit_bot', callback.message.chat.id, callback.message.message_id)
         await safe_edit_text(callback.message, f"✍️ <b>طلب رفض مخصص للإيداع #{tx_id}</b>\n\nأرسل سبب الرفض في <b>محادثتك الخاصة</b> مع البوت الآن 👇", parse_mode="HTML")
         try:
-            await callback.bot.send_message(callback.from_user.id, f"✍️ <b>سبب رفض مخصص لطلب الإيداع #{tx_id}</b>\n\nأرسل الآن نص السبب (سيُرسل للمستخدم فوراً):", parse_mode="HTML")
+            await callback.bot.send_message(
+                callback.from_user.id,
+                f"✍️ <b>سبب رفض مخصص لطلب الإيداع #{tx_id}</b>\n\nأرسل الآن نص السبب (سيُرسل للمستخدم فوراً):",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ إلغاء الرفض المخصص", callback_data="adm_cancel_rejection")]]),
+                parse_mode="HTML"
+            )
         except Exception as e:
             logger.warning(f"Could not DM admin for custom rejection: {e}")
         await safe_answer_callback(callback, "أرسل السبب في المحادثة الخاصة ✉️")
@@ -992,7 +1018,12 @@ async def withdraw_reject_reason_callback(callback: CallbackQuery, state: FSMCon
         repo.set_pending_rejection(callback.from_user.id, tx_id, 'withdraw_bot', callback.message.chat.id, callback.message.message_id)
         await safe_edit_text(callback.message, f"✍️ <b>طلب رفض مخصص للسحب #{tx_id}</b>\n\nأرسل سبب الرفض في <b>محادثتك الخاصة</b> مع البوت الآن 👇", parse_mode="HTML")
         try:
-            await callback.bot.send_message(callback.from_user.id, f"✍️ <b>سبب رفض مخصص لطلب السحب #{tx_id}</b>\n\nأرسل الآن نص السبب (سيُرسل للمستخدم فوراً):", parse_mode="HTML")
+            await callback.bot.send_message(
+                callback.from_user.id,
+                f"✍️ <b>سبب رفض مخصص لطلب السحب #{tx_id}</b>\n\nأرسل الآن نص السبب (سيُرسل للمستخدم فوراً):",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ إلغاء الرفض المخصص", callback_data="adm_cancel_rejection")]]),
+                parse_mode="HTML"
+            )
         except Exception as e:
             logger.warning(f"Could not DM admin for custom rejection: {e}")
         await safe_answer_callback(callback, "أرسل السبب في المحادثة الخاصة ✉️")
@@ -2033,6 +2064,7 @@ async def contest_reject_reason_callback(callback: CallbackQuery, state: FSMCont
                 callback.from_user.id,
                 f"✍️ <b>سبب رفض مخصص للمشاركة #{entry_id}</b>\n\n"
                 "أرسل الآن نص السبب (سيُرسل للمستخدم فوراً):",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ إلغاء الرفض المخصص", callback_data="adm_cancel_rejection")]]),
                 parse_mode="HTML"
             )
         except Exception as e:

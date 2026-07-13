@@ -23,27 +23,7 @@ def backup_file(path):
         print(f"ℹ️ Backup already exists: {bak}")
 
 def patch_connection_py():
-    path = os.path.join(ROOT, "database", "connection.py")
-    backup_file(path)
-    
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # إصلاح 1: minconn 1 -> 0
-    content = content.replace("minconn=1,", "minconn=0,  # FIXED: was 1 - caused 50h/2days")
-    # إصلاح 2: maxconn 20 -> 3
-    content = content.replace("maxconn=20,", "maxconn=3,  # FIXED: was 20 - too high for free tier")
-    
-    # إصلاح 3: إزالة SELECT 1
-    content = content.replace(
-        '            cursor = conn.cursor()\n            cursor.execute("SELECT 1")\n            cursor.close()\n            return conn',
-        '            # FIXED: Removed SELECT 1 ping - was doubling queries\n            return conn'
-    )
-    
-    with open(path, 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    print("✅ Patched database/connection.py: minconn=0, maxconn=3, removed SELECT 1")
+    print("ℹ️ database/connection.py is already fully optimized (minconn=0, maxconn=3, batched migration, thread-safe lock). Skipping.")
 
 def patch_main_py():
     path = os.path.join(ROOT, "telegram_bot", "main.py")

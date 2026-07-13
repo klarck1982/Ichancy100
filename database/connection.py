@@ -2,6 +2,7 @@ import psycopg2
 from psycopg2 import pool
 import logging
 import time
+import threading
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -10,25 +11,32 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     _pool = None
     _tables_checked = False
+    _pool_lock = threading.Lock()
+    _last_activity = time.time()
 
     @classmethod
     def initialize_pool(cls):
         if not cls._pool:
-            try:
-                minconn = max(1, int(getattr(settings, 'DB_POOL_MINCONN', 1) or 1))
-                maxconn = max(minconn, int(getattr(settings, 'DB_POOL_MAXCONN', 5) or 5))
-                cls._pool = pool.ThreadedConnectionPool(
-                    minconn=minconn,
-                    maxconn=maxconn,
-                    dsn=settings.DATABASE_URL
-                )
-                logger.info("Database connection pool initialized successfully.")
-                if not cls._tables_checked:
-                    cls.create_tables()
-                    cls._tables_checked = True
-            except Exception as e:
-                logger.error(f"Error initializing database pool: {e}")
-                raise e
+            with cls._pool_lock:
+                if not cls._pool:
+                    try:
+                        # ✅ تحسين لـ Neon Serverless الخطة المجانية:
+                        # minconn=0 يتيح لقاعدة البيانات الدخول في وضع السكون (Sleep) عند الخمول
+                        # maxconn=3 يمنع استنزاف المسبح وموارد السيرفر
+                        minconn = int(getattr(settings, 'DB_POOL_MINCONN', 0) or 0)
+                        maxconn = max(1, int(getattr(settings, 'DB_POOL_MAXCONN', 3) or 3))
+                        cls._pool = pool.ThreadedConnectionPool(
+                            minconn=minconn,
+                            maxconn=maxconn,
+                            dsn=settings.DATABASE_URL
+                        )
+                        logger.info(f"Database connection pool initialized successfully (min={minconn}, max={maxconn}).")
+                        if not cls._tables_checked:
+                            cls.create_tables()
+                            cls._tables_checked = True
+                    except Exception as e:
+                        logger.error(f"Error initializing database pool: {e}")
+                        raise e
 
     @classmethod
     def get_connection(cls):
@@ -41,8 +49,8 @@ class DatabaseManager:
                 cursor.execute("SELECT 1")
                 cursor.close()
             return conn
-        except Exception:
-            logger.warning("Dead connection detected in pool! Recreating connection pool...")
+        except Exception as e:
+            logger.warning(f"Dead connection detected in pool ({e})! Recreating connection pool...")
             cls.recreate_pool()
             return cls._pool.getconn()
 
@@ -56,13 +64,28 @@ class DatabaseManager:
 
     @classmethod
     def recreate_pool(cls):
-        if cls._pool:
-            try:
-                cls._pool.closeall()
-            except Exception:
-                pass
-        cls._pool = None
+        with cls._pool_lock:
+            if cls._pool:
+                try:
+                    cls._pool.closeall()
+                except Exception:
+                    pass
+                cls._pool = None
         cls.initialize_pool()
+
+    @classmethod
+    def close_idle_pool_if_needed(cls, idle_seconds=600):
+        """إغلاق المسبح إذا لم يكن هناك نشاط لأكثر من 10 دقائق للسماح لقاعدة بيانات Neon بالدخول في وضع السكون."""
+        with cls._pool_lock:
+            if not cls._pool:
+                return
+            if time.time() - cls._last_activity > idle_seconds:
+                try:
+                    logger.info(f"💤 No DB activity for {idle_seconds}s, closing pool to let Neon sleep.")
+                    cls._pool.closeall()
+                    cls._pool = None
+                except Exception as e:
+                    logger.warning(f"Failed to close idle pool: {e}")
 
     @classmethod
     def execute_query(cls, query, params=None, fetch=None):
@@ -82,6 +105,7 @@ class DatabaseManager:
                     result = cursor.fetchall()
 
                 conn.commit()
+                cls._last_activity = time.time()
                 break
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as conn_err:
                 logger.warning(f"Database connection lost: {conn_err}. Retrying execution...")
@@ -119,6 +143,7 @@ class DatabaseManager:
                     result = cursor.fetchall()
 
                 conn.commit()
+                cls._last_activity = time.time()
                 break
             except (psycopg2.OperationalError, psycopg2.InterfaceError) as conn_err:
                 logger.warning(f"Database connection lost: {conn_err}. Retrying execution...")
@@ -632,22 +657,25 @@ class DatabaseManager:
             flash_bonuses_table,
         ]
 
-        for table_query in table_queries:
-            conn = None
-            cursor = None
-            try:
-                conn = cls._pool.getconn()
-                cursor = conn.cursor()
-                cursor.execute(table_query)
-                conn.commit()
-            except Exception as e:
-                if conn:
+        conn = None
+        cursor = None
+        try:
+            conn = cls._pool.getconn()
+            cursor = conn.cursor()
+            for table_query in table_queries:
+                try:
+                    cursor.execute(table_query)
+                except Exception as e:
                     conn.rollback()
-                logger.error(f"Error creating tables: {e}")
-            finally:
-                if cursor:
-                    cursor.close()
-                if conn:
-                    cls._pool.putconn(conn)
-
-        logger.info("Tables checked/created successfully.")
+                    logger.error(f"Error executing table creation query: {e}")
+            conn.commit()
+            logger.info("Tables checked/created successfully in a single batched connection.")
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error creating tables: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                cls._pool.putconn(conn)
