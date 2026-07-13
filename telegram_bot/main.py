@@ -722,7 +722,19 @@ async def dashboard_api_handler(request):
         )
         inactive_count = int(inactive_users[0]) if inactive_users else 0
 
-        agent_balance_alert = int(bot_settings.get('agent_balance', 0)) < int(getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
+        agent_balance_val = int(bot_settings.get('agent_balance', 0))
+        if agent_balance_val == 0 or (time.time() - last_agent_balance_db_update_ts > 120):
+            try:
+                live_bal = await ichancy_api_client.get_admin_balance()
+                if live_bal is not None:
+                    agent_balance_val = int(live_bal)
+                    repo.update_bot_settings(agent_balance=agent_balance_val)
+                    last_agent_balance_db_value = agent_balance_val
+                    last_agent_balance_db_update_ts = time.time()
+            except Exception as e:
+                logger.warning(f"Could not live refresh agent balance in dashboard API: {e}")
+
+        agent_balance_alert = agent_balance_val < int(getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
 
         data = {
             'total_users': repo.get_total_users_count(),
@@ -730,7 +742,7 @@ async def dashboard_api_handler(request):
             'today_tx_count': repo.get_today_transactions_count(),
             'approved_volume': repo.get_transactions_volume('approved'),
             'total_bot_balance': await _get_total_bot_balance_cached(),
-            'agent_balance': int(bot_settings.get('agent_balance', 0)),
+            'agent_balance': agent_balance_val,
             'usd_buy_rate': float(bot_settings['usd_buy_rate']),
             'usd_sell_rate': float(bot_settings['usd_sell_rate']),
             'exchange_rate': int(bot_settings['exchange_rate']),

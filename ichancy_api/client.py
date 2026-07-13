@@ -321,39 +321,53 @@ class IChancyClient:
             return {'success': False, 'error': str(e)}
 
     def _get_admin_balance(self):
-        url = f"{self.BASE_URL}/global/api/Agent/getAgentWalletByAgentId"
-        payload = {
-            'affiliateId': int(settings.PARENT_ID) if settings.PARENT_ID else None,
-            'currencyCode': "NSP"
-        }
+        aff_id = None
         try:
-            response = self.session.post(url, json=payload, timeout=30)
-            if response.status_code in [401, 403]:
-                logger.warning("Session expired! Triggering automatic self-healing login...")
-                if self._login_agent():
-                    response = self.session.post(url, json=payload, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            result_data = data.get('result')
-            if self._is_invalid_session_result(result_data):
-                logger.warning("Session invalid on admin balance! Retrying login...")
-                if self._login_agent():
-                    response = self.session.post(url, json=payload, timeout=30)
-                    data = response.json()
-                    result_data = data.get('result')
-            if result_data is not None:
-                if isinstance(result_data, list) and len(result_data) > 0 and isinstance(result_data[0], dict):
-                    if 'balance' in result_data[0]:
-                        return int(result_data[0].get('balance') or 0)
-                elif isinstance(result_data, dict) and 'balance' in result_data:
-                    return int(result_data.get('balance') or 0)
+            val = settings.AGENT_ID or settings.PARENT_ID
+            if val:
+                aff_id = int(str(val).strip())
+        except Exception:
+            aff_id = None
 
-            # مهم: لا نعيد 0 عند فشل/فراغ الرد، لأن ذلك يصفّر رصيد الكاشيرة المخزن ويطلق إنذاراً خاطئاً.
-            logger.warning(f"Admin balance response did not contain a balance field: {data}")
-            return None
-        except Exception as e:
-            logger.error(f"Error fetching admin balance: {e}")
-            return None
+        urls_to_try = [
+            (f"{self.BASE_URL}/global/api/Agent/getAgentWalletByAgentId", {'affiliateId': aff_id, 'currencyCode': "NSP"}),
+            (f"{self.BASE_URL}/global/api/Agent/getAgentWallet", {'currencyCode': "NSP"})
+        ]
+
+        for url, payload in urls_to_try:
+            try:
+                response = self.session.post(url, json=payload, timeout=20)
+                if response.status_code in [401, 403]:
+                    logger.warning("Session expired! Triggering automatic self-healing login...")
+                    if self._login_agent():
+                        response = self.session.post(url, json=payload, timeout=20)
+                if response.status_code != 200:
+                    continue
+                data = response.json()
+                result_data = data.get('result')
+                if self._is_invalid_session_result(result_data):
+                    logger.warning("Session invalid on admin balance! Retrying login...")
+                    if self._login_agent():
+                        response = self.session.post(url, json=payload, timeout=20)
+                        data = response.json()
+                        result_data = data.get('result')
+                if result_data is not None:
+                    if isinstance(result_data, (int, float)):
+                        return int(result_data)
+                    if isinstance(result_data, list) and len(result_data) > 0 and isinstance(result_data[0], dict):
+                        for k in ['balance', 'amount', 'walletBalance']:
+                            if k in result_data[0] and result_data[0][k] is not None:
+                                return int(float(result_data[0][k]))
+                    elif isinstance(result_data, dict):
+                        for k in ['balance', 'amount', 'walletBalance']:
+                            if k in result_data and result_data[k] is not None:
+                                return int(float(result_data[k]))
+            except Exception as e:
+                logger.warning(f"Error fetching admin balance from {url}: {e}")
+                continue
+
+        logger.warning("Admin balance could not be extracted from any endpoint.")
+        return None
 
     def _get_agent_transaction_list(self, from_date, to_date, limit=1000, start=0, is_to_me=False, affiliate_id=None):
         """جلب سجل حركات الكاشيرة/الوكيل من iChancy."""

@@ -413,8 +413,17 @@ def build_withdraw_approved_details(tx):
 
 async def _gather_dashboard_stats():
     """جمع كل إحصائيات الداشبورد (مُختصرة لتفادي التكرار)."""
+    bot_settings = repo.get_bot_settings()
+    if int(bot_settings.get('agent_balance', 0) or 0) == 0:
+        try:
+            live_bal = await ichancy_api_client.get_admin_balance()
+            if live_bal is not None:
+                repo.update_bot_settings(agent_balance=int(live_bal))
+                bot_settings = repo.get_bot_settings()
+        except Exception:
+            pass
     return {
-        'bot_settings': repo.get_bot_settings(),
+        'bot_settings': bot_settings,
         'is_cookie_alive': await ichancy_api_client.check_session_validity(),
         'total_bot_balance': await get_total_bot_balance(),
         'pending': repo.get_pending_requests(),
