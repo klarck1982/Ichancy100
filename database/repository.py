@@ -611,10 +611,14 @@ def calculate_game_bonus_for_deposit(amount, available_bonus=None, bonus_base_ba
     if base_int > 0:
         bonus = int(amount_int * available_bonus_int / base_int)
     else:
-        pct = float(10 if settings.get('game_bonus_apply_percent') is None else settings.get('game_bonus_apply_percent'))
+        # 🔧 إصلاح جوهري: عندما يكون رصيد قاعدة البونص (base_int) صفراً (مثل مكافآت الكاش باك، الهدايا، والحضور)،
+        # يتم إرفاق البونص المتاح (available_bonus_int) مع الإيداع النقدي (حتى 100% من قيمة الإيداع النقدي)
+        # لضمان وصول رصيد المكافآت إلى حساب اللعبة الفعلي وعدم تجميده بنسبة 10% فقط.
+        pct = float(settings.get('game_bonus_apply_percent', 100))
         if pct <= 0:
-            return 0
-        bonus = int(amount_int * (pct / 100.0))
+            pct = 100.0
+        pct_bonus = int(amount_int * (pct / 100.0))
+        bonus = max(pct_bonus, min(available_bonus_int, amount_int))
     return max(0, min(available_bonus_int, bonus))
 
 
@@ -1323,8 +1327,9 @@ def create_gift(sender_id, amount, code, receiver_id=None):
 
 
 def get_gift_by_code(code):
-    query = "SELECT * FROM gifts WHERE code = %s"
-    return DatabaseManager.execute_query_dict(query, (code,), fetch='one')
+    normalized = str(code).strip().upper()
+    query = "SELECT * FROM gifts WHERE UPPER(code) = %s"
+    return DatabaseManager.execute_query_dict(query, (normalized,), fetch='one')
 
 
 def create_bot_gift(admin_id, amount, code):
@@ -1358,7 +1363,7 @@ def redeem_gift(code, receiver_id):
     conn = None
     cursor = None
     receiver_tid = str(receiver_id)
-    normalized_code = str(code).strip()
+    normalized_code = str(code).strip().upper()
 
     try:
         conn = DatabaseManager.get_connection()
@@ -1368,7 +1373,7 @@ def redeem_gift(code, receiver_id):
             """
             SELECT id, sender_telegram_id, receiver_telegram_id, amount, is_redeemed
             FROM gifts
-            WHERE code = %s
+            WHERE UPPER(code) = %s
             FOR UPDATE
             """,
             (normalized_code,)

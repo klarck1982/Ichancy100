@@ -74,8 +74,8 @@ class DatabaseManager:
         cls.initialize_pool()
 
     @classmethod
-    def close_idle_pool_if_needed(cls, idle_seconds=600):
-        """إغلاق المسبح إذا لم يكن هناك نشاط لأكثر من 10 دقائق للسماح لقاعدة بيانات Neon بالدخول في وضع السكون."""
+    def close_idle_pool_if_needed(cls, idle_seconds=180):
+        """إغلاق المسبح إذا لم يكن هناك نشاط لأكثر من 3 دقائق للسماح لقاعدة بيانات Neon بالدخول في وضع السكون السريع."""
         with cls._pool_lock:
             if not cls._pool:
                 return

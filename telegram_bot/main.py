@@ -151,9 +151,9 @@ async def cookie_watchdog_task(bot: Bot):
                         except Exception as e:
                             logger.warning(f"Cookie failure notification failed for {admin_id}: {e}")
 
-            # 💤 إغلاق الاتصالات الخاملة بـ Neon بعد 10 دقائق من الخمول للسماح للنظام بالسكون وتوفير الحساب المجاني
+            # 💤 إغلاق الاتصالات الخاملة بـ Neon بعد 3 دقائق من الخمول للسماح للنظام بالسكون وتوفير الحساب المجاني
             if hasattr(DatabaseManager, 'close_idle_pool_if_needed'):
-                DatabaseManager.close_idle_pool_if_needed(idle_seconds=600)
+                DatabaseManager.close_idle_pool_if_needed(idle_seconds=180)
         except asyncio.CancelledError:
             logger.info("🛑 Watchdog task cancelled.")
             raise
