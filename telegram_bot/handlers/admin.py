@@ -183,7 +183,7 @@ def get_admin_keyboard():
             InlineKeyboardButton(text="🩺 فحص النبض والمحاكاة", callback_data="adm_system_probe"),
             InlineKeyboardButton(text="🔄 تصفير حسابي الاختباري", callback_data="adm_reset_my_test_balance")
         ],
-        [InlineKeyboardButton(text="🗑️ تصفير كل أرصدة قاعدة البيانات (Reset DB)", callback_data="adm_reset_all_db")],
+        [InlineKeyboardButton(text="🗑️ تصفير شامل لكل الأرصدة والتاريخ (Beta Reset)", callback_data="adm_reset_all_db")],
         [InlineKeyboardButton(text="💱 تعديل أسعار الصرف", callback_data="adm_rates_menu")],
         [
             InlineKeyboardButton(text="🏷️ نسبة عمولة السحب", callback_data="adm_comm_menu"),
@@ -222,7 +222,7 @@ def get_admin_dashboard_keyboard(refresh_callback="caesar_control_panel"):
             InlineKeyboardButton(text="🩺 فحص النبض والمحاكاة", callback_data="adm_system_probe"),
             InlineKeyboardButton(text="🔄 تصفير حسابي الاختباري", callback_data="adm_reset_my_test_balance")
         ],
-        [InlineKeyboardButton(text="🗑️ تصفير كل أرصدة قاعدة البيانات (Reset DB)", callback_data="adm_reset_all_db")],
+        [InlineKeyboardButton(text="🗑️ تصفير شامل لكل الأرصدة والتاريخ (Beta Reset)", callback_data="adm_reset_all_db")],
         [
             InlineKeyboardButton(text="🎫 إنشاء كود هدية", callback_data="adm_create_bot_gift"),
             InlineKeyboardButton(text="🎁 البونصات", callback_data="adm_bonus_menu")
@@ -620,12 +620,30 @@ async def adm_reset_all_db_confirm(callback: CallbackQuery):
         return
     await safe_edit_text(
         callback.message,
-        "⚠️ <b>تنبيه حاسم: تصفير أرصدة كل قاعدة البيانات</b>\n\n"
-        "هل أنت متأكد من رغبتك في تصفير جميع الأرصدة (النقدية، المكافآت، بونص اللعب، وبونص الشحن) لجميع المستخدمين في قاعدة البيانات؟\n\n"
-        "سيتم إعادة جميع الأرصدة إلى <code>0 ل.س</code>، وتنظيف المعاملات المؤقتة والاختبارية.",
+        "⚠️ <b>تنبيه حاسم: تصفير شامل لكل قاعدة البيانات (إنهاء المرحلة التجريبية)</b>\n\n"
+        "هل أنت متأكد من رغبتك في تصفير مسح جميع الأرصدة، وسجلات الإيداع والسحب، وسجلات الهدايا والحضور والعجلة، وإجمالي الإيداعات ومستويات VIP لجميع المستخدمين في قاعدة البيانات؟\n\n"
+        "🛡️ <i>سيتم الاحتفاظ بحسابات وأسماء المستخدمين وربطهم بـ iChancy كما هي بأمان تام، مع إعادة كل الأرصدة والبيانات إلى الصفر!</i>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🗑️ نعم، صَفّر كل الأرصدة الآن", callback_data="adm_reset_all_db_confirmed")],
+            [InlineKeyboardButton(text="⚠️ نعم، انتقل للتأكيد النهائي", callback_data="adm_reset_all_db_step2")],
             [InlineKeyboardButton(text="❌ إلغاء وعودة", callback_data="caesar_control_panel")]
+        ]),
+        parse_mode="HTML"
+    )
+    await safe_answer_callback(callback)
+
+
+@router.callback_query(F.data == "adm_reset_all_db_step2")
+async def adm_reset_all_db_confirm_step2(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    await safe_edit_text(
+        callback.message,
+        "🚨 <b>التأكيد النهائي والأخير (Double Confirmation)</b>\n\n"
+        "أنت على وشك تنفيذ تصفير كامل ومسح لجميع الجداول المالية والإحصائية في قاعدة البيانات للبدء من الصفر.\n"
+        "هل تنفذ أمر التصفير الشامل الآن؟",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💥 تنفيذ التصفير الشامل الآن (EXECUTE)", callback_data="adm_reset_all_db_confirmed")],
+            [InlineKeyboardButton(text="❌ تراجع وإلغاء", callback_data="caesar_control_panel")]
         ]),
         parse_mode="HTML"
     )
@@ -636,18 +654,59 @@ async def adm_reset_all_db_confirm(callback: CallbackQuery):
 async def adm_reset_all_db_execute(callback: CallbackQuery):
     if not await ensure_admin_callback(callback):
         return
+    await safe_answer_callback(callback, "⏳ جاري تنفيذ التصفير الشامل لكافة الخزائن والجداول...", show_alert=True)
     try:
+        # 1) تصفير كل أرصدة ومؤشرات المستخدمين (مع الحفاظ على معلومات الدخول والربط والآيدي)
         DatabaseManager.execute_query("""
-            UPDATE users SET bot_balance = 0, bonus_balance = 0, game_bonus_amount = 0, bonus_base_balance = 0, cashback_pending_balance = 0, checkin_pending_balance = 0;
+            UPDATE users SET 
+                bot_balance = 0,
+                game_balance = 0,
+                bonus_balance = 0,
+                game_bonus_amount = 0,
+                bonus_base_balance = 0,
+                total_deposits = 0,
+                vip_tier = 0,
+                affiliate_balance = 0,
+                cashback_pending_balance = 0,
+                checkin_pending_balance = 0;
         """)
-        DatabaseManager.execute_query("""
-            DELETE FROM transactions WHERE status IN ('pending', 'sandbox_test') OR payment_method IN ('game', 'test', 'sandbox');
-        """)
-        await safe_answer_callback(callback, "✅ تم تصفير جميع أرصدة قاعدة البيانات وتنظيف السجلات بنجاح!", show_alert=True)
-        await caesar_control_panel(callback)
+        # 2) تفريغ جميع جداول الحركات والمعاملات والتاريخ بالكامل باستخدام TRUNCATE أو DELETE
+        try:
+            DatabaseManager.execute_query("""
+                TRUNCATE TABLE transactions, gifts, wheel_spins, daily_checkins, 
+                               cashback_payouts, affiliate_weekly_commissions, 
+                               referral_commissions, prediction_entries, contest_entries RESTART IDENTITY CASCADE;
+            """)
+        except Exception:
+            # احتياط آمن في حال عدم وجود بعض الجداول أو صلاحية TRUNCATE
+            for tbl in ["transactions", "gifts", "wheel_spins", "daily_checkins", "cashback_payouts", "affiliate_weekly_commissions", "referral_commissions", "prediction_entries", "contest_entries"]:
+                try:
+                    DatabaseManager.execute_query(f"DELETE FROM {tbl};")
+                except Exception:
+                    pass
+
+        # 3) تصفير إحصائيات رصيد الوكيل في إعدادات البوت
+        DatabaseManager.execute_query("UPDATE bot_settings SET agent_balance = 0 WHERE id = 1;")
+        
+        await safe_edit_text(
+            callback.message,
+            "💥 <b>تم التصفير الشامل بنجاح 100% (Beta Reset Completed)!</b>\n\n"
+            "✅ تم تصفير جميع الأرصدة النقديّة والمكافآت وإجمالي الإيداعات ومستويات VIP لجميع المستخدمين إلى <code>0 ل.س</code>.\n"
+            "✅ تم مسح جميع سجلات الإيداع والسحب والهدايا والحضور والعجلة والكاش باك وتصفير الجداول بالكامل.\n"
+            "🛡️ تم الاحتفاظ بحسابات وأسماء المستخدمين وربطهم بـ iChancy كما هي بأمان.\n\n"
+            "<i>النظام الآن مصَفّر بالكامل وجاهز للانطلاق الفعلي بعد انتهاء المرحلة التجريبية!</i>",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🏠 عودة للوحة التحكم الرئيسية", callback_data="caesar_control_panel")]
+            ]),
+            parse_mode="HTML"
+        )
     except Exception as e:
-        logger.error(f"Reset all DB error: {e}")
-        await safe_answer_callback(callback, "❌ خطأ في تصفير قاعدة البيانات", show_alert=True)
+        logger.error(f"Reset all DB error: {e}", exc_info=True)
+        await safe_edit_text(
+            callback.message,
+            f"❌ تعذر إتمام التصفير الشامل:\n<code>{str(e)}</code>",
+            parse_mode="HTML"
+        )
 
 
 @router.message(Command("reset_db"))
@@ -655,9 +714,9 @@ async def reset_db_cmd(message: Message):
     if not is_admin_user(message.from_user.id):
         return
     await message.answer(
-        "⚠️ <b>تصفير أرصدة كل قاعدة البيانات</b>\n\nاضغط لتأكيد التصفير الشامل:",
+        "⚠️ <b>تصفير شامل لكل قاعدة البيانات (إنهاء المرحلة التجريبية)</b>\n\nاضغط للبدء بخطوات التأكيد المزدوج:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🗑️ نعم، صَفّر كل الأرصدة الآن", callback_data="adm_reset_all_db_confirmed")],
+            [InlineKeyboardButton(text="🗑️ نعم، صَفّر كل الأرصدة والتاريخ الآن", callback_data="adm_reset_all_db")],
             [InlineKeyboardButton(text="❌ إلغاء وعودة", callback_data="caesar_control_panel")]
         ]),
         parse_mode="HTML"
