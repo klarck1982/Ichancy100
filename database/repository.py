@@ -1396,6 +1396,25 @@ def redeem_gift(code, receiver_id):
             conn.rollback()
             return False, "عذراً، هذا الكود مخصص لشخص آخر فقط!"
 
+        # 🔒 حماية عروض السوشال ميديا (Anti-Greed Guard): منع لاعب واحد من التهام جميع أكواد البونص المنشورة معاً
+        # إذا كان الكود بونص عام صادر من المشرف (ADMIN:...) ومتاح للجميع (بدون تخصيص شخصي)،
+        # نفحص هل قام هذا المستخدم باسترداد كود بونص عام آخر خلال آخر 24 ساعة.
+        if str(sender_telegram_id or '').startswith('ADMIN:') and not dedicated_receiver and is_bonus_gift:
+            cursor.execute(
+                """
+                SELECT id FROM gifts
+                WHERE receiver_telegram_id = %s
+                  AND sender_telegram_id LIKE 'ADMIN:%%'
+                  AND UPPER(code) LIKE 'CAESAR-BONUS-%%'
+                  AND redeemed_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                LIMIT 1
+                """,
+                (receiver_tid,)
+            )
+            if cursor.fetchone():
+                conn.rollback()
+                return False, "⏳ عذراً! لقد قمت باسترداد كود بونص مجاني اليوم بالفعل. لضمان تكافؤ الفرص واستفادة أكبر عدد من اللاعبين من عروض السوشال ميديا، يُسمح باسترداد كود بونص عام واحد لكل لاعب خلال 24 ساعة. تابعنا للحصول على العروض القادمة!"
+
         # قفل صف المستلم أيضاً لضمان تحديث الرصيد بأمان
         cursor.execute(
             "SELECT bot_balance FROM users WHERE telegram_id = %s FOR UPDATE",
