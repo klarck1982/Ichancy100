@@ -706,29 +706,34 @@ function renderCheckin(d){
   const box=document.getElementById('checkinCard');
   if(feat.checkin_enabled===false){box.innerHTML='';return}
   const ck=d.checkin||{};
-  if(!ck.can_checkin && ck.current_streak===0){
-    box.innerHTML=`<div class="info-card"><div class="title"><span>📅 الحضور اليومي</span></div><div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">عُد غداً للمكافأة التالية</div></div>`;
+  const cycle=ck.cycle_days||30;
+  const streak=ck.current_streak||0;
+  const progress=Math.min(100,(streak/cycle)*100);
+  const recent=ck.recent_deposits||0;
+  const minDep=ck.min_deposit||50000;
+  const reward=ck.completion_reward||20000;
+  const pending=ck.pending_balance||0;
+  if(!ck.has_deposit){
+    box.innerHTML=`<div class="info-card"><div class="title"><span>📅 الحضور اليومي</span></div><div style="font-size:12px;color:var(--hint)">يتفعل الحضور اليومي بعد أول إيداع مقبول لك.</div></div>`;
     return;
   }
-  const streak=ck.current_streak||0;
-  const todayCycle=((streak)%7)+1;
   let days='';
-  for(let i=1;i<=7;i++){
-    let cls='';
-    let icon=i;
-    if(i===7)icon='💥';
-    if(i<=streak%7)cls='done';
-    else if(i===todayCycle && ck.can_checkin)cls='today';
-    days+=`<div class="ck-day ${cls}">${icon}</div>`;
+  for(let i=1;i<=cycle;i++){
+    const done=i<=streak?'done':'';
+    days+=`<div class="ck-day ${done}" style="width:18px;height:18px;font-size:9px">${i}</div>`;
   }
-  const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">🎁 سجّل حضور اليوم (+${[500,1000,1500,2000,2500,3000,10000][todayCycle-1]||500} ل.س)</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم — عُد غداً!</div>`;
+  const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">📅 سجّل حضور اليوم</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم — عُد غداً!</div>`;
+  const pendingLine=pending>0?`<div style="font-size:12px;color:var(--green);margin-top:8px">🎁 لديك مكافأة حضور مستحقة ${fmt(pending)} ل.س — ستُضاف عند أول شحن لعبة ناجح</div>`:'';
   box.innerHTML=`
     <div class="checkin-card">
-      <div class="ck-title">📅 الحضور اليومي — سلسلتك: ${streak} يوم</div>
-      <div class="ck-streak">${days}</div>
-      <div style="font-size:11px;color:var(--hint);margin-bottom:6px">يوم 7 = جائزة كبرى 10,000 ل.س 💥</div>
+      <div class="ck-title">📅 الحضور اليومي — التقدم: ${streak} / ${cycle}</div>
+      <div style="background:rgba(255,255,255,0.06);height:12px;border-radius:12px;overflow:hidden;margin:8px 0"><div style="width:${progress}%;height:100%;background:linear-gradient(90deg,var(--green),var(--gold));border-radius:12px"></div></div>
+      <div class="ck-streak" style="flex-wrap:wrap;gap:3px">${days}</div>
+      <div style="font-size:11px;color:var(--hint);margin:8px 0">🎁 مكافأة إكمال الدورة: <b style="color:var(--gold)">${fmt(reward)}</b> ل.س</div>
+      <div style="font-size:11px;color:${recent>=minDep?'var(--green)':'var(--hint)'};margin-bottom:8px">💰 شرط الصرف: ${fmt(recent)} / ${fmt(minDep)} ل.س إيداعات خلال آخر 30 يوم</div>
+      <div style="font-size:10px;color:var(--warn);margin-bottom:8px">⚠️ الانقطاع يوم واحد يعيدك للبداية. لا تُصرف المكافأة إلا عند إكمال الدورة وتحقيق شرط الإيداع.</div>
       ${btn}
-      <div style="font-size:11px;color:var(--hint);margin-top:8px">إجمالي مكافآتك: ${fmt(ck.total_rewards||0)} ل.س</div>
+      ${pendingLine}
     </div>
   `;
 }
@@ -738,9 +743,14 @@ async function doCheckin(){
     const res=await fetch(API.replace('/me','/checkin'),{method:'POST',headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData}});
     const data=await res.json();
     if(!res.ok){tg.showAlert(data.error||'تعذّر تسجيل الحضور');return}
-    const rewardTable=[0,500,1000,1500,2000,2500,3000,10000];
     const r=data;
-    tg.showAlert(`🎉 أحسنت! سلسلتك: ${r.streak} يوم\n💰 مكافأة اليوم: +${fmt(r.reward)} ل.س`);
+    if(r.cycle_completed && r.reward>0){
+      tg.showAlert(`🎉 مبروك! أكملت دورة الحضور ${r.cycle_days} يوم\n🎁 مكافأة مستحقة: ${fmt(r.reward)} ل.س\nستُضاف عند أول شحن لعبة ناجح`);
+    }else if(r.cycle_completed && !r.qualified){
+      tg.showAlert(`✅ اكتملت الدورة لكن شرط الإيداع غير محقق\nإيداعاتك: ${fmt(r.recent_deposits||0)} / ${fmt(r.required_deposits||0)} ل.س`);
+    }else{
+      tg.showAlert(`✅ تم تسجيل حضورك\nتقدمك: ${r.streak} / ${r.cycle_days} يوم`);
+    }
     loadAll();
   }catch(e){tg.showAlert('خطأ في الاتصال')}
 }
@@ -951,15 +961,15 @@ async function loadPerks(){
     // الحضور في صفحة المزايا أيضاً
     const ck=d.checkin||{};
     const streak=ck.current_streak||0;
-    const todayCycle=((streak)%7)+1;
-    const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">🎁 سجّل حضور اليوم</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم</div>`;
+    const cycle=ck.cycle_days||30;
+    const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">📅 سجّل حضور اليوم</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم — عُد غداً!</div>`;
 
     const checkinHtml=feat.checkin_enabled!==false?`
       <div class="info-card">
-        <div class="title"><span>📅 الحضور اليومي</span><span class="badge">سلسلة ${streak} يوم</span></div>
-        <div style="font-size:12px;color:var(--hint);margin-bottom:10px">كل يوم تحضر فيه تحصل على مكافأة متزايدة. يوم 7 = جائزة كبرى 💥</div>
+        <div class="title"><span>📅 الحضور اليومي</span><span class="badge">التقدم: ${streak} / ${cycle} يوم</span></div>
+        <div style="font-size:12px;color:var(--hint);margin-bottom:10px">سجّل حضورك يومياً لإكمال دورة 30 يوم دون انقطاع. المكافأة (${fmt(ck.completion_reward||20000)} ل.س) تُصرف عند أول شحن لعبة ناجح بعد تحقق شرط الإيداعات.</div>
         ${btn}
-        <div style="font-size:11px;color:var(--hint);margin-top:8px">إجمالي مكافآتك: ${fmt(ck.total_rewards||0)} ل.س | إجمالي أيام الحضور: ${ck.total_checkins||0}</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:8px">مكافآت حضور مستحقة: <b style="color:var(--gold)">${fmt(ck.pending_balance||0)}</b> ل.س | إجمالي أيام الحضور: ${ck.total_checkins||0}</div>
       </div>`:'';
 
     const lbHtml=feat.leaderboard_enabled!==false?`

@@ -974,15 +974,15 @@ async function loadPerks(){
     // الحضور في صفحة المزايا أيضاً
     const ck=d.checkin||{};
     const streak=ck.current_streak||0;
-    const todayCycle=((streak)%7)+1;
-    const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">🎁 سجّل حضور اليوم</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم</div>`;
+    const cycle=ck.cycle_days||30;
+    const btn=ck.can_checkin?`<button class="checkin-btn" onclick="doCheckin()">📅 سجّل حضور اليوم</button>`:`<div class="checkin-btn" style="cursor:default;background:rgba(255,255,255,0.06);color:var(--hint)">✅ سجّلت اليوم — عُد غداً!</div>`;
 
     const checkinHtml=feat.checkin_enabled!==false?`
       <div class="info-card">
-        <div class="title"><span>📅 الحضور اليومي</span><span class="badge">سلسلة ${streak} يوم</span></div>
-        <div style="font-size:12px;color:var(--hint);margin-bottom:10px">سجّل حضورك يومياً لإكمال دورة 30 يوم. المكافأة تُضاف عند أول شحن لعبة ناجح بعد تحقيق الشروط.</div>
+        <div class="title"><span>📅 الحضور اليومي</span><span class="badge">التقدم: ${streak} / ${cycle} يوم</span></div>
+        <div style="font-size:12px;color:var(--hint);margin-bottom:10px">سجّل حضورك يومياً لإكمال دورة 30 يوم دون انقطاع. المكافأة (${fmt(ck.completion_reward||20000)} ل.س) تُصرف عند أول شحن لعبة ناجح بعد تحقق شرط الإيداعات.</div>
         ${btn}
-        <div style="font-size:11px;color:var(--hint);margin-top:8px">مكافآت حضور مستحقة: ${fmt(ck.pending_balance||0)} ل.س | إجمالي أيام الحضور: ${ck.total_checkins||0}</div>
+        <div style="font-size:11px;color:var(--hint);margin-top:8px">مكافآت حضور مستحقة: <b style="color:var(--gold)">${fmt(ck.pending_balance||0)}</b> ل.س | إجمالي أيام الحضور: ${ck.total_checkins||0}</div>
       </div>`:'';
 
     const lbHtml=feat.leaderboard_enabled!==false?`
