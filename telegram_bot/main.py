@@ -300,7 +300,7 @@ async def check_agent_balance_and_alert(bot: Bot):
     try:
         bot_settings = repo.get_bot_settings()
         agent_balance = int(bot_settings.get('agent_balance', 0))
-        threshold = getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)
+        threshold = int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
 
         if agent_balance < threshold:
             admin_ids = [item.strip() for item in str(getattr(settings, "ADMIN_IDS", settings.ADMIN_ID)).split(",") if item.strip()]
@@ -397,7 +397,7 @@ async def check_agent_balance_periodic(bot: Bot):
     try:
         bot_settings = repo.get_bot_settings()
         current_balance = int(bot_settings.get('agent_balance', 0))
-        threshold = getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)
+        threshold = int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
 
         # 🆕 فحص تغيّر الرصيد (زيادة)
         if last_agent_balance_value is not None and current_balance > last_agent_balance_value:
@@ -677,20 +677,26 @@ async def dashboard_api_handler(request):
         estimated_revenue = estimated_burn * (agent_rev_pct / 100.0)
         net_profit = dep_total - wd_total - bonus_paid + estimated_revenue
 
-        # 🆕 بيانات الرسوم البيانية (7 أيام)
+        # 🆕 بيانات الرسوم البيانية (7 أيام - 4 منحنيات)
+        withdraw_comm_pct = float(bot_settings.get('withdraw_commission') or 10)
         chart_data = DatabaseManager.execute_query_dict(
             """SELECT
                 d::date as date,
                 COALESCE(SUM(CASE WHEN t.type = 'deposit_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as deposits,
-                COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as withdraws
+                COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as withdraws,
+                COALESCE(SUM(CASE WHEN t.type = 'deposit_to_game' AND t.status IN ('completed', 'approved') THEN COALESCE(t.original_amount, t.amount) ELSE 0 END), 0) as game_dep,
+                COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount * %s / 100.0 ELSE 0 END), 0) as withdraw_comm
                FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') as d
                LEFT JOIN transactions t ON t.created_at::date = d::date
                GROUP BY d::date ORDER BY d::date""",
+            (withdraw_comm_pct,),
             fetch='all'
         ) or []
         chart_labels = [r.get('date', '').strftime('%m-%d') if hasattr(r.get('date'), 'strftime') else str(r.get('date', '')) for r in chart_data]
         chart_deposits = [float(r.get('deposits') or 0) for r in chart_data]
         chart_withdraws = [float(r.get('withdraws') or 0) for r in chart_data]
+        chart_burn_rev = [float(r.get('game_dep') or 0) * 0.70 * (agent_rev_pct / 100.0) for r in chart_data]
+        chart_comm_rev = [float(r.get('withdraw_comm') or 0) for r in chart_data]
 
         # 🆕 إحصائيات الميزات
         wheel_stats = {}
@@ -735,7 +741,7 @@ async def dashboard_api_handler(request):
             except Exception as e:
                 logger.warning(f"Could not live refresh agent balance in dashboard API: {e}")
 
-        agent_balance_alert = agent_balance_val < int(getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
+        agent_balance_alert = agent_balance_val < int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
 
         data = {
             'total_users': repo.get_total_users_count(),
@@ -744,6 +750,7 @@ async def dashboard_api_handler(request):
             'approved_volume': repo.get_transactions_volume('approved'),
             'total_bot_balance': await _get_total_bot_balance_cached(),
             'agent_balance': agent_balance_val,
+            'agent_balance_alert_threshold': int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)),
             'usd_buy_rate': float(bot_settings['usd_buy_rate']),
             'usd_sell_rate': float(bot_settings['usd_sell_rate']),
             'exchange_rate': int(bot_settings['exchange_rate']),
@@ -771,6 +778,8 @@ async def dashboard_api_handler(request):
             'chart_labels': chart_labels,
             'chart_deposits': chart_deposits,
             'chart_withdraws': chart_withdraws,
+            'chart_burn_rev': chart_burn_rev,
+            'chart_comm_rev': chart_comm_rev,
             'wheel_stats': wheel_stats,
             'cashback_stats': cashback_stats,
             'checkin_stats': checkin_stats,
@@ -809,6 +818,7 @@ async def admin_settings_get_handler(request):
             'min_withdraw_usd': int(bot_settings.get('min_withdraw_usd') or 10),
             'syp_version': str(bot_settings.get('syp_version') or 'old'),
             'referrals_enabled': bool(bot_settings.get('referrals_enabled', True)),
+            'agent_balance_alert_threshold': int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)),
             'payment_addresses': repo.get_all_payment_addresses(),
             'button_links': repo.get_all_button_links(),
         })
@@ -825,6 +835,13 @@ async def admin_settings_post_handler(request):
     try:
         payload = await request.json()
         action = payload.get('action')
+
+        if action == 'update_alert_threshold':
+            thresh = int(str(payload.get('agent_balance_alert_threshold', '100000')).replace(',', ''))
+            if thresh < 0:
+                return web.json_response({'error': 'قيمة غير صالحة'}, status=400)
+            repo.update_bot_settings(agent_balance_alert_threshold=thresh)
+            return web.json_response({'ok': True})
 
         if action == 'update_rates':
             exchange_rate = int(str(payload.get('exchange_rate', '')).replace(',', ''))

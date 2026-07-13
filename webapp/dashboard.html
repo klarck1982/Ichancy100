@@ -482,8 +482,8 @@ function renderDashboard(d){
       <div style="font-size:11px;color:var(--hint);margin-top:8px;text-align:center">الأرباح المقدّرة: ${fmt(d.estimated_revenue||0)} | المكافآت المدفوعة: ${fmt(d.today_bonus_paid||0)}</div>
     </div>
     
-    <!-- 📈 رسم بياني مبسط (Sparkline) -->
-    ${(d.chart_deposits&&d.chart_deposits.length)?renderSparkline(d.chart_deposits,d.chart_withdraws,d.chart_labels):''}
+    <!-- 📈 رسم بياني مبسط انسيابي رباعي (Smooth Cubic Bezier Waveform) -->
+    ${(d.chart_deposits&&d.chart_deposits.length)?renderSparkline(d.chart_deposits,d.chart_withdraws,d.chart_burn_rev,d.chart_comm_rev,d.chart_labels):''}
     
     <!-- 👥 إحصائيات سريعة -->
     <div class="card">
@@ -571,27 +571,75 @@ function renderDashboard(d){
   `;
 }
 
-// 🆕 (Update 19) رسم بياني مبسط (Sparkline)
-function renderSparkline(deposits,withdraws,labels){
-  const max=Math.max(...deposits,...withdraws,1);
-  const w=300,h=80,pad=10;
-  const n=deposits.length;
-  const step=(w-pad*2)/(n-1);
+// 🆕 (Update 20) رسم بياني منحني انسيابي رباعي المنحنيات (Cubic Bezier Waveform)
+function renderSparkline(deposits, withdraws, burnRev, commRev, labels){
+  const depArr = deposits || [];
+  const witArr = withdraws || [];
+  const burnArr = burnRev || [];
+  const commArr = commRev || [];
+  const max = Math.max(...depArr, ...witArr, ...burnArr, ...commArr, 1);
+  const w = 320, h = 110, pad = 14;
+  const n = Math.max(depArr.length, 2);
+  const step = (w - pad * 2) / (n - 1);
   
-  function points(arr){
-    return arr.map((v,i)=>`${pad+i*step},${h-pad-(v/max)*(h-pad*2)}`).join(' ');
+  function buildSmoothPath(arr){
+    if(!arr || arr.length === 0) return { path: '', firstX: pad, lastX: pad };
+    const pts = arr.map((v, i) => ({
+      x: pad + i * step,
+      y: (h - pad) - (v / max) * (h - pad * 2)
+    }));
+    let d = `M ${pts[0].x},${pts[0].y}`;
+    for(let i = 0; i < pts.length - 1; i++){
+      const p0 = pts[i], p1 = pts[i + 1];
+      const cx1 = p0.x + (p1.x - p0.x) / 2;
+      const cx2 = p1.x - (p1.x - p0.x) / 2;
+      d += ` C ${cx1},${p0.y} ${cx2},${p1.y} ${p1.x},${p1.y}`;
+    }
+    return { path: d, firstX: pts[0].x, lastX: pts[pts.length - 1].x };
   }
   
+  const depCurve = buildSmoothPath(depArr);
+  const witCurve = buildSmoothPath(witArr);
+  const burnCurve = buildSmoothPath(burnArr);
+  const commCurve = buildSmoothPath(commArr);
+  
   return `
-    <div class="card">
-      <div class="card-title"><span>📈 حركة 7 أيام</span></div>
-      <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto">
-        <polyline points="${points(deposits)}" fill="none" stroke="var(--green)" stroke-width="2"/>
-        <polyline points="${points(withdraws)}" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="4"/>
+    <div class="card" style="background:linear-gradient(180deg,rgba(15,18,28,0.95) 0%,rgba(10,12,20,0.98) 100%);border:1px solid var(--card-border);border-radius:18px;padding:16px;">
+      <div class="card-title" style="margin-bottom:12px;"><span>📈 حركة السيولة ومربح الوكيل (7 أيام)</span></div>
+      <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;overflow:visible;">
+        <defs>
+          <linearGradient id="depGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00d68f" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#00d68f" stop-opacity="0.0"/>
+          </linearGradient>
+          <linearGradient id="witGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ff5252" stop-opacity="0.22"/>
+            <stop offset="100%" stop-color="#ff5252" stop-opacity="0.0"/>
+          </linearGradient>
+        </defs>
+        
+        <!-- ظل المساحة تحت المنحنيات -->
+        ${depCurve.path ? `<path d="${depCurve.path} L ${depCurve.lastX},${h-pad} L ${depCurve.firstX},${h-pad} Z" fill="url(#depGrad)" />` : ''}
+        ${witCurve.path ? `<path d="${witCurve.path} L ${witCurve.lastX},${h-pad} L ${witCurve.firstX},${h-pad} Z" fill="url(#witGrad)" />` : ''}
+        
+        <!-- المنحنيات الأربعة الانسيابية -->
+        ${depCurve.path ? `<path d="${depCurve.path}" fill="none" stroke="#00d68f" stroke-width="2.5" stroke-linecap="round" />` : ''}
+        ${witCurve.path ? `<path d="${witCurve.path}" fill="none" stroke="#ff5252" stroke-width="2" stroke-dasharray="4" stroke-linecap="round" />` : ''}
+        ${burnCurve.path ? `<path d="${burnCurve.path}" fill="none" stroke="#ffd700" stroke-width="3" stroke-linecap="round" style="filter:drop-shadow(0 0 5px rgba(255,215,0,0.65))" />` : ''}
+        ${commCurve.path ? `<path d="${commCurve.path}" fill="none" stroke="#00e5ff" stroke-width="2" stroke-dasharray="2,3" stroke-linecap="round" style="filter:drop-shadow(0 0 3px rgba(0,229,255,0.5))" />` : ''}
       </svg>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--hint);margin-top:4px">
-        <span>🟢 إيداعات</span>
-        <span>🔴 سحوبات</span>
+      
+      <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--hint);margin-top:12px;padding:0 2px;">
+        <span style="display:flex;align-items:center;gap:4px;"><b style="color:#00d68f;font-size:13px;">●</b> إيداعات</span>
+        <span style="display:flex;align-items:center;gap:4px;"><b style="color:#ff5252;font-size:13px;">- -</b> سحوبات</span>
+        <span style="display:flex;align-items:center;gap:4px;"><b style="color:#ffd700;font-size:13px;text-shadow:0 0 4px #ffd700;">★</b> مربح الحرق (30%)</span>
+        <span style="display:flex;align-items:center;gap:4px;"><b style="color:#00e5ff;font-size:13px;text-shadow:0 0 4px #00e5ff;">◆</b> عمولة السحب (10%)</span>
+      </div>
+      
+      <div style="font-size:10px;color:var(--hint);margin-top:10px;line-height:1.55;background:rgba(255,255,255,0.025);padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);text-align:right;">
+        💡 <b>دليل المنحنيات الأربعة:</b><br>
+        🟢 <b>الإيداعات:</b> السيولة الداخلة للبوت | 🔴 <b>السحوبات:</b> الأموال المصروفة للاعبين<br>
+        👑 <b>مربح الحرق (30%):</b> حصتك من خسائر اللاعبين في iChancy | 💎 <b>عمولة السحب (10%):</b> ربح المنصة من تحويل سحوبات الأرباح
       </div>
     </div>
   `;
@@ -633,29 +681,82 @@ async function loadSettings(tab=currentTab,force=false){
   }catch(e){el.innerHTML='<div class="error-box">⚠️ تعذّر تحميل الإعدادات.<br>'+e.message+'</div>';}
 }
 
+function showSettingsSubTab(subTab) {
+  currentSettingsSubTab = subTab;
+  if(window.lastSettingsData) renderSettings(window.lastSettingsData);
+}
+
 function renderSettings(d){
+  window.lastSettingsData = d;
+  let subContent = '';
+  if(currentSettingsSubTab === 'rates') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">💱 الأسعار والعمولات</div>
+        <div class="field"><label>🎮 سعر اللعبة NSP</label><input id="exchange_rate" inputmode="numeric" value="${d.exchange_rate}"><div class="hint">حالياً: 1 NSP = ${fmt(d.exchange_rate)} SYP</div></div>
+        <div class="field"><label>📈 سعر الإيداع (شراء $ من المستخدم) — يجب أن يكون أقل</label><input id="usd_buy_rate" inputmode="decimal" value="${d.usd_buy_rate}"><div class="hint">🔒 لحماية البوت: هذا السعر يجب أن يكون أقل من سعر السحب</div></div>
+        <div class="field"><label>📉 سعر السحب (بيع $ للمستخدم) — يجب أن يكون أعلى</label><input id="usd_sell_rate" inputmode="decimal" value="${d.usd_sell_rate}"><div class="hint">🔒 الفرق بين السعرين = هامش ربح البوت (Spread)</div></div>
+        <div class="field"><label>🏷️ عمولة السحب %</label><input id="withdraw_commission" inputmode="decimal" value="${d.withdraw_commission}"></div>
+        <div class="field"><label>👑 نسبة Revenue من الحرق %</label><input id="agent_revenue_percent" inputmode="decimal" value="${d.agent_revenue_percent||30}"></div>
+        <button class="btn green" onclick="saveRates()">✅ حفظ الأسعار والعمولات</button>
+      </div>`;
+  } else if(currentSettingsSubTab === 'cashier') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">🏦 سيولة الكاشيرة ورادار الإنذار المبكر</div>
+        <div class="warn-box" style="border-color:var(--gold);color:var(--gold);">يحدد هذا الرقم المعيار الآلي لرقيب السيولة؛ في اللحظة التي ينخفض فيها رصيد الكاشيرة الحي عن هذا الرقم، يرسل لك السيرفر إنذار طوارئ فوري في التلغرام وتتوهج الشارة باللون الأحمر.</div>
+        <div class="stat-grid" style="margin-bottom:14px;">
+          <div class="stat-box"><div class="stat-label">رصيد الكاشيرة الحالي</div><div class="stat-value green">${fmt(d.agent_balance||0)} NSP</div></div>
+          <div class="stat-box"><div class="stat-label">حد الإنذار المضبوط</div><div class="stat-value gold">${fmt(d.agent_balance_alert_threshold||100000)} NSP</div></div>
+        </div>
+        <div class="field"><label>📉 حد إنذار نقص رصيد الكاشيرة (NSP)</label><input id="agent_balance_alert_threshold" inputmode="numeric" value="${d.agent_balance_alert_threshold||100000}" placeholder="100000"><div class="hint">مثال: 300,000 — سيتم إرسال إنذار وتوهج اللوحة بمجرد نزول رصيد الكاشيرة تحت هذا الرقم.</div></div>
+        <button class="btn gold" onclick="saveCashierAlertThreshold()">💾 حفظ حد إنذار الكاشيرة</button>
+      </div>`;
+  } else if(currentSettingsSubTab === 'payment_opts') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">💳 حدود وبوابات الدفع</div>
+        <div class="field"><label>🎮 الحد الأدنى لشحن حساب اللعبة SYP</label><input id="game_min_deposit_syp" inputmode="numeric" value="${d.game_min_deposit_syp||20000}"></div>
+        <div class="field"><label>🏷️ أدنى إيداع بالليرة السورية</label><input id="min_deposit_syp" inputmode="numeric" value="${d.min_deposit_syp||20000}"><div class="hint">المستخدم لا يستطيع الإيداع بأقل من هذا المبلغ</div></div>
+        <div class="field"><label>💵 أدنى إيداع بالدولار</label><input id="min_deposit_usd" inputmode="numeric" value="${d.min_deposit_usd||5}"><div class="hint">المستخدم لا يستطيع الإيداع بأقل من هذا المبلغ</div></div>
+        <div class="field"><label>📤 أدنى سحب بالليرة السورية</label><input id="min_withdraw_syp" inputmode="numeric" value="${d.min_withdraw_syp||25000}"><div class="hint">المستخدم لا يستطيع سحب أقل من هذا المبلغ</div></div>
+        <div class="field"><label>💲 أدنى سحب بالدولار</label><input id="min_withdraw_usd" inputmode="numeric" value="${d.min_withdraw_usd||10}"><div class="hint">حد احتياطي (السحب بالدولار يُحسب من الليرة)</div></div>
+        <div class="field"><label>🔁 نسخة الليرة ببوابات الدفع</label><select id="syp_version"><option value="old" ${d.syp_version==='old'?'selected':''}>🏛️ قديمة (25,000)</option><option value="new" ${d.syp_version==='new'?'selected':''}>🆕 جديدة (250)</option></select><div class="hint">يحدد أي قيمة تظهر للمشرف في أزرار النسخ عند تأكيد التحويلات</div></div>
+        <button class="btn green" onclick="saveRates()">✅ حفظ حدود وبوابات الدفع</button>
+      </div>`;
+  } else if(currentSettingsSubTab === 'syriatel') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">🤖 أتمتة Syriatel Cash وبونص اللعب</div>
+        <div class="field"><label>🎁 تفعيل إرفاق بونص اللعب عند شحن اللعبة</label><select id="game_bonus_enabled"><option value="true" ${d.game_bonus_enabled!==false?'selected':''}>🟢 مفعّل</option><option value="false" ${d.game_bonus_enabled===false?'selected':''}>🔴 متوقف</option></select><div class="hint">معزول عن Flash Bonus: يستخدم رصيد المكافآت المحفوظ فقط عند شحن iChancy</div></div>
+        <div class="field"><label>🎁 نسبة إرفاق بونص اللعب %</label><input id="game_bonus_apply_percent" inputmode="decimal" value="${d.game_bonus_apply_percent??10}"><div class="hint">مثال: 10% — إذا شحن 100,000 ومعه بونص، يصل 110,000. يجب ألا تتجاوز عمولة السحب.</div></div>
+        <div class="field"><label>🟡 وضع أتمتة Syriatel Cash</label><select id="syriatel_auto_mode"><option value="off" ${d.syriatel_auto_mode==='off'?'selected':''}>🔴 يدوي / متوقف</option><option value="verify_only" ${d.syriatel_auto_mode==='verify_only'?'selected':''}>🟡 تحقق فقط</option><option value="auto_approve" ${d.syriatel_auto_mode==='auto_approve'?'selected':''}>🟢 تحقق وقبول تلقائي</option></select><div class="hint">التوكن ورقم الاستعلام يبقيان في متغيرات البيئة، أما الوضع فيتغير فوراً من هنا.</div></div>
+        <div class="field"><label>📣 قناة إشعارات Syriatel Auto</label><input id="syriatel_auto_channel_id" value="${d.syriatel_auto_channel_id||''}" placeholder="-100xxxxxxxxxx"><div class="hint">اختياري: قناة خاصة لنتائج التحقق والقبول التلقائي.</div></div>
+        <button class="btn green" onclick="saveRates()">✅ حفظ إعدادات الأتمتة</button>
+      </div>`;
+  }
+
   document.getElementById('content').innerHTML=`
     <div class="warn-box">هذه الإعدادات تُحفظ فوراً في قاعدة البيانات وتظهر للمستخدمين بدون ديبلوي.</div>
     <div class="card">
-      <div class="card-title">💱 الأسعار والعمولات</div>
-      <div class="field"><label>🎮 سعر اللعبة NSP</label><input id="exchange_rate" inputmode="numeric" value="${d.exchange_rate}"><div class="hint">حالياً: 1 NSP = ${fmt(d.exchange_rate)} SYP</div></div>
-      <div class="field"><label>📈 سعر الإيداع (شراء $ من المستخدم) — يجب أن يكون أقل</label><input id="usd_buy_rate" inputmode="decimal" value="${d.usd_buy_rate}"><div class="hint">🔒 لحماية البوت: هذا السعر يجب أن يكون أقل من سعر السحب</div></div>
-      <div class="field"><label>📉 سعر السحب (بيع $ للمستخدم) — يجب أن يكون أعلى</label><input id="usd_sell_rate" inputmode="decimal" value="${d.usd_sell_rate}"><div class="hint">🔒 الفرق بين السعرين = هامش ربح البوت (Spread)</div></div>
-      <div class="field"><label>🏷️ عمولة السحب %</label><input id="withdraw_commission" inputmode="decimal" value="${d.withdraw_commission}"></div>
-      <div class="field"><label>🎮 الحد الأدنى لشحن حساب اللعبة SYP</label><input id="game_min_deposit_syp" inputmode="numeric" value="${d.game_min_deposit_syp||20000}"></div>
-      <div class="field"><label>🎁 تفعيل إرفاق بونص اللعب عند شحن اللعبة</label><select id="game_bonus_enabled"><option value="true" ${d.game_bonus_enabled!==false?'selected':''}>🟢 مفعّل</option><option value="false" ${d.game_bonus_enabled===false?'selected':''}>🔴 متوقف</option></select><div class="hint">معزول عن Flash Bonus: يستخدم رصيد المكافآت المحفوظ فقط عند شحن iChancy</div></div>
-      <div class="field"><label>🎁 نسبة إرفاق بونص اللعب %</label><input id="game_bonus_apply_percent" inputmode="decimal" value="${d.game_bonus_apply_percent??10}"><div class="hint">مثال: 10% — إذا شحن 100,000 ومعه بونص، يصل 110,000. يجب ألا تتجاوز عمولة السحب.</div></div>
-      <div class="field"><label>🟡 وضع أتمتة Syriatel Cash</label><select id="syriatel_auto_mode"><option value="off" ${d.syriatel_auto_mode==='off'?'selected':''}>🔴 يدوي / متوقف</option><option value="verify_only" ${d.syriatel_auto_mode==='verify_only'?'selected':''}>🟡 تحقق فقط</option><option value="auto_approve" ${d.syriatel_auto_mode==='auto_approve'?'selected':''}>🟢 تحقق وقبول تلقائي</option></select><div class="hint">التوكن ورقم الاستعلام يبقيان في متغيرات البيئة، أما الوضع فيتغير فوراً من هنا.</div></div>
-      <div class="field"><label>📣 قناة إشعارات Syriatel Auto</label><input id="syriatel_auto_channel_id" value="${d.syriatel_auto_channel_id||''}" placeholder="-100xxxxxxxxxx"><div class="hint">اختياري: قناة خاصة لنتائج التحقق والقبول التلقائي.</div></div>
-      <div class="field"><label>🏷️ أدنى إيداع بالليرة السورية</label><input id="min_deposit_syp" inputmode="numeric" value="${d.min_deposit_syp||20000}"><div class="hint">المستخدم لا يستطيع الإيداع بأقل من هذا المبلغ</div></div>
-      <div class="field"><label>💵 أدنى إيداع بالدولار</label><input id="min_deposit_usd" inputmode="numeric" value="${d.min_deposit_usd||5}"><div class="hint">المستخدم لا يستطيع الإيداع بأقل من هذا المبلغ</div></div>
-      <div class="field"><label>📤 أدنى سحب بالليرة السورية</label><input id="min_withdraw_syp" inputmode="numeric" value="${d.min_withdraw_syp||25000}"><div class="hint">المستخدم لا يستطيع سحب أقل من هذا المبلغ</div></div>
-      <div class="field"><label>💲 أدنى سحب بالدولار</label><input id="min_withdraw_usd" inputmode="numeric" value="${d.min_withdraw_usd||10}"><div class="hint">حد احتياطي (السحب بالدولار يُحسب من الليرة)</div></div>
-      <div class="field"><label>🔁 نسخة الليرة ببوابات الدفع</label><select id="syp_version"><option value="old" ${d.syp_version==='old'?'selected':''}>🏛️ قديمة (25,000)</option><option value="new" ${d.syp_version==='new'?'selected':''}>🆕 جديدة (250)</option></select><div class="hint">يحدد أي قيمة تظهر للمشرف في أزرار النسخ عند تأكيد التحويلات</div></div>
-      <div class="field"><label>👑 نسبة Revenue من الحرق %</label><input id="agent_revenue_percent" inputmode="decimal" value="${d.agent_revenue_percent||30}"></div>
-      <button class="btn green" onclick="saveRates()">✅ حفظ الأسعار والإعدادات</button>
-      <button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>
-    </div>`;
+      <div class="card-title">⚙️ الإعدادات العامة والسيولة</div>
+      <div class="sub">اختر المحور الإداري لتعديله بأمان تام:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">
+        <button class="btn ${currentSettingsSubTab==='rates'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showSettingsSubTab('rates')">💱 الأسعار والعمولات</button>
+        <button class="btn ${currentSettingsSubTab==='cashier'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showSettingsSubTab('cashier')">🏦 إنذار الكاشيرة والسيولة</button>
+        <button class="btn ${currentSettingsSubTab==='payment_opts'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showSettingsSubTab('payment_opts')">💳 حدود وبوابات الدفع</button>
+        <button class="btn ${currentSettingsSubTab==='syriatel'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showSettingsSubTab('syriatel')">🤖 أتمتة Syriatel</button>
+      </div>
+    </div>
+    ${subContent}
+    <button class="btn outline" style="margin-top:10px;" onclick="showTab('more')">🔙 رجوع</button>
+  `;
+}
+
+async function saveCashierAlertThreshold(){
+  const thresh=parseInt(document.getElementById('agent_balance_alert_threshold').value)||100000;
+  if(thresh<0){setNotice('⚠️ أدخل مبلغاً صحيحاً','error');return;}
+  try{await apiPost(SETTINGS_API,{action:'update_alert_threshold',agent_balance_alert_threshold:thresh});setNotice('✅ تم حفظ حد إنذار الكاشيرة بنجاح');loadSettings('settings');}catch(e){setNotice('❌ '+e.message,'error')}
 }
 
 async function saveRates(){
@@ -923,7 +1024,16 @@ async function loadFeatures(){
   }catch(e){el.innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;}
 }
 
+let currentFeatureSubTab = 'vip';
+let currentSettingsSubTab = 'rates';
+
+function showFeatureSubTab(subTab) {
+  currentFeatureSubTab = subTab;
+  if(window.lastFeaturesData) renderFeatures(window.lastFeaturesData);
+}
+
 function renderFeatures(d){
+  window.lastFeaturesData = d;
   const s=d.settings||{},cs=d.checkin_stats||{},af=d.active_flash,rf=d.recent_flashes||[];
   const rewards=s.checkin_rewards||[0,500,1000,1500,2000,2500,3000,10000];
   const lbType=s.leaderboard_type||'all_time';
@@ -937,138 +1047,145 @@ function renderFeatures(d){
   const cbMin=s.cashback_min_loss||50000;
   const cbs=d.cashback_stats||{};
 
+  let subContent = '';
+  if(currentFeatureSubTab === 'vip') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">🏆 نظام الطبقات (VIP) <span class="pill ${vipEn?'green':''}">${vipEn?'مفعّل':'متوقف'}</span></div>
+        <div class="warn-box">كلما زاد إجمالي إيداعات المستخدم (Lifetime)، ترقّى في الطبقات وحصل على مكافآت وبونص أعلى.</div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn ${vipEn?'danger':'green'}" onclick="toggleVIP(${vipEn?'false':'true'})">${vipEn?'⛔ إيقاف VIP':'✅ تفعيل VIP'}</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">⚙️ حدود الطبقات والمكافآت</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+          ${vipTiers.map((t,i)=>{
+            const names=['🥉 مواطن','🥈 فارس','🥇 نبيل','👑 قيصر'];
+            return `<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px">
+              <div style="font-size:13px;font-weight:900;margin-bottom:8px">${names[i]||'طبقة '+i}</div>
+              <div class="field" style="margin:0"><label style="font-size:10px">حد الإيداع (ل.س)</label><input id="vip_${i}_thresh" inputmode="numeric" value="${t[0]}" style="padding:8px;font-size:13px"></div>
+              <div class="field" style="margin:4px 0 0"><label style="font-size:10px">بونص الإيداع %</label><input id="vip_${i}_pct" inputmode="decimal" value="${t[1]}" style="padding:8px;font-size:13px"></div>
+              <div class="field" style="margin:4px 0 0"><label style="font-size:10px">مكافأة الترقية</label><input id="vip_${i}_reward" inputmode="numeric" value="${t[2]}" style="padding:8px;font-size:13px"></div>
+            </div>`;
+          }).join('')}
+        </div>
+        <button class="btn gold" onclick="saveVIP()">💾 حفظ طبقات VIP</button>
+      </div>`;
+  } else if(currentFeatureSubTab === 'wheel') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">🎰 عجلة الحظ <span class="pill ${wheelEn?'green':''}">${wheelEn?'مفعّل':'متوقف'}</span></div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">دورات اليوم</div><div class="stat-value gold">${fmt(ws.today_spins||0)}</div></div>
+          <div class="stat-box"><div class="stat-label">جوائز اليوم</div><div class="stat-value green">${fmt(ws.today_rewards||0)}</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي الدورات</div><div class="stat-value blue">${fmt(ws.total_spins||0)}</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي الجوائز</div><div class="stat-value">${fmt(ws.total_rewards||0)}</div></div>
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn ${wheelEn?'danger':'green'}" onclick="toggleWheel(${wheelEn?'false':'true'})">${wheelEn?'⛔ إيقاف العجلة':'✅ تفعيل العجلة'}</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">⚙️ قطاعات العجلة (8)</div>
+        <div class="warn-box">الخانات ثابتة: PINGO - 0% - 1% - 2% - 0% - 3% - 4% - 0%. يمكنك تعديل ثقل/احتمال كل خانة فقط، ويمكن جعل أي وزن 0 لتعطيلها.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+          ${wheelSeg.map((seg,i)=>{
+            const pct=Number(seg[0]||0),prob=Number(seg[1]??1),rawLabel=seg[2]||String(pct)+'%';
+            const isPingo=String(rawLabel).toUpperCase()==='PINGO';
+            const label=isPingo?'🎯 PINGO':(pct===0?'💔 0% حظ أوفر':'+'+pct+'%');
+            const color=isPingo?'var(--gold)':pct===0?'var(--hint)':pct>=4?'var(--green)':'var(--blue)';
+            return `<div style="background:${isPingo?'rgba(255,215,0,0.10)':'rgba(255,255,255,0.03)'};border-radius:10px;padding:10px;border-right:3px solid ${color}">
+              <div style="font-size:12px;font-weight:900;color:${color};margin-bottom:6px">قطاع ${i+1}: ${label}</div>
+              <div class="hint" style="margin-bottom:6px">قيمة الخانة ثابتة ولا تعدّل من هنا</div>
+              <div class="field" style="margin:4px 0 0"><label style="font-size:10px">الثقل / احتمال الظهور</label><input id="wseg_${i}_prob" inputmode="decimal" value="${prob}" style="padding:8px;font-size:13px"></div>
+            </div>`;
+          }).join('')}
+        </div>
+        <button class="btn gold" onclick="saveWheel()">💾 حفظ قطاعات العجلة</button>
+      </div>`;
+  } else if(currentFeatureSubTab === 'flash') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">⚡ فلاش البونص ${af?'<span class="pill">نشط الآن</span>':''}</div>
+        ${af?`<div class="warn-box" style="border-color:var(--gold);color:var(--gold)">⚡ فلاش نشط: ${af.percent}% — ينتهي ${new Date(af.ends_at).toLocaleString('ar-EG')}<br><button class="btn danger" style="margin-top:8px" onclick="stopFlash(${af.id})">🛑 إيقاف الفلاش الآن</button></div>`:`
+        <div class="field"><label>نسبة الفلاش %</label><input id="flash_percent" inputmode="decimal" placeholder="مثال: 15"></div>
+        <div class="field"><label>المدة (دقائق)</label><input id="flash_duration" inputmode="numeric" value="30"></div>
+        <div class="field"><label>طريقة الدفع</label><select id="flash_method"><option value="all">كل الطرق</option><option value="syriatel">سيريتل</option><option value="mtn">MTN</option><option value="sham_syp">شام SYP</option><option value="sham_usd">شام USD</option><option value="usdt_trc">USDT</option></select></div>
+        <button class="btn gold" onclick="createFlash()">⚡ إطلاق فلاش بونص</button>
+        `}
+      </div>
+      ${rf.length?`<div class="card"><div class="card-title">📜 سجل الفلاشات</div>${rf.map(f=>`<div class="pending-item"><b>#${f.id} — ${f.percent}%</b> ${f.is_active?'<span class="pill green">نشط</span>':'<span class="pill">منتهي</span>'}<br><span class="label">ينتهي: ${f.ends_at}</span></div>`).join('')}</div>`:''}`;
+  } else if(currentFeatureSubTab === 'checkin') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">📅 الحضور اليومي <span class="pill ${s.checkin_enabled!==false?'green':''}">${s.checkin_enabled!==false?'مفعّل':'متوقف'}</span></div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">حضروا اليوم</div><div class="stat-value gold">${fmt(cs.today_checkins)}</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي المسجّلين</div><div class="stat-value blue">${fmt(cs.total_checkin_users)}</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي المكافآت</div><div class="stat-value green">${fmt(cs.total_rewards_paid)}</div></div>
+          <div class="stat-box"><div class="stat-label">متوسط السلسلة</div><div class="stat-value">${cs.avg_streak}</div></div>
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn ${s.checkin_enabled!==false?'danger':'green'}" onclick="toggleFeature('checkin_enabled',${s.checkin_enabled!==false?'false':'true'})">${s.checkin_enabled!==false?'⛔ إيقاف الحضور':'✅ تفعيل الحضور'}</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">💎 إعدادات مكافأة الحضور</div>
+        <div class="warn-box">الحضور يتفعل بعد أول إيداع مقبول. المكافأة تُصرف عند إكمال الدورة دون انقطاع وتحقيق شرط الإيداع، ثم تُضاف تلقائياً عند أول شحن لعبة ناجح.</div>
+        <div class="field"><label>عدد أيام الدورة</label><input id="checkin_cycle_days" inputmode="numeric" value="${s.checkin_cycle_days||30}"></div>
+        <div class="field"><label>الحد الأدنى لمجموع إيداعات آخر 30 يوم</label><input id="checkin_min_deposit" inputmode="numeric" value="${s.checkin_min_deposit||50000}"></div>
+        <div class="field"><label>مكافأة إكمال الدورة</label><input id="checkin_completion_reward" inputmode="numeric" value="${s.checkin_completion_reward||20000}"></div>
+        <button class="btn green" onclick="saveCheckinSettings()">💾 حفظ إعدادات الحضور</button>
+      </div>`;
+  } else if(currentFeatureSubTab === 'cashback') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">💸 الكاش باك الأسبوعي <span class="pill ${cbEn?'green':''}">${cbEn?'مفعّل':'متوقف'}</span></div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="stat-label">مدفوعات الأسبوع</div><div class="stat-value green">${fmt(cbs.week_paid||0)}</div></div>
+          <div class="stat-box"><div class="stat-label">مستفيدين</div><div class="stat-value blue">${fmt(cbs.week_count||0)}</div></div>
+          <div class="stat-box"><div class="stat-label">إجمالي مدفوع</div><div class="stat-value gold">${fmt(cbs.total_paid||0)}</div></div>
+          <div class="stat-box"><div class="stat-label">خسائر الأسبوع</div><div class="stat-value red">${fmt(cbs.week_losses||0)}</div></div>
+        </div>
+        <div class="warn-box" style="margin-top:10px">% من خسارة المستخدمين في اللعبة يرجع لهم كرصيد مكافآت أسبوعياً.</div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn ${cbEn?'danger':'green'}" onclick="toggleCashback(${cbEn?'false':'true'})">${cbEn?'⛔ إيقاف':'✅ تفعيل'}</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">⚙️ إعدادات الكاش باك</div>
+        <div class="field"><label>نسبة الاسترجاع %</label><input id="cb_pct" inputmode="decimal" value="${cbPct}"></div>
+        <div class="field"><label>الحد الأدنى للخسارة (ل.س)</label><input id="cb_min" inputmode="numeric" value="${cbMin}"><div class="hint">المستخدم الذي تخسر خسارته أقل من هذا المبلغ لا يحصل على كاش باك</div></div>
+        <button class="btn green" onclick="saveCashback()">💾 حفظ إعدادات الكاش باك</button>
+      </div>`;
+  } else if(currentFeatureSubTab === 'leaderboard') {
+    subContent = `
+      <div class="card">
+        <div class="card-title">📊 لوحة الصدارة <span class="pill ${s.leaderboard_enabled!==false?'green':''}">${s.leaderboard_enabled!==false?'مفعّل':'متوقف'}</span></div>
+        <div class="field"><label>الفترة</label><select id="lb_type"><option value="all_time" ${lbType==='all_time'?'selected':''}>كل الوقت</option><option value="weekly" ${lbType==='weekly'?'selected':''}>أسبوعي</option><option value="monthly" ${lbType==='monthly'?'selected':''}>شهري</option></select></div>
+        <div class="btn-row">
+          <button class="btn ${s.leaderboard_enabled!==false?'danger':'green'}" onclick="toggleFeature('leaderboard_enabled',${s.leaderboard_enabled!==false?'false':'true'})">${s.leaderboard_enabled!==false?'⛔ إيقاف الصدارة':'✅ تفعيل الصدارة'}</button>
+          <button class="btn outline" onclick="saveLbType()">💾 حفظ الفترة</button>
+        </div>
+      </div>`;
+  }
+
   document.getElementById('content').innerHTML=`
-    <div class="card"><div class="card-title">✨ ميزات المستخدمين</div><div class="sub">تحكّم كامل بالميزات التفاعلية التي يراها المستخدمون في Mini App.</div></div>
-
-    <!-- الحضور اليومي -->
     <div class="card">
-      <div class="card-title">📅 الحضور اليومي <span class="pill ${s.checkin_enabled!==false?'green':''}">${s.checkin_enabled!==false?'مفعّل':'متوقف'}</span></div>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">حضروا اليوم</div><div class="stat-value gold">${fmt(cs.today_checkins)}</div></div>
-        <div class="stat-box"><div class="stat-label">إجمالي المسجّلين</div><div class="stat-value blue">${fmt(cs.total_checkin_users)}</div></div>
-        <div class="stat-box"><div class="stat-label">إجمالي المكافآت</div><div class="stat-value green">${fmt(cs.total_rewards_paid)}</div></div>
-        <div class="stat-box"><div class="stat-label">متوسط السلسلة</div><div class="stat-value">${cs.avg_streak}</div></div>
-      </div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn ${s.checkin_enabled!==false?'danger':'green'}" onclick="toggleFeature('checkin_enabled',${s.checkin_enabled!==false?'false':'true'})">${s.checkin_enabled!==false?'⛔ إيقاف الحضور':'✅ تفعيل الحضور'}</button>
-        <button class="btn outline" onclick="loadFeatures()">🔄 تحديث</button>
+      <div class="card-title">✨ ميزات المستخدمين والمكافآت</div>
+      <div class="sub">اختر القسم لفتح إعداداته المستقلة دون فوضى أو ازدحام بصري:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">
+        <button class="btn ${currentFeatureSubTab==='vip'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showFeatureSubTab('vip')">🏆 نظام VIP</button>
+        <button class="btn ${currentFeatureSubTab==='wheel'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showFeatureSubTab('wheel')">🎰 عجلة الحظ</button>
+        <button class="btn ${currentFeatureSubTab==='flash'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showFeatureSubTab('flash')">⚡ فلاش البونص</button>
+        <button class="btn ${currentFeatureSubTab==='checkin'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showFeatureSubTab('checkin')">📅 الحضور اليومي</button>
+        <button class="btn ${currentFeatureSubTab==='cashback'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showFeatureSubTab('cashback')">💸 الكاش باك</button>
+        <button class="btn ${currentFeatureSubTab==='leaderboard'?'gold':'outline'}" style="flex:1;min-width:105px;padding:10px 4px;font-size:12px;" onclick="showFeatureSubTab('leaderboard')">📊 الصدارة</button>
       </div>
     </div>
-
-    <!-- إعدادات الحضور اليومي -->
-    <div class="card">
-      <div class="card-title">💎 إعدادات مكافأة الحضور</div>
-      <div class="warn-box">الحضور يتفعل بعد أول إيداع مقبول. لا توجد مكافآت يومية؛ المكافأة تُصرف عند إكمال الدورة دون انقطاع وتحقيق شرط الإيداع، ثم تُضاف تلقائياً عند أول شحن لعبة ناجح.</div>
-      <div class="field"><label>عدد أيام الدورة</label><input id="checkin_cycle_days" inputmode="numeric" value="${s.checkin_cycle_days||30}"></div>
-      <div class="field"><label>الحد الأدنى لمجموع إيداعات آخر 30 يوم</label><input id="checkin_min_deposit" inputmode="numeric" value="${s.checkin_min_deposit||50000}"></div>
-      <div class="field"><label>مكافأة إكمال الدورة</label><input id="checkin_completion_reward" inputmode="numeric" value="${s.checkin_completion_reward||20000}"></div>
-      <button class="btn green" onclick="saveCheckinSettings()">💾 حفظ إعدادات الحضور</button>
-    </div>
-
-    <!-- فلاش البونص -->
-    <div class="card">
-      <div class="card-title">⚡ فلاش البونص ${af?'<span class="pill">نشط الآن</span>':''}</div>
-      ${af?`<div class="warn-box" style="border-color:var(--gold);color:var(--gold)">⚡ فلاش نشط: ${af.percent}% — ينتهي ${new Date(af.ends_at).toLocaleString('ar-EG')}<br><button class="btn danger" style="margin-top:8px" onclick="stopFlash(${af.id})">🛑 إيقاف الفلاش الآن</button></div>`:`
-      <div class="field"><label>نسبة الفلاش %</label><input id="flash_percent" inputmode="decimal" placeholder="مثال: 15"></div>
-      <div class="field"><label>المدة (دقائق)</label><input id="flash_duration" inputmode="numeric" value="30"></div>
-      <div class="field"><label>طريقة الدفع</label><select id="flash_method"><option value="all">كل الطرق</option><option value="syriatel">سيريتل</option><option value="mtn">MTN</option><option value="sham_syp">شام SYP</option><option value="sham_usd">شام USD</option><option value="usdt_trc">USDT</option></select></div>
-      <button class="btn gold" onclick="createFlash()">⚡ إطلاق فلاش بونص</button>
-      `}
-    </div>
-
-    ${rf.length?`<div class="card"><div class="card-title">📜 سجل الفلاشات</div>${rf.map(f=>`<div class="pending-item"><b>#${f.id} — ${f.percent}%</b> ${f.is_active?'<span class="pill green">نشط</span>':'<span class="pill">منتهي</span>'}<br><span class="label">ينتهي: ${f.ends_at}</span></div>`).join('')}</div>`:''}
-
-    <!-- عجلة الحظ -->
-    <div class="card">
-      <div class="card-title">🎰 عجلة الحظ <span class="pill ${wheelEn?'green':''}">${wheelEn?'مفعّل':'متوقف'}</span></div>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">دورات اليوم</div><div class="stat-value gold">${fmt(ws.today_spins||0)}</div></div>
-        <div class="stat-box"><div class="stat-label">جوائز اليوم</div><div class="stat-value green">${fmt(ws.today_rewards||0)}</div></div>
-        <div class="stat-box"><div class="stat-label">إجمالي الدورات</div><div class="stat-value blue">${fmt(ws.total_spins||0)}</div></div>
-        <div class="stat-box"><div class="stat-label">إجمالي الجوائز</div><div class="stat-value">${fmt(ws.total_rewards||0)}</div></div>
-      </div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn ${wheelEn?'danger':'green'}" onclick="toggleWheel(${wheelEn?'false':'true'})">${wheelEn?'⛔ إيقاف العجلة':'✅ تفعيل العجلة'}</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">⚙️ قطاعات العجلة (8)</div>
-      <div class="warn-box">الخانات ثابتة: PINGO - 0% - 1% - 2% - 0% - 3% - 4% - 0%. يمكنك تعديل ثقل/احتمال كل خانة فقط، ويمكن جعل أي وزن 0 لتعطيلها.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-        ${wheelSeg.map((seg,i)=>{
-          const pct=Number(seg[0]||0),prob=Number(seg[1]??1),rawLabel=seg[2]||String(pct)+'%';
-          const isPingo=String(rawLabel).toUpperCase()==='PINGO';
-          const label=isPingo?'🎯 PINGO':(pct===0?'💔 0% حظ أوفر':'+'+pct+'%');
-          const color=isPingo?'var(--gold)':pct===0?'var(--hint)':pct>=4?'var(--green)':'var(--blue)';
-          return `<div style="background:${isPingo?'rgba(255,215,0,0.10)':'rgba(255,255,255,0.03)'};border-radius:10px;padding:10px;border-right:3px solid ${color}">
-            <div style="font-size:12px;font-weight:900;color:${color};margin-bottom:6px">قطاع ${i+1}: ${label}</div>
-            <div class="hint" style="margin-bottom:6px">قيمة الخانة ثابتة ولا تعدّل من هنا</div>
-            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">الثقل / احتمال الظهور</label><input id="wseg_${i}_prob" inputmode="decimal" value="${prob}" style="padding:8px;font-size:13px"></div>
-          </div>`;
-        }).join('')}
-      </div>
-      <button class="btn gold" onclick="saveWheel()">💾 حفظ قطاعات العجلة</button>
-    </div>
-
-    <!-- نظام VIP -->
-    <div class="card">
-      <div class="card-title">🏆 نظام الطبقات (VIP) <span class="pill ${vipEn?'green':''}">${vipEn?'مفعّل':'متوقف'}</span></div>
-      <div class="warn-box">كلما زاد إجمالي إيداعات المستخدم (Lifetime)، ترقّى في الطبقات وحصل على مكافآت وبونص أعلى.</div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn ${vipEn?'danger':'green'}" onclick="toggleVIP(${vipEn?'false':'true'})">${vipEn?'⛔ إيقاف VIP':'✅ تفعيل VIP'}</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">⚙️ حدود الطبقات والمكافآت</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-        ${vipTiers.map((t,i)=>{
-          const names=['🥉 مواطن','🥈 فارس','🥇 نبيل','👑 قيصر'];
-          return `<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px">
-            <div style="font-size:13px;font-weight:900;margin-bottom:8px">${names[i]||'طبقة '+i}</div>
-            <div class="field" style="margin:0"><label style="font-size:10px">حد الإيداع (ل.س)</label><input id="vip_${i}_thresh" inputmode="numeric" value="${t[0]}" style="padding:8px;font-size:13px"></div>
-            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">بونص الإيداع %</label><input id="vip_${i}_pct" inputmode="decimal" value="${t[1]}" style="padding:8px;font-size:13px"></div>
-            <div class="field" style="margin:4px 0 0"><label style="font-size:10px">مكافأة الترقية</label><input id="vip_${i}_reward" inputmode="numeric" value="${t[2]}" style="padding:8px;font-size:13px"></div>
-          </div>`;
-        }).join('')}
-      </div>
-      <button class="btn gold" onclick="saveVIP()">💾 حفظ طبقات VIP</button>
-    </div>
-
-    <!-- الكاش باك -->
-    <div class="card">
-      <div class="card-title">💸 الكاش باك الأسبوعي <span class="pill ${cbEn?'green':''}">${cbEn?'مفعّل':'متوقف'}</span></div>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">مدفوعات الأسبوع</div><div class="stat-value green">${fmt(cbs.week_paid||0)}</div></div>
-        <div class="stat-box"><div class="stat-label">مستفيدين</div><div class="stat-value blue">${fmt(cbs.week_count||0)}</div></div>
-        <div class="stat-box"><div class="stat-label">إجمالي مدفوع</div><div class="stat-value gold">${fmt(cbs.total_paid||0)}</div></div>
-        <div class="stat-box"><div class="stat-label">خسائر الأسبوع</div><div class="stat-value red">${fmt(cbs.week_losses||0)}</div></div>
-      </div>
-      <div class="warn-box" style="margin-top:10px">% من خسارة المستخدمين في اللعبة يرجع لهم كرصيد مكافآت أسبوعياً.</div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn ${cbEn?'danger':'green'}" onclick="toggleCashback(${cbEn?'false':'true'})">${cbEn?'⛔ إيقاف':'✅ تفعيل'}</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">⚙️ إعدادات الكاش باك</div>
-      <div class="field"><label>نسبة الاسترجاع %</label><input id="cb_pct" inputmode="decimal" value="${cbPct}"></div>
-      <div class="field"><label>الحد الأدنى للخسارة (ل.س)</label><input id="cb_min" inputmode="numeric" value="${cbMin}"><div class="hint">المستخدم الذي تخسر خسارته أقل من هذا المبلغ لا يحصل على كاش باك</div></div>
-      <button class="btn green" onclick="saveCashback()">💾 حفظ إعدادات الكاش باك</button>
-    </div>
-
-    <!-- لوحة الصدارة -->
-    <div class="card">
-      <div class="card-title">📊 لوحة الصدارة <span class="pill ${s.leaderboard_enabled!==false?'green':''}">${s.leaderboard_enabled!==false?'مفعّل':'متوقف'}</span></div>
-      <div class="field"><label>الفترة</label><select id="lb_type"><option value="all_time" ${lbType==='all_time'?'selected':''}>كل الوقت</option><option value="weekly" ${lbType==='weekly'?'selected':''}>أسبوعي</option><option value="monthly" ${lbType==='monthly'?'selected':''}>شهري</option></select></div>
-      <div class="btn-row">
-        <button class="btn ${s.leaderboard_enabled!==false?'danger':'green'}" onclick="toggleFeature('leaderboard_enabled',${s.leaderboard_enabled!==false?'false':'true'})">${s.leaderboard_enabled!==false?'⛔ إيقاف الصدارة':'✅ تفعيل الصدارة'}</button>
-        <button class="btn outline" onclick="saveLbType()">💾 حفظ الفترة</button>
-      </div>
-    </div>
-
-    <button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>
+    ${subContent}
+    <button class="btn outline" style="margin-top:10px;" onclick="showTab('more')">🔙 رجوع</button>
   `;
 }
 

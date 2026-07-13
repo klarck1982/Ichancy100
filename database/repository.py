@@ -1495,7 +1495,7 @@ def get_bot_settings():
     return settings_dict
 
 
-def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None, game_bonus_enabled=None, game_bonus_apply_percent=None, syriatel_auto_mode=None, syriatel_auto_channel_id=None):
+def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=None, withdraw_commission=None, ichancy_cookie=None, agent_balance=None, referrals_enabled=None, game_min_deposit_syp=None, agent_revenue_percent=None, min_deposit_syp=None, min_deposit_usd=None, min_withdraw_syp=None, min_withdraw_usd=None, syp_version=None, bonus_rollover_multiplier=None, turnover_field_name=None, game_bonus_enabled=None, game_bonus_apply_percent=None, syriatel_auto_mode=None, syriatel_auto_channel_id=None, agent_balance_alert_threshold=None):
     settings_dict = get_bot_settings()
     if not settings_dict:
         DatabaseManager.execute_query("INSERT INTO bot_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;")
@@ -1521,10 +1521,11 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
     new_game_bonus_apply_percent = game_bonus_apply_percent if game_bonus_apply_percent is not None else settings_dict.get('game_bonus_apply_percent', 10)
     new_syriatel_auto_mode = syriatel_auto_mode if syriatel_auto_mode is not None else settings_dict.get('syriatel_auto_mode', 'off')
     new_syriatel_auto_channel_id = syriatel_auto_channel_id if syriatel_auto_channel_id is not None else settings_dict.get('syriatel_auto_channel_id', '')
+    new_alert_thresh = agent_balance_alert_threshold if agent_balance_alert_threshold is not None else settings_dict.get('agent_balance_alert_threshold', 100000)
 
     query = """
     UPDATE bot_settings
-    SET exchange_rate = %s, usd_buy_rate = %s, usd_sell_rate = %s, withdraw_commission = %s, ichancy_cookie = %s, agent_balance = %s, referrals_enabled = %s, game_min_deposit_syp = %s, agent_revenue_percent = %s, min_deposit_syp = %s, min_deposit_usd = %s, min_withdraw_syp = %s, min_withdraw_usd = %s, syp_version = %s, bonus_rollover_multiplier = %s, turnover_field_name = %s, game_bonus_enabled = %s, game_bonus_apply_percent = %s, syriatel_auto_mode = %s, syriatel_auto_channel_id = %s
+    SET exchange_rate = %s, usd_buy_rate = %s, usd_sell_rate = %s, withdraw_commission = %s, ichancy_cookie = %s, agent_balance = %s, referrals_enabled = %s, game_min_deposit_syp = %s, agent_revenue_percent = %s, min_deposit_syp = %s, min_deposit_usd = %s, min_withdraw_syp = %s, min_withdraw_usd = %s, syp_version = %s, bonus_rollover_multiplier = %s, turnover_field_name = %s, game_bonus_enabled = %s, game_bonus_apply_percent = %s, syriatel_auto_mode = %s, syriatel_auto_channel_id = %s, agent_balance_alert_threshold = %s
     WHERE id = 1
     """
     DatabaseManager.execute_query(
@@ -1549,7 +1550,8 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
             bool(new_game_bonus_enabled),
             float(new_game_bonus_apply_percent),
             str(new_syriatel_auto_mode or 'off'),
-            str(new_syriatel_auto_channel_id or '')
+            str(new_syriatel_auto_channel_id or ''),
+            int(new_alert_thresh)
         )
     )
     if hasattr(DatabaseManager, 'invalidate_settings_cache'):

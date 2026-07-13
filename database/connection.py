@@ -508,6 +508,7 @@ class DatabaseManager:
         alter_settings_min_withdraw_usd = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS min_withdraw_usd INT DEFAULT 10;"
         # 🆕 نسخة الليرة السورية (old = قديمة, new = جديدة ÷100)
         alter_settings_syp_version = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS syp_version VARCHAR(10) DEFAULT 'old';"
+        alter_settings_alert_threshold = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_balance_alert_threshold BIGINT DEFAULT 100000;"
 
         # 🆕 (Update 14) رصيد المكافآت للمستخدم (غير قابل للسحب)
         alter_users_bonus_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_balance BIGINT DEFAULT 0;"
@@ -636,6 +637,7 @@ class DatabaseManager:
             alter_settings_min_withdraw_syp,
             alter_settings_min_withdraw_usd,
             alter_settings_syp_version,
+            alter_settings_alert_threshold,
             alter_users_bonus_balance,
             alter_users_game_bonus_amount,
             alter_users_bonus_base_balance,
