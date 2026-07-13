@@ -619,6 +619,7 @@ def _is_admin(init_data_raw):
 
 async def dashboard_api_handler(request):
     """🆕 API يغذّي لوحة التحكم بالبيانات (للمشرفين فقط)."""
+    global last_agent_balance_db_value, last_agent_balance_db_update_ts
     init_data_raw = request.headers.get('X-Telegram-Init-Data', '')
     if not _is_admin(init_data_raw):
         return web.json_response({'error': 'غير مصرّح'}, status=403)

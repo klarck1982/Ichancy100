@@ -2960,6 +2960,29 @@ async def gift_redeem_callback(callback: CallbackQuery, state: FSMContext):
 async def process_gift_redeem(message: Message, state: FSMContext):
     code = message.text.strip()
     success, msg = repo.redeem_gift(code, str(message.from_user.id))
+    if success:
+        try:
+            user = repo.get_user(str(message.from_user.id)) or {}
+            username = user.get('telegram_username') or message.from_user.username or '—'
+            gift_data = repo.get_gift_by_code(code) or {}
+            sender_id = gift_data.get('sender_telegram_id', 'Unknown')
+            amount = gift_data.get('amount', 0)
+            is_bonus = str(code).upper().startswith('CAESAR-BONUS-')
+            type_label = "🎁 بونص لعب" if is_bonus else "💵 كاش قابل للسحب"
+            await send_log_message(
+                message.bot,
+                "🎫 <b>تم استرداد كود هدية جديد!</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👤 <b>المسترد:</b> @{username} (<code>{message.from_user.id}</code>)\n"
+                f"🏷️ <b>نوع الهدية:</b> <code>{type_label}</code>\n"
+                f"🎫 <b>الكود:</b> <code>{code}</code>\n"
+                f"💰 <b>القيمة:</b> <code>{amount:,} SYP</code>\n"
+                f"👑 <b>المُصدر:</b> <code>{sender_id}</code>\n"
+                f"⏰ <b>الوقت:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            )
+        except Exception as log_err:
+            logger.warning(f"Failed to log gift redemption: {log_err}")
+
     emoji = "✅" if success else "❌"
     await message.answer(
         f"{emoji} {msg}",
