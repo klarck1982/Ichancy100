@@ -214,6 +214,10 @@ def get_admin_dashboard_keyboard(refresh_callback="caesar_control_panel"):
             InlineKeyboardButton(text="📈 تحديث السيولة", callback_data="adm_sync_liquidity")
         ],
         [
+            InlineKeyboardButton(text="🩺 فحص النبض والمحاكاة", callback_data="adm_system_probe"),
+            InlineKeyboardButton(text="🔄 تصفير حسابي الاختباري", callback_data="adm_reset_my_test_balance")
+        ],
+        [
             InlineKeyboardButton(text="🎫 إنشاء كود هدية", callback_data="adm_create_bot_gift"),
             InlineKeyboardButton(text="🎁 البونصات", callback_data="adm_bonus_menu")
         ],
@@ -519,6 +523,84 @@ async def adm_sync_liquidity_callback(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Liquidity sync error: {e}", exc_info=True)
         await status_msg.edit_text(f"❌ حدث خطأ أثناء توليد التقرير:\n<code>{str(e)}</code>", parse_mode="HTML")
+
+
+@router.callback_query(F.data == "adm_system_probe")
+async def adm_system_probe_callback(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    await safe_answer_callback(callback, "⏳ جاري فحص النبض ومحاكاة عمليات القيصر...")
+    t0 = time.perf_counter()
+    db_ok = False
+    db_latency = 0
+    try:
+        cur = DatabaseManager.execute_query_dict("SELECT 1 as ping", fetch='one')
+        if cur and cur.get('ping') == 1:
+            db_ok = True
+            db_latency = round((time.perf_counter() - t0) * 1000, 1)
+    except Exception as e:
+        logger.warning(f"Probe DB error: {e}")
+
+    t1 = time.perf_counter()
+    session_ok = await ichancy_api_client.check_session_validity()
+    api_latency = round((time.perf_counter() - t1) * 1000, 1)
+
+    dry_run_ok = False
+    try:
+        conn = DatabaseManager.get_connection()
+        c = conn.cursor()
+        c.execute("SELECT bot_balance FROM users WHERE telegram_id = %s FOR UPDATE", (str(callback.from_user.id),))
+        row = c.fetchone()
+        if row is not None:
+            c.execute("UPDATE users SET bot_balance = bot_balance + 10000 WHERE telegram_id = %s", (str(callback.from_user.id),))
+            conn.rollback() # 🔒 تراجع فوري حتى لا يتغير الرقم الفعلي!
+            dry_run_ok = True
+        else:
+            conn.rollback()
+    except Exception as e:
+        logger.warning(f"Probe Dry-Run error: {e}")
+
+    report = (
+        "🩺 <b>تقرير فحص النبض والمحاكاة الشاملة للقيصر</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💾 <b>قاعدة بيانات Neon (PostgreSQL):</b>\n"
+        f"└ الحالة: {'🟢 متصل بكفاءة' if db_ok else '🔴 تعذر الاتصال'}\n"
+        f"└ سرعة الاستجابة (Latency): <code>{db_latency} ms</code>\n\n"
+        f"🍪 <b>جلسة وكيل iChancy (Agent Session):</b>\n"
+        f"└ الحالة: {'🟢 نشطة وفعالة' if session_ok else '🔴 تحتاج تحديث'}\n"
+        f"└ سرعة الاتصال (API): <code>{api_latency} ms</code>\n\n"
+        f"🧪 <b>محاكاة المعاملات الذرية (Dry-Run Test):</b>\n"
+        f"└ فحص القفل الذري والتراجع: {'🟢 ناجح (بدون زيادة أرصدة)' if dry_run_ok else '🟡 يحتاج تحقق'}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 <i>تم فحص الاتصال والتزامن وحسابات القيصر بسلاسة وبون أي تضخم أو تغيير في الأرصدة الحقيقية!</i>"
+    )
+    await safe_edit_text(callback.message, report, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 إعادة الفحص الآن", callback_data="adm_system_probe")],
+        [InlineKeyboardButton(text="🔙 عودة للوحة التحكم", callback_data="caesar_control_panel")]
+    ]), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "adm_reset_my_test_balance")
+async def adm_reset_my_test_balance_callback(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    tid = str(callback.from_user.id)
+    try:
+        DatabaseManager.execute_query(
+            """UPDATE users
+               SET bot_balance = 0, bonus_balance = 0, game_bonus_amount = 0, bonus_base_balance = 0
+               WHERE telegram_id = %s""",
+            (tid,)
+        )
+        DatabaseManager.execute_query(
+            "DELETE FROM transactions WHERE user_telegram_id = %s AND (payment_method IN ('game', 'test', 'sandbox') OR reviewed_by = %s OR reviewed_by = 'auto_syriatel')",
+            (tid, str(callback.from_user.id))
+        )
+        await safe_answer_callback(callback, "✅ تم تصفير حسابك الاختباري وتنظيف المعاملات التجريبية بنجاح!", show_alert=True)
+        await caesar_control_panel(callback)
+    except Exception as e:
+        logger.error(f"Reset test balance error: {e}")
+        await safe_answer_callback(callback, "❌ تعذر تصفير الرصيد الاختباري", show_alert=True)
 
 
 @router.message(Command("admin"))
