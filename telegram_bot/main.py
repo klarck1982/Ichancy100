@@ -800,8 +800,23 @@ async def admin_settings_get_handler(request):
     if not _is_admin(init_data_raw):
         return web.json_response({'error': 'غير مصرّح'}, status=403)
     try:
+        global last_agent_balance_db_update_ts, last_agent_balance_db_value
         bot_settings = repo.get_bot_settings()
+        agent_bal = int(bot_settings.get('agent_balance', 0) or 0)
+        if agent_bal == 0 or (time.time() - last_agent_balance_db_update_ts > 120):
+            try:
+                live_bal = await ichancy_api_client.get_admin_balance()
+                if live_bal is not None:
+                    agent_bal = int(live_bal)
+                    repo.update_bot_settings(agent_balance=agent_bal)
+                    last_agent_balance_db_value = agent_bal
+                    last_agent_balance_db_update_ts = time.time()
+                    bot_settings = repo.get_bot_settings()
+            except Exception as e:
+                logger.warning(f"Could not live refresh agent balance in settings API: {e}")
+
         return web.json_response({
+            'agent_balance': agent_bal,
             'exchange_rate': int(bot_settings.get('exchange_rate') or 1000),
             'usd_buy_rate': float(bot_settings.get('usd_buy_rate') or 0),
             'usd_sell_rate': float(bot_settings.get('usd_sell_rate') or 0),

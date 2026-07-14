@@ -1560,6 +1560,7 @@ async def adm_agent_bal_callback(callback: CallbackQuery):
     await safe_edit_text(callback.message, "⏳ جاري جلب رصيد محفظة الوكيل من الداشبورد...")
     balance = await ichancy_api_client.get_admin_balance()
     if balance is not None:
+        repo.update_bot_settings(agent_balance=int(balance))
         await safe_edit_text(
             callback.message,
             f"🎮 <b>رصيد محفظة الوكيل الحالي على iChancy:</b>\n\n"
