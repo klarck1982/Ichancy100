@@ -378,21 +378,42 @@
     <div style="font-size:12px;color:var(--hint);margin-bottom:14px;">اختر وسيلة الدفع ليظهر لك رقم التحويل المعتمد فوراً:</div>
     
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      <button class="pay-opt-btn" onclick="selectDepositGateway('syriatel')" id="depOpt_syriatel" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <div style="background:#d32f2f;color:#fff;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;">Syr</div>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;">Syriatel<br><span style="font-size:10px;color:var(--gold);">Cash</span></div>
+      <button class="pay-opt-btn" onclick="selectDepositGateway('syriatel')" id="depOpt_syriatel" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <!-- شعار سيريتل كاش المتجهي الحقيقي -->
+        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(211,47,47,0.4);flex-shrink:0;">
+          <rect width="100" height="100" rx="22" fill="#d32f2f"/>
+          <path d="M 22 42 C 35 32, 65 32, 78 42 C 65 52, 35 52, 22 42 Z" fill="#ffffff" opacity="0.95"/>
+          <circle cx="50" cy="42" r="6" fill="#d32f2f"/>
+          <text x="50" y="73" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="20" fill="#ffffff" letter-spacing="1">Syriatel</text>
+        </svg>
+        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">سيريتل كاش<br><span style="font-size:10px;color:var(--gold);font-weight:700;">Syriatel Cash</span></div>
       </button>
-      <button class="pay-opt-btn" onclick="selectDepositGateway('mtn')" id="depOpt_mtn" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <div style="background:#ffcc00;color:#000;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;">MTN</div>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;">MTN<br><span style="font-size:10px;color:var(--gold);">Cash</span></div>
+      <button class="pay-opt-btn" onclick="selectDepositGateway('mtn')" id="depOpt_mtn" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <!-- شعار أم تي إن الحقيقي -->
+        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(255,204,0,0.4);flex-shrink:0;">
+          <rect width="100" height="100" rx="22" fill="#ffcc00"/>
+          <ellipse cx="50" cy="50" rx="38" ry="24" fill="none" stroke="#003366" stroke-width="6"/>
+          <text x="50" y="58" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="26" fill="#003366" letter-spacing="-1">MTN</text>
+        </svg>
+        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">MTN كاش<br><span style="font-size:10px;color:var(--gold);font-weight:700;">MTN Cash</span></div>
       </button>
-      <button class="pay-opt-btn" onclick="selectDepositGateway('sham_syp')" id="depOpt_sham_syp" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <div style="background:#00c853;color:#000;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;">Sham</div>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;">ShamCash<br><span style="font-size:10px;color:var(--green);">SYP / USD</span></div>
+      <button class="pay-opt-btn" onclick="selectDepositGateway('sham_syp')" id="depOpt_sham_syp" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <!-- شعار شام كاش الحقيقي -->
+        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(0,200,83,0.4);flex-shrink:0;">
+          <rect width="100" height="100" rx="22" fill="#00c853"/>
+          <circle cx="50" cy="50" r="30" fill="none" stroke="#ffffff" stroke-width="5"/>
+          <path d="M 38 36 C 45 28, 65 35, 50 50 C 35 65, 55 72, 62 64" fill="none" stroke="#ffd700" stroke-width="8" stroke-linecap="round"/>
+        </svg>
+        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">شام كاش<br><span style="font-size:10px;color:var(--green);font-weight:700;">SYP / USD</span></div>
       </button>
-      <button class="pay-opt-btn" onclick="selectDepositGateway('usdt_trc')" id="depOpt_usdt_trc" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <div style="background:#26a69a;color:#fff;border-radius:8px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;">₮</div>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;">USDT<br><span style="font-size:10px;color:#26a69a;">TRC20</span></div>
+      <button class="pay-opt-btn" onclick="selectDepositGateway('usdt_trc')" id="depOpt_usdt_trc" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <!-- شعار تيذر USDT الحقيقي -->
+        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(38,166,154,0.4);flex-shrink:0;">
+          <rect width="100" height="100" rx="22" fill="#26a69a"/>
+          <path d="M 30 32 L 70 32 L 70 42 L 56 42 L 56 76 L 44 76 L 44 42 L 30 42 Z" fill="#ffffff"/>
+          <ellipse cx="50" cy="44" rx="24" ry="7" fill="none" stroke="#ffffff" stroke-width="3"/>
+        </svg>
+        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">تيذر USDT<br><span style="font-size:10px;color:#26a69a;font-weight:700;">TRC20 / BEP20</span></div>
       </button>
     </div>
 
@@ -617,6 +638,17 @@ function renderBalance(d){
       <div class="label">💎 رصيدك الحالي (قابل للسحب)</div>
       <div class="amount">${fmt(botBal)} <span style="font-size:18px;color:var(--hint)">ل.س</span></div>
       <div class="amount-new">≈ ${newStr} ل.س جديدة</div>
+      
+      <!-- 🚀 زرا الإيداع والسحب الفوريين المدمجين مباشرة داخل بطاقة الرصيد كما في التصميم الملكي -->
+      <div style="display:flex;gap:12px;margin:16px 0 10px 0;">
+        <button onclick="openDepositModal(event)" style="flex:1;background:linear-gradient(135deg,#ffd700 0%,#b8860b 100%);color:#0a0e1a;font-weight:900;font-size:14px;padding:12px;border-radius:14px;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;box-shadow:0 4px 15px rgba(255,215,0,0.35);">
+          <span>➕</span><span>إيداع الرصيد</span>
+        </button>
+        <button onclick="openWithdrawModal(event)" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,215,0,0.4);color:#ffd700;font-weight:900;font-size:14px;padding:12px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;">
+          <span>➖</span><span>سحب الأرباح</span>
+        </button>
+      </div>
+
       ${bonusHtml}
       <div class="divider"></div>
       <div class="game-balance">
