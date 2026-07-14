@@ -15,7 +15,7 @@ def get_terms_keyboard():
 def get_user_app_url():
     """🆕 Mini App للمستخدم عبر مسار جديد لكسر كاش Telegram WebView نهائياً."""
     base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
-    return f"{base}/user-app-pingo?v=caesar-horizontal-v2-20260714"
+    return f"{base}/user-app-pingo?v=caesar-horizontal-v3-20260714"
 
 
 def get_main_menu_keyboard(is_admin=False):
