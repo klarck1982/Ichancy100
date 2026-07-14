@@ -261,18 +261,10 @@
 <div id="PINGO_WHEEL_BUILD" style="position:fixed;left:6px;bottom:6px;z-index:9999;font-size:9px;color:rgba(255,215,0,.45);pointer-events:none">pingo-wheel-v4-20260708</div>
 
 <div class="container">
-  <!-- الترويسة الملكية لشعار CR -->
-  <div class="header" style="background:linear-gradient(135deg,rgba(20,22,32,0.95) 0%,rgba(10,12,18,0.98) 100%);border:1px solid var(--card-border);border-radius:20px;padding:12px 18px;box-shadow:0 6px 24px rgba(0,0,0,0.6);">
-    <div class="logo" style="display:flex;align-items:center;gap:12px;">
-      <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#ffd700 0%,#b8860b 100%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 14px rgba(255,215,0,0.45);font-weight:900;color:#0a0e1a;font-size:22px;letter-spacing:-1px;">
-        CR
-      </div>
-      <div style="display:flex;flex-direction:column;line-height:1.2;">
-        <span style="font-size:16px;font-weight:900;color:var(--gold);letter-spacing:0.5px;filter:drop-shadow(0 0 4px rgba(255,215,0,0.35));">CAESAR_ROBERT</span>
-        <span style="font-size:10px;color:var(--hint);letter-spacing:2.5px;font-weight:700;">— B O T —</span>
-      </div>
-    </div>
-    <button class="refresh-btn" onclick="loadAll()" title="تحديث الأرصدة">🔄</button>
+  <!-- الترويسة -->
+  <div class="header">
+    <div class="logo"><span class="crown">👑</span> القيصر</div>
+    <button class="refresh-btn" onclick="loadAll()">🔄</button>
   </div>
 
   <div id="errorBox"></div>
@@ -307,10 +299,10 @@
 
     <!-- شبكة الإجراءات السريعة -->
     <div class="quick-grid">
-      <a class="quick-btn deposit" href="#" onclick="openDepositModal(event)">
+      <a class="quick-btn deposit" href="#" onclick="closeApp()">
         <div class="icon">📥</div><div class="text">شحن</div>
       </a>
-      <a class="quick-btn withdraw" href="#" onclick="openWithdrawModal(event)">
+      <a class="quick-btn withdraw" href="#" onclick="closeApp()">
         <div class="icon">📤</div><div class="text">سحب</div>
       </a>
       <a class="quick-btn gift" href="#" onclick="closeApp()">
@@ -366,108 +358,6 @@
   <button class="nav-item" id="navPerks" onclick="showPage('perks')">
     <div class="nav-icon">🏆</div><span>المزايا</span>
   </button>
-</div>
-
-<!-- 📥 نافذة الإيداع التفاعلية المباشرة من داخل الـ Mini App -->
-<div id="depositModal" class="modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:16px;">
-  <div class="modal-card" style="background:linear-gradient(180deg,#141622 0%,#0a0c14 100%);border:1px solid var(--gold);border-radius:24px;padding:22px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(255,215,0,0.25);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div style="font-size:16px;font-weight:900;color:var(--gold);">📥 إيداع الأموال (شحن الرصيد)</div>
-      <button onclick="closeDepositModal()" style="background:none;border:none;color:var(--hint);font-size:22px;cursor:pointer;">✕</button>
-    </div>
-    <div style="font-size:12px;color:var(--hint);margin-bottom:14px;">اختر وسيلة الدفع ليظهر لك رقم التحويل المعتمد فوراً:</div>
-    
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
-      <button class="pay-opt-btn" onclick="selectDepositGateway('syriatel')" id="depOpt_syriatel" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <!-- شعار سيريتل كاش المتجهي الحقيقي -->
-        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(211,47,47,0.4);flex-shrink:0;">
-          <rect width="100" height="100" rx="22" fill="#d32f2f"/>
-          <path d="M 22 42 C 35 32, 65 32, 78 42 C 65 52, 35 52, 22 42 Z" fill="#ffffff" opacity="0.95"/>
-          <circle cx="50" cy="42" r="6" fill="#d32f2f"/>
-          <text x="50" y="73" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="20" fill="#ffffff" letter-spacing="1">Syriatel</text>
-        </svg>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">سيريتل كاش<br><span style="font-size:10px;color:var(--gold);font-weight:700;">Syriatel Cash</span></div>
-      </button>
-      <button class="pay-opt-btn" onclick="selectDepositGateway('mtn')" id="depOpt_mtn" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <!-- شعار أم تي إن الحقيقي -->
-        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(255,204,0,0.4);flex-shrink:0;">
-          <rect width="100" height="100" rx="22" fill="#ffcc00"/>
-          <ellipse cx="50" cy="50" rx="38" ry="24" fill="none" stroke="#003366" stroke-width="6"/>
-          <text x="50" y="58" text-anchor="middle" font-family="Arial Black,sans-serif" font-weight="900" font-size="26" fill="#003366" letter-spacing="-1">MTN</text>
-        </svg>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">MTN كاش<br><span style="font-size:10px;color:var(--gold);font-weight:700;">MTN Cash</span></div>
-      </button>
-      <button class="pay-opt-btn" onclick="selectDepositGateway('sham_syp')" id="depOpt_sham_syp" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <!-- شعار شام كاش الحقيقي -->
-        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(0,200,83,0.4);flex-shrink:0;">
-          <rect width="100" height="100" rx="22" fill="#00c853"/>
-          <circle cx="50" cy="50" r="30" fill="none" stroke="#ffffff" stroke-width="5"/>
-          <path d="M 38 36 C 45 28, 65 35, 50 50 C 35 65, 55 72, 62 64" fill="none" stroke="#ffd700" stroke-width="8" stroke-linecap="round"/>
-        </svg>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">شام كاش<br><span style="font-size:10px;color:var(--green);font-weight:700;">SYP / USD</span></div>
-      </button>
-      <button class="pay-opt-btn" onclick="selectDepositGateway('usdt_trc')" id="depOpt_usdt_trc" style="background:rgba(255,255,255,0.05);border:1.5px solid rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <!-- شعار تيذر USDT الحقيقي -->
-        <svg width="40" height="40" viewBox="0 0 100 100" style="border-radius:10px;box-shadow:0 2px 8px rgba(38,166,154,0.4);flex-shrink:0;">
-          <rect width="100" height="100" rx="22" fill="#26a69a"/>
-          <path d="M 30 32 L 70 32 L 70 42 L 56 42 L 56 76 L 44 76 L 44 42 L 30 42 Z" fill="#ffffff"/>
-          <ellipse cx="50" cy="44" rx="24" ry="7" fill="none" stroke="#ffffff" stroke-width="3"/>
-        </svg>
-        <div style="text-align:right;font-size:13px;font-weight:900;color:#fff;line-height:1.2;">تيذر USDT<br><span style="font-size:10px;color:#26a69a;font-weight:700;">TRC20 / BEP20</span></div>
-      </button>
-    </div>
-
-    <div id="depAddressBox" style="background:rgba(255,215,0,0.08);border:1px solid rgba(255,215,0,0.3);border-radius:14px;padding:14px;margin-bottom:16px;display:none;align-items:center;justify-content:space-between;">
-      <div>
-        <div style="font-size:11px;color:var(--hint);">رقم التحويل المعتمد (<span id="depGatewayLabel"></span>):</div>
-        <div id="depAddressText" style="font-size:16px;font-weight:900;color:var(--gold);letter-spacing:1px;margin-top:2px;"></div>
-      </div>
-      <button onclick="copyDepositAddress()" style="background:var(--gold);color:#0a0e1a;border:none;padding:8px 14px;border-radius:10px;font-weight:900;font-size:12px;cursor:pointer;">📋 نسخ</button>
-    </div>
-
-    <div class="field" style="margin-bottom:12px;">
-      <label style="font-size:11px;color:var(--hint);">💰 المبلغ المودع (ل.س أو USD)</label>
-      <input id="depAmountInput" inputmode="numeric" placeholder="مثال: 50000" style="width:100%;padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid var(--card-border);color:#fff;font-size:14px;font-weight:900;">
-    </div>
-    <div class="field" style="margin-bottom:18px;">
-      <label style="font-size:11px;color:var(--hint);">🔢 رقم إيصال الحوالة / هاتف المرسل</label>
-      <input id="depRefInput" placeholder="أدخل رقم الإيصال أو رقم هاتفك" style="width:100%;padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid var(--card-border);color:#fff;font-size:14px;">
-    </div>
-
-    <button id="depSubmitBtn" onclick="submitInAppDeposit()" style="width:100%;background:linear-gradient(135deg,#ffd700 0%,#b8860b 100%);color:#0a0e1a;font-weight:900;font-size:15px;padding:14px;border-radius:14px;border:none;cursor:pointer;box-shadow:0 4px 15px rgba(255,215,0,0.4);">🚀 تأكيد وإرسال طلب الشحن</button>
-  </div>
-</div>
-
-<!-- 📤 نافذة السحب المباشر -->
-<div id="withdrawModal" class="modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:16px;">
-  <div class="modal-card" style="background:linear-gradient(180deg,#141622 0%,#0a0c14 100%);border:1px solid #ff5252;border-radius:24px;padding:22px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(255,82,82,0.25);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div style="font-size:16px;font-weight:900;color:#ff5252;">📤 سحب الأرباح إلى كاش</div>
-      <button onclick="closeWithdrawModal()" style="background:none;border:none;color:var(--hint);font-size:22px;cursor:pointer;">✕</button>
-    </div>
-    <div style="font-size:12px;color:var(--hint);margin-bottom:14px;">اختر وسيلة الاستلام وأدخل رقم حسابك وسحبك بأمان:</div>
-    
-    <div class="field" style="margin-bottom:12px;">
-      <label style="font-size:11px;color:var(--hint);">💳 وسيلة الاستلام المعتمدة</label>
-      <select id="witGatewaySelect" style="width:100%;padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid var(--card-border);color:#fff;font-size:14px;">
-        <option value="syriatel">🟢 سيريتل كاش</option>
-        <option value="mtn">🟡 MTN كاش</option>
-        <option value="sham_syp">📱 شام كاش SYP</option>
-        <option value="usdt_trc">🪙 USDT TRC20</option>
-      </select>
-    </div>
-    <div class="field" style="margin-bottom:12px;">
-      <label style="font-size:11px;color:var(--hint);">📱 رقم حسابك أو محفظتك المستلمة</label>
-      <input id="witRefInput" placeholder="أدخل رقمك أو محفظتك بدقة" style="width:100%;padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid var(--card-border);color:#fff;font-size:14px;">
-    </div>
-    <div class="field" style="margin-bottom:18px;">
-      <label style="font-size:11px;color:var(--hint);">💰 المبلغ المطلوب سحبه من رصيد البوت (ل.س)</label>
-      <input id="witAmountInput" inputmode="numeric" placeholder="مثال: 50000" style="width:100%;padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid var(--card-border);color:#fff;font-size:14px;font-weight:900;">
-      <div style="font-size:11px;color:var(--hint);margin-top:4px;">🏷️ عمولة التحويل 10% تُخصم من المبلغ عند إتمام التحويل.</div>
-    </div>
-
-    <button id="witSubmitBtn" onclick="submitInAppWithdraw()" style="width:100%;background:linear-gradient(135deg,#ff5252 0%,#d32f2f 100%);color:#fff;font-weight:900;font-size:15px;padding:14px;border-radius:14px;border:none;cursor:pointer;box-shadow:0 4px 15px rgba(255,82,82,0.4);">🚀 تأكيد وإرسال طلب السحب</button>
-  </div>
 </div>
 
 <script>
@@ -638,17 +528,6 @@ function renderBalance(d){
       <div class="label">💎 رصيدك الحالي (قابل للسحب)</div>
       <div class="amount">${fmt(botBal)} <span style="font-size:18px;color:var(--hint)">ل.س</span></div>
       <div class="amount-new">≈ ${newStr} ل.س جديدة</div>
-      
-      <!-- 🚀 زرا الإيداع والسحب الفوريين المدمجين مباشرة داخل بطاقة الرصيد كما في التصميم الملكي -->
-      <div style="display:flex;gap:12px;margin:16px 0 10px 0;">
-        <button onclick="openDepositModal(event)" style="flex:1;background:linear-gradient(135deg,#ffd700 0%,#b8860b 100%);color:#0a0e1a;font-weight:900;font-size:14px;padding:12px;border-radius:14px;border:none;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;box-shadow:0 4px 15px rgba(255,215,0,0.35);">
-          <span>➕</span><span>إيداع الرصيد</span>
-        </button>
-        <button onclick="openWithdrawModal(event)" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,215,0,0.4);color:#ffd700;font-weight:900;font-size:14px;padding:12px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;">
-          <span>➖</span><span>سحب الأرباح</span>
-        </button>
-      </div>
-
       ${bonusHtml}
       <div class="divider"></div>
       <div class="game-balance">
@@ -1102,82 +981,6 @@ async function loadPerks(){
 
     el.innerHTML=checkinHtml+lbHtml;
   }catch(e){el.innerHTML='<div class="error-box">تعذّر التحميل</div>'}
-}
-
-let selectedDepGateway = 'syriatel';
-function openDepositModal(e) {
-  if(e) e.preventDefault();
-  document.getElementById('depositModal').style.display = 'flex';
-  selectDepositGateway('syriatel');
-}
-function closeDepositModal() {
-  document.getElementById('depositModal').style.display = 'none';
-}
-function selectDepositGateway(gw) {
-  selectedDepGateway = gw;
-  document.querySelectorAll('.pay-opt-btn').forEach(b => b.style.borderColor = 'rgba(255,255,255,0.1)');
-  const activeBtn = document.getElementById('depOpt_' + gw);
-  if(activeBtn) activeBtn.style.borderColor = 'var(--gold)';
-  
-  const d = window.lastUserData || {};
-  const addrs = d.payment_addresses || {};
-  let addrText = addrs[gw] || (gw === 'syriatel' ? '83935571\n00229271' : gw === 'mtn' ? '098xxxxxxx' : 'SHAM-SYP-1092');
-  const labels = { syriatel: 'سيريتل كاش', mtn: 'MTN كاش', sham_syp: 'شام كاش SYP', usdt_trc: 'USDT TRC20' };
-  
-  document.getElementById('depGatewayLabel').textContent = labels[gw] || gw;
-  document.getElementById('depAddressText').textContent = addrText;
-  document.getElementById('depAddressBox').style.display = 'flex';
-}
-function copyDepositAddress() {
-  const txt = document.getElementById('depAddressText').textContent.split('\n')[0];
-  navigator.clipboard.writeText(txt).then(() => tg.showAlert('📋 تم نسخ رقم الدفع: ' + txt)).catch(() => tg.showAlert('📋 الرقم: ' + txt));
-}
-async function submitInAppDeposit() {
-  const amount = parseInt(document.getElementById('depAmountInput').value) || 0;
-  const ref = document.getElementById('depRefInput').value.trim();
-  if(amount <= 0 || !ref) { tg.showAlert('⚠️ يرجى إدخال المبلغ ورقم التحويل/الهاتف'); return; }
-  
-  const btn = document.getElementById('depSubmitBtn');
-  btn.disabled = true; btn.textContent = '⏳ جاري إرسال الطلب...';
-  try {
-    const res = await fetch(window.location.origin + '/api/user/deposit', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': initData },
-      body: JSON.stringify({ amount: amount, gateway: selectedDepGateway, transfer_number: ref })
-    });
-    const r = await res.json();
-    if(!res.ok) throw new Error(r.error || 'خطأ في إرسال الإيداع');
-    tg.showAlert(r.message || '✅ تم إرسال طلب الشحن بنجاح!');
-    closeDepositModal(); loadAll();
-  } catch(e) { tg.showAlert('❌ ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = '🚀 تأكيد وإرسال طلب الشحن'; }
-}
-
-function openWithdrawModal(e) {
-  if(e) e.preventDefault();
-  document.getElementById('withdrawModal').style.display = 'flex';
-}
-function closeWithdrawModal() {
-  document.getElementById('withdrawModal').style.display = 'none';
-}
-async function submitInAppWithdraw() {
-  const amount = parseInt(document.getElementById('witAmountInput').value) || 0;
-  const gw = document.getElementById('witGatewaySelect').value;
-  const ref = document.getElementById('witRefInput').value.trim();
-  if(amount <= 0 || !ref) { tg.showAlert('⚠️ يرجى إدخال المبلغ ورقم الهاتف/المحفظة'); return; }
-  
-  const btn = document.getElementById('witSubmitBtn');
-  btn.disabled = true; btn.textContent = '⏳ جاري إرسال الطلب...';
-  try {
-    const res = await fetch(window.location.origin + '/api/user/withdraw', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': initData },
-      body: JSON.stringify({ amount: amount, gateway: gw, transfer_number: ref })
-    });
-    const r = await res.json();
-    if(!res.ok) throw new Error(r.error || 'خطأ في إرسال السحب');
-    tg.showAlert(r.message || '✅ تم إرسال طلب السحب بنجاح!');
-    closeWithdrawModal(); loadAll();
-  } catch(e) { tg.showAlert('❌ ' + e.message); }
-  finally { btn.disabled = false; btn.textContent = '🚀 تأكيد وإرسال طلب السحب'; }
 }
 
 // بدء التشغيل

@@ -2484,7 +2484,6 @@ async def user_me_api_handler(request):
             'bonus_eligibility': bonus_eligibility,
             'vip': vip_info,
             'cashback': cashback_info,
-            'payment_addresses': repo.get_all_payment_addresses(),
         })
     except Exception as e:
         logger.error(f"user_me_api error: {e}", exc_info=True)
@@ -2646,151 +2645,6 @@ async def user_spin_wheel_handler(request):
         return web.json_response(result)
     except Exception as e:
         logger.error(f"user_spin_wheel error: {e}", exc_info=True)
-        return web.json_response({'error': 'خطأ داخلي'}, status=500)
-
-
-async def user_deposit_handler(request):
-    """📥 إيداع مباشر من داخل الـ Mini App دون الخروج للبوت."""
-    user_obj = _verify_telegram_init_data(request.headers.get('X-Telegram-Init-Data', ''))
-    if not user_obj:
-        return web.json_response({'error': 'غير مصرّح'}, status=403)
-    telegram_id = str(user_obj.get('id', ''))
-    try:
-        payload = await request.json()
-        amount = int(str(payload.get('amount') or '0').replace(',', ''))
-        gateway = str(payload.get('gateway') or 'syriatel').strip()
-        transfer_number = str(payload.get('transfer_number') or '').strip()
-
-        if amount <= 0 or not transfer_number:
-            return web.json_response({'error': 'المبلغ ورقم العملية/المرسل مطلوبان'}, status=400)
-
-        bot_settings = repo.get_bot_settings()
-        min_dep = int(bot_settings.get('min_deposit_syp', 20000) if gateway != 'usd' else bot_settings.get('min_deposit_usd', 5))
-        if amount < min_dep:
-            curr_label = 'SYP' if gateway != 'usd' else 'USD'
-            return web.json_response({'error': f'الحد الأدنى للإيداع هو {min_dep:,} {curr_label}'}, status=400)
-
-        amount_to_save_syp = amount
-        if gateway == 'usd':
-            usd_rate = float(bot_settings.get('usd_buy_rate') or 14000)
-            amount_to_save_syp = int(amount * usd_rate)
-
-        short_tx_code = ''.join(random.choices(string.digits, k=6))
-        tx_id = repo.create_transaction(
-            telegram_id=telegram_id,
-            tx_type='deposit_bot',
-            amount=amount_to_save_syp,
-            payment_method=gateway,
-            transfer_number=f"Code: {short_tx_code} | Info: {transfer_number}",
-            status='pending'
-        )
-
-        auto_verified = False
-        from telegram_bot.handlers.menu import get_syriatel_auto_config, auto_approve_syriatel_deposit, format_deposit_admin_message, get_admin_target_chat_ids
-        syriatel_auto_mode, syriatel_auto_channel_id = get_syriatel_auto_config()
-        if gateway == 'syriatel' and syriatel_auto_mode != 'off' and getattr(settings, 'SYRIATEL_API_TOKEN', None) and transfer_number:
-            try:
-                from integrations.syriatel_cash import verify_incoming_deposit
-                tx_row = repo.get_transaction_by_id(tx_id)
-                verify = await verify_incoming_deposit(expected_amount=amount_to_save_syp, user_reference=transfer_number, created_at=tx_row.get('created_at') if tx_row else None)
-                if verify.get('ok'):
-                    external_ref = verify.get('external_ref')
-                    if not repo.is_external_ref_used(external_ref, exclude_tx_id=tx_id):
-                        if syriatel_auto_mode == 'auto_approve':
-                            approved = await auto_approve_syriatel_deposit(request.app.get('bot'), tx_id, external_ref=external_ref)
-                            if approved.get('ok'):
-                                auto_verified = True
-                        else:
-                            repo.set_transaction_external_ref(tx_id, external_ref)
-            except Exception as e:
-                logger.warning(f"MiniApp syriatel auto verify check error: {e}")
-
-        try:
-            bot = request.app.get('bot')
-            user = repo.get_user(telegram_id) or {}
-            username = user.get('telegram_username') or user_obj.get('username') or 'Unknown'
-            admin_text = format_deposit_admin_message(tx_id, telegram_id, username, amount, 'SYP' if gateway != 'usd' else 'USD', gateway, transfer_number, amount_to_save_syp, user.get('bot_balance', 0), user.get('player_id'), user.get('ichancy_username'))
-            admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ قبول", callback_data=f"approve_dep_{tx_id}"), InlineKeyboardButton(text="❌ رفض", callback_data=f"reject_dep_{tx_id}")],
-                [InlineKeyboardButton(text="👤 تفاصيل المستخدم", callback_data=f"user_details_{telegram_id}")]
-            ])
-            target_chat = syriatel_auto_channel_id if (gateway == 'syriatel' and syriatel_auto_channel_id) else (settings.DEPOSIT_CHANNEL_ID if settings.DEPOSIT_CHANNEL_ID else None)
-            if target_chat:
-                await bot.send_message(chat_id=target_chat, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-            else:
-                for admin_id in get_admin_target_chat_ids():
-                    await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-        except Exception as notify_err:
-            logger.warning(f"Could not notify admin for MiniApp deposit #{tx_id}: {notify_err}")
-
-        if auto_verified:
-            return web.json_response({'ok': True, 'auto_verified': True, 'tx_id': tx_id, 'message': '✅ تم التدقيق والقبول التلقائي بنجاح! تم إضافة الرصيد إلى حسابك مباشرة.'})
-        return web.json_response({'ok': True, 'tx_id': tx_id, 'message': f'✅ تم إرسال طلب الشحن #{tx_id} بنجاح للمراجعة الفورية من الإدارة.'})
-    except Exception as e:
-        logger.error(f"user_deposit_handler error: {e}", exc_info=True)
-        return web.json_response({'error': 'خطأ داخلي'}, status=500)
-
-
-async def user_withdraw_handler(request):
-    """📤 سحب مباشر من داخل الـ Mini App دون الخروج للبوت."""
-    user_obj = _verify_telegram_init_data(request.headers.get('X-Telegram-Init-Data', ''))
-    if not user_obj:
-        return web.json_response({'error': 'غير مصرّح'}, status=403)
-    telegram_id = str(user_obj.get('id', ''))
-    try:
-        payload = await request.json()
-        amount = int(str(payload.get('amount') or '0').replace(',', ''))
-        gateway = str(payload.get('gateway') or 'syriatel').strip()
-        transfer_number = str(payload.get('transfer_number') or '').strip()
-
-        if amount <= 0 or not transfer_number:
-            return web.json_response({'error': 'المبلغ ورقم الهاتف/المحفظة مطلوبان'}, status=400)
-
-        bot_settings = repo.get_bot_settings()
-        min_wit = int(bot_settings.get('min_withdraw_syp', 25000) if gateway != 'usd' else bot_settings.get('min_withdraw_usd', 10))
-        if amount < min_wit:
-            curr_label = 'SYP' if gateway != 'usd' else 'USD'
-            return web.json_response({'error': f'الحد الأدنى للسحب هو {min_wit:,} {curr_label}'}, status=400)
-
-        amount_to_deduct_syp = amount
-        if gateway == 'usd':
-            usd_sell_rate = float(bot_settings.get('usd_sell_rate') or 15000)
-            amount_to_deduct_syp = int(amount * usd_sell_rate)
-
-        user = repo.get_user(telegram_id)
-        if not user or int(user.get('bot_balance') or 0) < amount_to_deduct_syp:
-            return web.json_response({'error': 'رصيدك النقدي في البوت غير كافٍ لإتمام السحب'}, status=400)
-
-        tx_res = repo.create_withdraw_transaction_atomic(telegram_id, amount_to_deduct_syp, gateway, transfer_number)
-        if not tx_res.get('ok'):
-            return web.json_response({'error': tx_res.get('reason') or 'فشل إنشاء طلب السحب'}, status=400)
-
-        tx_id = tx_res['tx_id']
-        comm_pct = float(bot_settings.get('withdraw_commission') or 10)
-        comm_amount = int(amount_to_deduct_syp * (comm_pct / 100.0))
-        net_amount = amount_to_deduct_syp - comm_amount
-
-        try:
-            bot = request.app.get('bot')
-            username = user.get('telegram_username') or user_obj.get('username') or 'Unknown'
-            from telegram_bot.handlers.menu import format_withdraw_admin_message, get_admin_target_chat_ids
-            admin_text = format_withdraw_admin_message(tx_id, telegram_id, username, amount_to_deduct_syp, gateway, transfer_number, f"{amount_to_deduct_syp:,} SYP", f"{comm_amount:,} SYP ({comm_pct}%)", f"{net_amount:,} SYP", int(user.get('bot_balance', 0)) + amount_to_deduct_syp, user.get('player_id'), user.get('ichancy_username'))
-            admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ إتمام وصرف", callback_data=f"approve_wit_{tx_id}"), InlineKeyboardButton(text="❌ رفض وإعادة", callback_data=f"reject_wit_{tx_id}")],
-                [InlineKeyboardButton(text="👤 تفاصيل المستخدم", callback_data=f"user_details_{telegram_id}")]
-            ])
-            target_chat = settings.WITHDRAWAL_CHANNEL_ID if settings.WITHDRAWAL_CHANNEL_ID else None
-            if target_chat:
-                await bot.send_message(chat_id=target_chat, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-            else:
-                for admin_id in get_admin_target_chat_ids():
-                    await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=admin_keyboard, parse_mode="HTML")
-        except Exception as notify_err:
-            logger.warning(f"Could not notify admin for MiniApp withdraw #{tx_id}: {notify_err}")
-
-        return web.json_response({'ok': True, 'tx_id': tx_id, 'message': f'✅ تم إرسال طلب السحب #{tx_id} بنجاح وتم خصم المبلغ مؤقتاً لحين إتمام التحويل.'})
-    except Exception as e:
-        logger.error(f"user_withdraw_handler error: {e}", exc_info=True)
         return web.json_response({'error': 'خطأ داخلي'}, status=500)
 
 
@@ -2970,8 +2824,6 @@ def main():
     app.router.add_post("/api/user/checkin", user_checkin_handler)
     app.router.add_post("/api/user/bonus-to-game", user_bonus_to_game_handler)
     app.router.add_post("/api/user/spin-wheel", user_spin_wheel_handler)
-    app.router.add_post("/api/user/deposit", user_deposit_handler)
-    app.router.add_post("/api/user/withdraw", user_withdraw_handler)
     app.router.add_post("/api/admin/flash", admin_flash_handler)
     app.router.add_get("/api/admin/features", admin_features_get_handler)
     app.router.add_post("/api/admin/features", admin_features_post_handler)
