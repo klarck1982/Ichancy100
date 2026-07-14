@@ -1,0 +1,275 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="50%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#0a0e1a"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFD700"/>
+      <stop offset="50%" stop-color="#FFB300"/>
+      <stop offset="100%" stop-color="#FFD700"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4a9eff"/>
+      <stop offset="100%" stop-color="#6ab2f2"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00d68f"/>
+      <stop offset="100%" stop-color="#00ff9d"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#FFD700" flood-opacity="0.5" result="glowColor"/>
+      <feComposite in="glowColor" in2="blur" operator="in" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <style>
+      .folder { font-family: 'Segoe UI', 'JetBrains Mono', monospace; }
+      .file { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+      .title { font-family: 'Segoe UI', 'Arial Black', sans-serif; }
+      .new-badge { font-family: 'Segoe UI', sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="url(#bgGrad)"/>
+  
+  <!-- Decorative circles -->
+  <circle cx="100" cy="100" r="150" fill="url(#goldGrad)" opacity="0.03" filter="url(#glow)"/>
+  <circle cx="1100" cy="800" r="200" fill="url(#blueGrad)" opacity="0.03"/>
+  <circle cx="1100" cy="100" r="120" fill="url(#purpleGrad)" opacity="0.02"/>
+  <circle cx="100" cy="800" r="180" fill="url(#greenGrad)" opacity="0.02"/>
+
+  <!-- Title Bar -->
+  <rect x="40" y="30" width="1120" height="70" rx="15" fill="rgba(255,255,255,0.03)" stroke="rgba(255,215,0,0.2)" stroke-width="1" filter="url(#cardShadow)"/>
+  <text x="80" y="72" class="title" font-size="28" font-weight="900" fill="url(#goldGrad)" filter="url(#glow)">📦 Ichancy100 — Complete Project Structure</text>
+  <text x="80" y="92" class="title" font-size="13" fill="#7a8a9a">Ready for deployment • Telegram Mini App + Bot + API + Dashboard</text>
+
+  <!-- Legend -->
+  <g transform="translate(900, 45)">
+    <rect x="0" y="0" width="260" height="55" rx="8" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.06)"/>
+    <text x="130" y="18" text-anchor="middle" font-size="11" fill="#7a8a9a" font-weight="700">Color Legend</text>
+    <g font-size="10" font-weight="600">
+      <circle cx="20" cy="34" r="6" fill="url(#goldGrad)"/><text x="35" y="38" fill="#FFD700">Core Bot &amp; API</text>
+      <circle cx="140" cy="34" r="6" fill="url(#blueGrad)"/><text x="155" y="38" fill="#4a9eff">Mini App (Web)</text>
+      <circle cx="20" cy="48" r="6" fill="url(#greenGrad)"/><text x="35" y="52" fill="#00d68f">Database &amp; Config</text>
+      <circle cx="140" cy="48" r="6" fill="url(#purpleGrad)"/><text x="155" y="52" fill="#a855f7">Integrations &amp; Docs</text>
+    </g>
+  </g>
+
+  <!-- Project Tree -->
+  <g transform="translate(40, 120)" font-size="12">
+    <!-- Root -->
+    <g class="folder">
+      <rect x="0" y="0" width="380" height="28" rx="6" fill="rgba(255,215,0,0.1)" stroke="rgba(255,215,0,0.3)" stroke-width="1"/>
+      <text x="12" y="19" fill="#FFD700" font-weight="900" font-size="14">📁 Ichancy100/ (Project Root)</text>
+      <text x="385" y="19" class="new-badge" font-size="10" fill="#00d68f" font-weight="800">ZIP READY ✓</text>
+    </g>
+
+    <!-- Core Bot Files -->
+    <g transform="translate(20, 40)">
+      <text x="0" y="0" fill="#FFD700" font-weight="800" font-size="13">▼ telegram_bot/  <tspan fill="#7a8a9a" font-weight="400">(Core Bot Logic)</tspan></text>
+      
+      <g transform="translate(15, 22)">
+        <text x="0" y="0" fill="#f0f0f0" class="file">📄 main.py  <tspan fill="#7a8a9a">(143KB - Entry point, webhook, API routes)</tspan></text>
+        
+        <g transform="translate(15, 22)">
+          <text x="0" y="0" fill="#FFD700" font-weight="700" font-size="12">▼ handlers/</text>
+          <g transform="translate(15, 20)">
+            <text x="0" y="0" fill="#e0e0e0" class="file">📄 admin.py     <tspan fill="#7a8a9a">Admin panel, dashboard, stats</tspan></text>
+            <text x="0" y="20" fill="#e0e0e0" class="file">📄 menu.py      <tspan fill="#7a8a9a">User menus, keyboards, navigation</tspan></text>
+            <text x="0" y="40" fill="#e0e0e0" class="file">📄 start.py     <tspan fill="#7a8a9a">Onboarding, /start, deep links</tspan></text>
+          </g>
+        </g>
+
+        <g transform="translate(15, 95)">
+          <text x="0" y="0" fill="#FFD700" font-weight="700" font-size="12">▼ keyboards/</text>
+          <g transform="translate(15, 20)">
+            <text x="0" y="0" fill="#e0e0e0" class="file">📄 inline.py    <tspan fill="#7a8a9a">Inline keyboards, callbacks</tspan></text>
+          </g>
+        </g>
+
+        <g transform="translate(15, 140)">
+          <text x="0" y="0" fill="#FFD700" font-weight="700" font-size="12">▼ middlewares/</text>
+          <g transform="translate(15, 20)">
+            <text x="0" y="0" fill="#e0e0e0" class="file">📄 terms_check.py  <tspan fill="#7a8a9a">Terms acceptance middleware</tspan></text>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- Mini App (Web) -->
+    <g transform="translate(20, 350)">
+      <text x="0" y="0" fill="#4a9eff" font-weight="800" font-size="13">▼ webapp/  <tspan fill="#7a8a9a" font-weight="400">(Telegram Mini Apps)</tspan></text>
+      
+      <g transform="translate(15, 22)">
+        <text x="0" y="0" fill="#4a9eff" font-weight="700" font-size="12">▼ User Apps</text>
+        <g transform="translate(15, 20)">
+          <rect x="-5" y="-3" width="420" height="22" rx="4" fill="rgba(74,158,255,0.1)" stroke="rgba(74,158,255,0.3)"/>
+          <text x="0" y="14" fill="#6ab2f2" font-weight="800" class="file">📄 user_app.html  <tspan fill="#7a8a9a">Main Mini App — UPDATED with logo</tspan></text>
+          <text x="430" y="14" class="new-badge" font-size="9" fill="#00d68f" font-weight="800">NEW LOGO</text>
+        </g>
+        <g transform="translate(15, 26)">
+          <text x="0" y="0" fill="#e0e0e0" class="file">📄 user_app_pingo.html  <tspan fill="#7a8a9a">PINGO version — UPDATED with logo</tspan></text>
+          <text x="430" y="0" class="new-badge" font-size="9" fill="#00d68f" font-weight="800">NEW LOGO</text>
+        </g>
+      </g>
+
+      <g transform="translate(15, 80)">
+        <text x="0" y="0" fill="#4a9eff" font-weight="700" font-size="12">▼ Dashboard &amp; Hubs</text>
+        <g transform="translate(15, 20)">
+          <text x="0" y="0" fill="#e0e0e0" class="file">📄 dashboard.html  <tspan fill="#7a8a9a">Admin dashboard, stats, management</tspan></text>
+          <text x="0" y="20" fill="#e0e0e0" class="file">📄 dashboard_mockup.html</text>
+          <text x="0" y="40" fill="#e0e0e0" class="file">📄 games_hub.html    <tspan fill="#7a8a9a">Games portal landing page</tspan></text>
+          <text x="0" y="60" fill="#e0e0e0" class="file">📄 site_hub.html     <tspan fill="#7a8a9a">Main site landing page</tspan></text>
+        </g>
+      </g>
+
+      <g transform="translate(15, 160)">
+        <rect x="-5" y="-3" width="180" height="22" rx="4" fill="rgba(255,215,0,0.15)" stroke="rgba(255,215,0,0.4)"/>
+        <text x="0" y="14" fill="#FFD700" font-weight="900" class="file">📄 bot_logo.svg  <tspan fill="#7a8a9a">NEW — Bot logo for header</tspan></text>
+        <text x="200" y="14" class="new-badge" font-size="9" fill="#FFD700" font-weight="900">★ NEW</text>
+      </g>
+
+      <g transform="translate(15, 190)">
+        <text x="0" y="0" fill="#e0e0e0" class="file">📄 pingo_wheel_black_gold_mockup.svg</text>
+        <text x="0" y="20" fill="#e0e0e0" class="file">📄 wheel_design_options.svg</text>
+        <text x="0" y="40" fill="#e0e0e0" class="file">📄 ui_user_miniapp_mockup.svg</text>
+      </g>
+    </g>
+
+    <!-- iChancy API -->
+    <g transform="translate(20, 570)">
+      <text x="0" y="0" fill="#FFD700" font-weight="800" font-size="13">▼ ichancy_api/  <tspan fill="#7a8a9a" font-weight="400">(Agent API Client)</tspan></text>
+      <g transform="translate(15, 22)">
+        <text x="0" y="0" fill="#e0e0e0" class="file">📄 client.py  <tspan fill="#7a8a9a">Async HTTP client, login, transfers, balance</tspan></text>
+      </g>
+    </g>
+
+    <!-- Database -->
+    <g transform="translate(20, 620)">
+      <text x="0" y="0" fill="#00d68f" font-weight="800" font-size="13">▼ database/  <tspan fill="#7a8a9a" font-weight="400">(PostgreSQL/Neon Layer)</tspan></text>
+      <g transform="translate(15, 22)">
+        <text x="0" y="0" fill="#e0e0e0" class="file">📄 repository.py  <tspan fill="#7a8a9a">All DB queries, transactions, users</tspan></text>
+        <text x="0" y="20" fill="#e0e0e0" class="file">📄 connection.py  <tspan fill="#7a8a9a">Pool management, migrations</tspan></text>
+        <text x="0" y="40" fill="#e0e0e0" class="file">📄 connection_optimized.py</text>
+        <text x="0" y="60" fill="#e0e0e0" class="file">📄 connection_v2_no_pool.py</text>
+      </g>
+    </g>
+
+    <!-- Config & Integrations -->
+    <g transform="translate(20, 700)">
+      <text x="0" y="0" fill="#a855f7" font-weight="800" font-size="13">▼ config/  &amp;  integrations/</text>
+      <g transform="translate(15, 22)">
+        <text x="0" y="0" fill="#e0e0e0" class="file">📄 config/settings.py  <tspan fill="#7a8a9a">All env vars, validation, constants</tspan></text>
+        <text x="0" y="20" fill="#e0e0e0" class="file">📄 integrations/syriatel_cash.py  <tspan fill="#7a8a9a">Syriatel Cash API verification</tspan></text>
+      </g>
+    </g>
+
+    <!-- Monitoring & Utils -->
+    <g transform="translate(20, 760)">
+      <text x="0" y="0" fill="#FFB300" font-weight="800" font-size="13">▼ Monitoring &amp; Utilities</text>
+      <g transform="translate(15, 22)">
+        <text x="0" y="0" fill="#e0e0e0" class="file">📄 neon_metrics.py  <tspan fill="#7a8a9a">Neon CU usage, compute hours</tspan></text>
+        <text x="0" y="20" fill="#e0e0e0" class="file">📄 render_metrics.py  <tspan fill="#7a8a9a">Render service health, uptime</tspan></text>
+        <text x="0" y="40" fill="#e0e0e0" class="file">📄 requirements.txt  <tspan fill="#7a8a9a">Python dependencies</tspan></text>
+        <text x="0" y="60" fill="#e0e0e0" class="file">📄 env.example  <tspan fill="#7a8a9a">Environment template (164 lines)</tspan></text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Right Panel - Key Features -->
+  <g transform="translate(620, 120)">
+    <!-- Feature Cards -->
+    <g filter="url(#cardShadow)">
+      <rect x="0" y="0" width="540" height="140" rx="12" fill="rgba(255,255,255,0.03)" stroke="rgba(255,215,0,0.15)" stroke-width="1"/>
+      <text x="20" y="30" fill="#FFD700" font-weight="900" font-size="16">🎯 Key Features Implemented</text>
+      <g font-size="11" fill="#d0d0d0" transform="translate(20, 45)">
+        <text x="0" y="0">✅ Telegram Bot with Webhook (aiohttp)</text>
+        <text x="280" y="0">✅ Mini App (user_app.html / user_app_pingo.html)</text>
+        <text x="0" y="20">✅ User Dashboard: Balance, VIP, Cashback</text>
+        <text x="280" y="20">✅ Daily Check-in (30-day streak rewards)</text>
+        <text x="0" y="40">✅ Lucky Wheel (PINGO jackpot + % bonuses)</text>
+        <text x="280" y="40">✅ Referral System (multi-level %)</text>
+        <text x="0" y="60">✅ Flash Bonus (time-limited offers)</text>
+        <text x="280" y="60">✅ Contests &amp; Leaderboards</text>
+        <text x="0" y="80">✅ Deposit/Withdraw (Syriatel, MTN, Sham, USDT)</text>
+        <text x="280" y="80">✅ Auto Syriatel Cash Verification API</text>
+        <text x="0" y="100">✅ Admin Panel (stats, users, offers, contests)</text>
+        <text x="280" y="100">✅ Neon/Render Monitoring in Dashboard</text>
+      </g>
+    </g>
+
+    <!-- New Logo Info -->
+    <g transform="translate(0, 160)" filter="url(#cardShadow)">
+      <rect x="0" y="0" width="540" height="100" rx="12" fill="rgba(255,215,0,0.08)" stroke="rgba(255,215,0,0.3)" stroke-width="1.5"/>
+      <text x="20" y="30" fill="#FFD700" font-weight="900" font-size="15">🎨 NEW: Bot Logo in Mini App Header</text>
+      <g font-size="11" transform="translate(20, 42)">
+        <text x="0" y="0" fill="#f0f0f0">• Created <tspan fill="#FFD700" font-weight="800">bot_logo.svg</tspan> — Vector logo (120×120 viewBox)</text>
+        <text x="0" y="20" fill="#f0f0f0">• Gold/Black theme matching "Caesar/القيصر" branding</text>
+        <text x="0" y="40" fill="#f0f0f0">• Crown icon + "ICHANCY" text + golden glow effects</text>
+        <text x="0" y="60" fill="#f0f0f0">• Integrated in <tspan fill="#4a9eff" font-weight="800">user_app.html</tspan> &amp; <tspan fill="#4a9eff" font-weight="800">user_app_pingo.html</tspan> headers</text>
+        <text x="0" y="80" fill="#f0f0f0">• Hover/active animations: scale + glow intensify</text>
+      </g>
+    </g>
+
+    <!-- Deployment Info -->
+    <g transform="translate(0, 280)" filter="url(#cardShadow)">
+      <rect x="0" y="0" width="540" height="180" rx="12" fill="rgba(74,158,255,0.05)" stroke="rgba(74,158,255,0.15)" stroke-width="1"/>
+      <text x="20" y="30" fill="#4a9eff" font-weight="900" font-size="16">🚀 Deployment Ready (Render + Neon)</text>
+      <g font-size="11" transform="translate(20, 42)">
+        <text x="0" y="0" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">env.example</tspan> — 164 lines, all variables documented</text>
+        <text x="0" y="20" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">DEPLOY_RENDER.md</tspan> — Step-by-step Render deployment</text>
+        <text x="0" y="40" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">NEON_METRICS_SETUP.md</tspan> — Free tier monitoring setup</text>
+        <text x="0" y="60" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">RENDER_ENV_VARS.md</tspan> — Environment variables reference</text>
+        <text x="0" y="80" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">RENDER_MONITORING_SETUP.md</tspan> — Service health checks</text>
+        <text x="0" y="100" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">DATABASE_MIGRATION.md</tspan> — Schema migrations guide</text>
+        <text x="0" y="120" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">requirements.txt</tspan> — Pinned dependencies</text>
+        <text x="0" y="140" fill="#f0f0f0">📋 <tspan fill="#6ab2f2" font-weight="700">config/settings.py</tspan> — Centralized config with validation</text>
+      </g>
+    </g>
+
+    <!-- ZIP File Info -->
+    <g transform="translate(0, 480)" filter="url(#cardShadow)">
+      <rect x="0" y="0" width="540" height="100" rx="12" fill="rgba(0,214,143,0.08)" stroke="rgba(0,214,143,0.3)" stroke-width="1.5"/>
+      <text x="20" y="30" fill="#00d68f" font-weight="900" font-size="15">📦 Project Package: Ichancy100_complete.zip</text>
+      <g font-size="11" transform="translate(20, 42)">
+        <text x="0" y="0" fill="#f0f0f0">✅ Created at: <tspan fill="#00d68f" font-weight="700">/home/user/Ichancy100_complete.zip</tspan></text>
+        <text x="0" y="20" fill="#f0f0f0">📊 Contains: <tspan fill="#00d68f" font-weight="700">50+ files</tspan> across <tspan fill="#00d68f" font-weight="700">8 directories</tspan></text>
+        <text x="0" y="40" fill="#f0f0f0">🗜️ Size: Compressed <tspan fill="#00d68f" font-weight="700">~400KB</tspan> (source ~2MB)</text>
+        <text x="0" y="60" fill="#f0f0f0">🚫 Excluded: .git, __pycache__, .arena, *.pyc</text>
+        <text x="0" y="80" fill="#f0f0f0">📥 Ready to download, extract, and deploy!</text>
+      </g>
+    </g>
+
+    <!-- Quick Start Commands -->
+    <g transform="translate(0, 600)" filter="url(#cardShadow)">
+      <rect x="0" y="0" width="540" height="180" rx="12" fill="rgba(168,85,247,0.05)" stroke="rgba(168,85,247,0.15)" stroke-width="1"/>
+      <text x="20" y="30" fill="#a855f7" font-weight="900" font-size="16">⚡ Quick Start Commands</text>
+      <g font-size="10" font-family="'JetBrains Mono', monospace" transform="translate(20, 42)" fill="#d0d0d0">
+        <rect x="-10" y="-8" width="500" height="130" rx="6" fill="rgba(0,0,0,0.3)"/>
+        <text x="0" y="12" fill="#00d68f"># 1. Extract &amp; enter</text>
+        <text x="0" y="30" fill="#e0e0e0">unzip Ichancy100_complete.zip &amp;&amp; cd Ichancy100</text>
+        <text x="0" y="50" fill="#00d68f"># 2. Configure environment</text>
+        <text x="0" y="68" fill="#e0e0e0">cp env.example .env  # Edit with your tokens</text>
+        <text x="0" y="88" fill="#00d68f"># 3. Install deps &amp; run locally</text>
+        <text x="0" y="106" fill="#e0e0e0">pip install -r requirements.txt &amp;&amp; python -m telegram_bot.main</text>
+        <text x="0" y="126" fill="#00d68f"># 4. Deploy to Render (see DEPLOY_RENDER.md)</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Bottom bar -->
+  <rect x="40" y="840" width="1120" height="40" rx="8" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.04)"/>
+  <text x="600" y="865" text-anchor="middle" font-size="12" fill="#7a8a9a" font-weight="600">
+    Generated on 2026-07-14 • Ichancy100 v2.0 • Ready for Copy/Paste/Deploy
+  </text>
+</svg>

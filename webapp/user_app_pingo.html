@@ -42,8 +42,22 @@
     display:flex;justify-content:space-between;align-items:center;
     margin-bottom:20px;padding-top:10px
   }
-  .header .logo{font-size:22px;font-weight:900;color:var(--gold);display:flex;align-items:center;gap:8px}
-  .header .logo .crown{filter:drop-shadow(0 0 8px rgba(255,215,0,0.5))}
+  .header .logo{
+    display:flex;align-items:center;gap:10px;
+    text-decoration:none;color:inherit
+  }
+  .header .logo-img{
+    width:40px;height:40px;border-radius:50%;
+    object-fit:cover;
+    border:2px solid var(--gold);
+    box-shadow:0 0 12px rgba(255,215,0,0.4), inset 0 0 8px rgba(255,215,0,0.2);
+    transition:transform 0.3s, box-shadow 0.3s;
+    background:linear-gradient(135deg,#0a0e1a 0%,#1a1a2e 100%);
+  }
+  .header .logo-img:hover,
+  .header .logo-img:active{transform:scale(1.05);box-shadow:0 0 18px rgba(255,215,0,0.6), inset 0 0 12px rgba(255,215,0,0.3)}
+  .header .logo-text{font-size:20px;font-weight:900;color:var(--gold);letter-spacing:0.5px;
+    text-shadow:0 0 8px rgba(255,215,0,0.4), 0 2px 4px rgba(0,0,0,0.5)}
   .header .refresh-btn{
     background:var(--card);border:1px solid var(--card-border);color:var(--hint);
     width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -263,7 +277,10 @@
 <div class="container">
   <!-- الترويسة -->
   <div class="header">
-    <div class="logo"><span class="crown">👑</span> القيصر</div>
+    <a class="logo" href="#" onclick="return false;">
+      <img class="logo-img" src="bot_logo.png" alt="شعار البوت" loading="eager">
+      <span class="logo-text">القيصر</span>
+    </a>
     <button class="refresh-btn" onclick="loadAll()">🔄</button>
   </div>
 
