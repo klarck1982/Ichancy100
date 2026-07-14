@@ -1188,21 +1188,16 @@ def delete_transaction_safe(tx_id, refund=False):
             amount = int(float(tx.get('amount') or 0))
             user_tid = str(tx.get('user_telegram_id'))
             tx_type = tx.get('type')
-            # إعادة الرصيد منطقياً:
-            # - سحب (withdraw_bot): المبلغ مخصوم من رصيد المستخدم → نعيده
-            # - إيداع (deposit_bot): المبلغ لم يُضاف بعد → لا نعيد شيئاً
+            # إعادة الرصيد منطقياً بأمان:
             if tx_type == 'withdraw_bot' and amount > 0:
                 cursor.execute(
                     "UPDATE users SET bot_balance = bot_balance + %s WHERE telegram_id = %s",
                     (amount, user_tid)
                 )
                 refunded = amount
-            elif tx_type in ('deposit_to_game',) and amount > 0:
-                # شحن لعبة معلّق (محجوز) → نعيده
-                cursor.execute(
-                    "UPDATE users SET bot_balance = bot_balance + %s WHERE telegram_id = %s",
-                    (amount, user_tid)
-                )
+            elif tx_type in ('deposit_to_game', 'bonus_to_game') and amount > 0:
+                # شحن لعبة معلّق (محجوز) → نفصله ونعيد الكاش والبونص بشكل مستقل عبر الدالة المخصصة
+                revert_game_transaction(tx_id)
                 refunded = amount
 
         cursor.execute("DELETE FROM transactions WHERE id = %s", (int(tx_id),))

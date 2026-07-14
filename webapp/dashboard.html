@@ -759,8 +759,35 @@ async function saveCashierAlertThreshold(){
   try{await apiPost(SETTINGS_API,{action:'update_alert_threshold',agent_balance_alert_threshold:thresh});setNotice('✅ تم حفظ حد إنذار الكاشيرة بنجاح');loadSettings('settings');}catch(e){setNotice('❌ '+e.message,'error')}
 }
 
+function valSet(id, fallback) {
+  const el = document.getElementById(id);
+  return el ? el.value : fallback;
+}
+
 async function saveRates(){
-  try{await apiPost(SETTINGS_API,{action:'update_rates',exchange_rate:val('exchange_rate'),usd_buy_rate:val('usd_buy_rate'),usd_sell_rate:val('usd_sell_rate'),withdraw_commission:val('withdraw_commission'),game_min_deposit_syp:val('game_min_deposit_syp'),game_bonus_enabled:document.getElementById('game_bonus_enabled').value==='true',game_bonus_apply_percent:val('game_bonus_apply_percent'),syriatel_auto_mode:document.getElementById('syriatel_auto_mode').value,syriatel_auto_channel_id:val('syriatel_auto_channel_id'),agent_revenue_percent:val('agent_revenue_percent'),min_deposit_syp:val('min_deposit_syp'),min_deposit_usd:val('min_deposit_usd'),min_withdraw_syp:val('min_withdraw_syp'),min_withdraw_usd:val('min_withdraw_usd'),syp_version:document.getElementById('syp_version').value});setNotice('✅ تم حفظ الإعدادات بنجاح');loadSettings('settings')}catch(e){setNotice('❌ '+e.message,'error')}
+  const d = window.lastSettingsData || {};
+  try{
+    await apiPost(SETTINGS_API,{
+      action:'update_rates',
+      exchange_rate: valSet('exchange_rate', d.exchange_rate),
+      usd_buy_rate: valSet('usd_buy_rate', d.usd_buy_rate),
+      usd_sell_rate: valSet('usd_sell_rate', d.usd_sell_rate),
+      withdraw_commission: valSet('withdraw_commission', d.withdraw_commission),
+      game_min_deposit_syp: valSet('game_min_deposit_syp', d.game_min_deposit_syp),
+      game_bonus_enabled: document.getElementById('game_bonus_enabled') ? document.getElementById('game_bonus_enabled').value==='true' : (d.game_bonus_enabled!==false),
+      game_bonus_apply_percent: valSet('game_bonus_apply_percent', d.game_bonus_apply_percent??10),
+      syriatel_auto_mode: document.getElementById('syriatel_auto_mode') ? document.getElementById('syriatel_auto_mode').value : (d.syriatel_auto_mode||'off'),
+      syriatel_auto_channel_id: valSet('syriatel_auto_channel_id', d.syriatel_auto_channel_id||''),
+      agent_revenue_percent: valSet('agent_revenue_percent', d.agent_revenue_percent||30),
+      min_deposit_syp: valSet('min_deposit_syp', d.min_deposit_syp||20000),
+      min_deposit_usd: valSet('min_deposit_usd', d.min_deposit_usd||5),
+      min_withdraw_syp: valSet('min_withdraw_syp', d.min_withdraw_syp||25000),
+      min_withdraw_usd: valSet('min_withdraw_usd', d.min_withdraw_usd||10),
+      syp_version: document.getElementById('syp_version') ? document.getElementById('syp_version').value : (d.syp_version||'old')
+    });
+    setNotice('✅ تم حفظ الإعدادات بنجاح');
+    loadSettings('settings');
+  }catch(e){setNotice('❌ '+e.message,'error')}
 }
 
 // ===== عناوين الإيداع =====
