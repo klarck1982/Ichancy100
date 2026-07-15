@@ -373,6 +373,163 @@ async def require_ichancy_registered(callback: CallbackQuery) -> bool:
     return True
 
 
+
+async def _deliver_flow_message(target_message, text, reply_markup=None, parse_mode="HTML", edit=False):
+    """Send the same entry screen from either a callback or a /start deep link."""
+    if edit:
+        return await safe_edit_text(
+            target_message,
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
+    await target_message.answer(
+        text,
+        reply_markup=reply_markup,
+        parse_mode=parse_mode,
+    )
+    return True
+
+
+async def start_deposit_flow(target_message, user_id, state: FSMContext, edit=False):
+    """Open the existing deposit flow without creating a financial transaction."""
+    telegram_id = str(user_id)
+    user = repo.get_user(telegram_id)
+    if not user or not user.get('player_id'):
+        await _deliver_flow_message(
+            target_message,
+            "👑 <b>قيصر جديد في اللعبة!</b>\n\n"
+            "يجب عليك تسجيل حساب iChancy أولاً لتحصل على Player ID الخاص بك.\n"
+            "توجه إلى قسم ⚡️ <b>حساب iChancy</b> وأنشئ حسابك الآن.",
+            reply_markup=get_user_menu_keyboard(user_id),
+            edit=edit,
+        )
+        return False
+
+    if has_pending_transaction(telegram_id, 'deposit_bot'):
+        await _deliver_flow_message(
+            target_message,
+            "⏳ لديك بالفعل طلب إيداع معلق. يرجى انتظار مراجعته قبل إنشاء طلب جديد.",
+            reply_markup=get_user_menu_keyboard(user_id),
+            edit=edit,
+        )
+        return False
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇸🇾 ليرة سورية", callback_data="dep_curr_syp"),
+            InlineKeyboardButton(text="🇺🇸 دولار أمريكي (USD)", callback_data="dep_curr_usd")
+        ],
+        [InlineKeyboardButton(text="🔙 القائمة الرئيسية", callback_data="back_to_main_menu")]
+    ])
+    await _deliver_flow_message(
+        target_message,
+        "📥 <b>إيداع في البوت:</b>\n\nالرجاء تحديد العملة التي تود الإيداع بها 👇:",
+        reply_markup=keyboard,
+        edit=edit,
+    )
+    await state.set_state(BotStates.selecting_deposit_currency)
+    return True
+
+
+async def start_withdraw_flow(target_message, user_id, state: FSMContext, edit=False):
+    """Open the existing withdraw flow without deducting any balance."""
+    telegram_id = str(user_id)
+    user = repo.get_user(telegram_id)
+    if not user or not user.get('player_id'):
+        await _deliver_flow_message(
+            target_message,
+            "👑 <b>قيصر جديد في اللعبة!</b>\n\n"
+            "يجب عليك تسجيل حساب iChancy أولاً لتحصل على Player ID الخاص بك.\n"
+            "توجه إلى قسم ⚡️ <b>حساب iChancy</b> وأنشئ حسابك الآن.",
+            reply_markup=get_user_menu_keyboard(user_id),
+            edit=edit,
+        )
+        return False
+
+    if safe_balance(user) <= 0:
+        await _deliver_flow_message(
+            target_message,
+            "❌ ليس لديك أي رصيد قابل للسحب في البوت حالياً!",
+            reply_markup=get_user_menu_keyboard(user_id),
+            edit=edit,
+        )
+        return False
+
+    if has_pending_transaction(telegram_id, 'withdraw_bot'):
+        await _deliver_flow_message(
+            target_message,
+            "⏳ لديك بالفعل طلب سحب معلق. يرجى انتظار مراجعته قبل إنشاء طلب جديد.",
+            reply_markup=get_user_menu_keyboard(user_id),
+            edit=edit,
+        )
+        return False
+
+    if not has_usd_deposits_approved(telegram_id):
+        await state.update_data(withdraw_currency='syp')
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🟢 Syriatel Cash", callback_data="wit_gate_syriatel")],
+            [InlineKeyboardButton(text="🟡 MTN Cash", callback_data="wit_gate_mtn")],
+            [InlineKeyboardButton(text="📱 Sham Cash (SYP)", callback_data="wit_gate_sham_syp")],
+            [InlineKeyboardButton(text="🔙 القائمة الرئيسية", callback_data="back_to_main_menu")]
+        ])
+        await _deliver_flow_message(
+            target_message,
+            f"📤 <b>سحب من البوت (ليرة سورية):</b>\n\n"
+            f"💰 رصيدك: <code>{safe_balance(user):,} SYP</code>\n"
+            "⚠️ السحب بالدولار غير متاح لأنك لم تقم بإيداع دولار سابقاً.\n\n"
+            "يرجى اختيار طريقة السحب 👇:",
+            reply_markup=keyboard,
+            edit=edit,
+        )
+        await state.set_state(BotStates.selecting_withdraw_gateway)
+        return True
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇸🇾 ليرة سورية", callback_data="wit_curr_syp"),
+            InlineKeyboardButton(text="🇺🇸 دولار أمريكي (USD)", callback_data="wit_curr_usd")
+        ],
+        [InlineKeyboardButton(text="🔙 القائمة الرئيسية", callback_data="back_to_main_menu")]
+    ])
+    bot_settings = repo.get_bot_settings()
+    usd_sell_rate = float(bot_settings['usd_sell_rate'])
+    approx_usd = safe_balance(user) / usd_sell_rate if usd_sell_rate > 0 else 0
+    await _deliver_flow_message(
+        target_message,
+        f"📤 <b>سحب من البوت:</b>\n\n"
+        f"💰 رصيدك: <code>{safe_balance(user):,} SYP</code>\n"
+        f"💱 ما يعادل تقريباً: <code>{approx_usd:,.2f} USD</code> (حسب سعر الصرف الحالي)\n\n"
+        "اختر عملة السحب 👇:",
+        reply_markup=keyboard,
+        edit=edit,
+    )
+    await state.set_state(BotStates.selecting_withdraw_currency)
+    return True
+
+
+async def start_gift_flow(target_message, user_id, state: FSMContext, edit=False):
+    """Open the existing gift-code flow without deducting any balance yet."""
+    telegram_id = str(user_id)
+    user = repo.get_user(telegram_id)
+    if not user or safe_balance(user) <= 0:
+        await _deliver_flow_message(
+            target_message,
+            "❌ لا يوجد لديك رصيد كافٍ لإنشاء كود هدية.",
+            reply_markup=get_user_menu_keyboard(user_id),
+            edit=edit,
+        )
+        return False
+
+    await _deliver_flow_message(
+        target_message,
+        f"🎁 <b>إهداء رصيد</b>\n\nرصيدك الحالي: <code>{safe_balance(user):,} SYP</code>\n\n"
+        "أرسل الآن المبلغ الذي تريد تحويله إلى كود هدية (بالليرة السورية):",
+        edit=edit,
+    )
+    await state.set_state(BotStates.entering_gift_amount)
+    return True
+
 def format_deposit_admin_message(tx_id, telegram_id, username, amount, currency, gateway, transfer_number, amount_syp, user_balance, player_id=None, ichancy_username=None):
     username_text = f"@{username}" if username else "بدون معرف"
     msg = (
@@ -1002,29 +1159,8 @@ async def process_ichancy_password(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "deposit_bot")
 async def deposit_bot_callback(callback: CallbackQuery, state: FSMContext):
-    if not await require_ichancy_registered(callback):
-        return
-
-    telegram_id = str(callback.from_user.id)
-    if has_pending_transaction(telegram_id, 'deposit_bot'):
-        await callback.message.edit_text(
-            "⏳ لديك بالفعل طلب إيداع معلق. يرجى انتظار مراجعته قبل إنشاء طلب جديد.",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id),
-            parse_mode="HTML"
-        )
-        await callback.answer()
-        return
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🇸🇾 ليرة سورية", callback_data="dep_curr_syp"),
-            InlineKeyboardButton(text="🇺🇸 دولار أمريكي (USD)", callback_data="dep_curr_usd")
-        ],
-        [InlineKeyboardButton(text="🔙 القائمة الرئيسية", callback_data="back_to_main_menu")]
-    ])
-    await callback.message.edit_text("📥 <b>إيداع في البوت:</b>\n\nالرجاء تحديد العملة التي تود الإيداع بها 👇:", reply_markup=keyboard, parse_mode="HTML")
-    await state.set_state(BotStates.selecting_deposit_currency)
-    await callback.answer()
+    await start_deposit_flow(callback.message, callback.from_user.id, state, edit=True)
+    await safe_answer_callback(callback)
 
 
 @router.callback_query(F.data.startswith("dep_curr_"), BotStates.selecting_deposit_currency)
@@ -1466,70 +1602,8 @@ async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "withdraw_bot")
 async def withdraw_bot_callback(callback: CallbackQuery, state: FSMContext):
-    if not await require_ichancy_registered(callback):
-        return
-
-    telegram_id = str(callback.from_user.id)
-    user = repo.get_user(telegram_id)
-
-    if not user or safe_balance(user) <= 0:
-        await callback.message.edit_text(
-            "❌ ليس لديك أي رصيد قابل للسحب في البوت حالياً!",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id)
-        )
-        await callback.answer()
-        return
-
-    if has_pending_transaction(telegram_id, 'withdraw_bot'):
-        await callback.message.edit_text(
-            "⏳ لديك بالفعل طلب سحب معلق. يرجى انتظار مراجعته قبل إنشاء طلب جديد.",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id),
-            parse_mode="HTML"
-        )
-        await callback.answer()
-        return
-
-    has_usd_deposits = has_usd_deposits_approved(telegram_id)
-
-    if not has_usd_deposits:
-        await state.update_data(withdraw_currency='syp')
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🟢 Syriatel Cash", callback_data="wit_gate_syriatel")],
-            [InlineKeyboardButton(text="🟡 MTN Cash", callback_data="wit_gate_mtn")],
-            [InlineKeyboardButton(text="📱 Sham Cash (SYP)", callback_data="wit_gate_sham_syp")],
-            [InlineKeyboardButton(text="🔙 القائمة الرئيسية", callback_data="back_to_main_menu")]
-        ])
-        await callback.message.edit_text(
-            f"📤 <b>سحب من البوت (ليرة سورية):</b>\n\n"
-            f"💰 رصيدك: <code>{safe_balance(user):,} SYP</code>\n"
-            "⚠️ السحب بالدولار غير متاح لأنك لم تقم بإيداع دولار سابقاً.\n\n"
-            "يرجى اختيار طريقة السحب 👇:",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        await state.set_state(BotStates.selecting_withdraw_gateway)
-    else:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🇸🇾 ليرة سورية", callback_data="wit_curr_syp"),
-                InlineKeyboardButton(text="🇺🇸 دولار أمريكي (USD)", callback_data="wit_curr_usd")
-            ],
-            [InlineKeyboardButton(text="🔙 القائمة الرئيسية", callback_data="back_to_main_menu")]
-        ])
-        bot_settings = repo.get_bot_settings()
-        usd_sell_rate = float(bot_settings['usd_sell_rate'])
-        approx_usd = safe_balance(user) / usd_sell_rate if usd_sell_rate > 0 else 0
-        await callback.message.edit_text(
-            f"📤 <b>سحب من البوت:</b>\n\n"
-            f"💰 رصيدك: <code>{safe_balance(user):,} SYP</code>\n"
-            f"💱 ما يعادل تقريباً: <code>{approx_usd:,.2f} USD</code> (حسب سعر الصرف الحالي)\n\n"
-            "اختر عملة السحب 👇:",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-        await state.set_state(BotStates.selecting_withdraw_currency)
-
-    await callback.answer()
+    await start_withdraw_flow(callback.message, callback.from_user.id, state, edit=True)
+    await safe_answer_callback(callback)
 
 
 @router.callback_query(F.data.startswith("wit_curr_"), BotStates.selecting_withdraw_currency)
@@ -2890,26 +2964,7 @@ async def history_menu_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data == "gift_send")
 async def gift_send_callback(callback: CallbackQuery, state: FSMContext):
-    """بدء عملية إنشاء كود هدية."""
-    telegram_id = str(callback.from_user.id)
-    user = repo.get_user(telegram_id)
-    if not user or safe_balance(user) <= 0:
-        await safe_edit_text(
-            callback.message,
-            "❌ لا يوجد لديك رصيد كافٍ لإنشاء كود هدية.",
-            reply_markup=get_user_menu_keyboard(callback.from_user.id),
-            parse_mode="HTML"
-        )
-        await safe_answer_callback(callback)
-        return
-
-    await safe_edit_text(
-        callback.message,
-        f"🎁 <b>إهداء رصيد</b>\n\nرصيدك الحالي: <code>{safe_balance(user):,} SYP</code>\n\n"
-        "أرسل الآن المبلغ الذي تريد تحويله إلى كود هدية (بالليرة السورية):",
-        parse_mode="HTML"
-    )
-    await state.set_state(BotStates.entering_gift_amount)
+    await start_gift_flow(callback.message, callback.from_user.id, state, edit=True)
     await safe_answer_callback(callback)
 
 

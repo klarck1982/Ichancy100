@@ -146,6 +146,8 @@
     display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px
   }
   .quick-btn{
+    appearance:none;-webkit-appearance:none;
+    width:100%;color:inherit;font:inherit;text-align:center;
     background:var(--card);border:1px solid rgba(255,255,255,0.05);
     border-radius:16px;padding:16px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;
     cursor:pointer;transition:all 0.25s;text-decoration:none
@@ -370,18 +372,18 @@
 
     <!-- شبكة الإجراءات السريعة -->
     <div class="quick-grid">
-      <a class="quick-btn deposit" href="#" onclick="closeApp()">
+      <button class="quick-btn deposit" type="button" onclick="openBotFlow('deposit')" aria-label="فتح شحن الرصيد في البوت">
         <div class="icon">📥</div><div class="text">شحن</div>
-      </a>
-      <a class="quick-btn withdraw" href="#" onclick="closeApp()">
+      </button>
+      <button class="quick-btn withdraw" type="button" onclick="openBotFlow('withdraw')" aria-label="فتح سحب الرصيد في البوت">
         <div class="icon">📤</div><div class="text">سحب</div>
-      </a>
-      <a class="quick-btn gift" href="#" onclick="closeApp()">
+      </button>
+      <button class="quick-btn gift" type="button" onclick="openBotFlow('gift')" aria-label="فتح إهداء الرصيد في البوت">
         <div class="icon">🎁</div><div class="text">إهداء</div>
-      </a>
-      <a class="quick-btn referral" href="#" onclick="showPage('referral')">
+      </button>
+      <button class="quick-btn referral" type="button" onclick="showPage('referral')" aria-label="فتح صفحة الإحالات">
         <div class="icon">💰</div><div class="text">إحالات</div>
-      </a>
+      </button>
     </div>
 
     <!-- آخر المعاملات -->
@@ -489,6 +491,32 @@ async function refreshFromLogo(){
 
 function fmt(n){return new Intl.NumberFormat('en-US').format(Number(n||0));}
 function closeApp(){tg.close();}
+
+// MINIAPP_SHORTCUTS_BEGIN — pure client routing; no API or Neon request.
+const BOT_USERNAME = 'Caesar_Robert_bot';
+const BOT_FLOW_PAYLOADS = Object.freeze({
+  deposit: 'app_deposit',
+  withdraw: 'app_withdraw',
+  gift: 'app_gift'
+});
+
+function buildBotFlowUrl(action){
+  const payload=BOT_FLOW_PAYLOADS[action];
+  return payload ? `https://t.me/${BOT_USERNAME}?start=${payload}` : null;
+}
+
+function openBotFlow(action){
+  const url=buildBotFlowUrl(action);
+  if(!url)return false;
+  tg?.HapticFeedback?.impactOccurred?.('light');
+  if(typeof tg?.openTelegramLink==='function'){
+    tg.openTelegramLink(url);
+  }else{
+    window.location.href=url;
+  }
+  return true;
+}
+// MINIAPP_SHORTCUTS_END
 
 function showPage(page){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));

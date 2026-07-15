@@ -10,6 +10,7 @@ from telegram_bot.keyboards.inline import (
     get_terms_keyboard,
 )
 from telegram_bot.middlewares.terms_check import get_terms_text
+from telegram_bot.miniapp_shortcuts import resolve_miniapp_shortcut
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -68,6 +69,27 @@ async def show_main_menu(message: Message, user_id, edit: bool = False):
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
+async def open_miniapp_shortcut_flow(message: Message, user_id, state: FSMContext, action: str):
+    """Route a whitelisted Mini App shortcut into the existing safe bot flow."""
+    # Local import avoids coupling the router modules during application startup.
+    from telegram_bot.handlers.menu import (
+        start_deposit_flow,
+        start_gift_flow,
+        start_withdraw_flow,
+    )
+
+    openers = {
+        'deposit': start_deposit_flow,
+        'withdraw': start_withdraw_flow,
+        'gift': start_gift_flow,
+    }
+    opener = openers.get(action)
+    if not opener:
+        return False
+    await opener(message, user_id, state, edit=False)
+    return True
+
+
 # ================================================================
 # ✅ معالجات الموافقة على الشروط (كانت مفقودة بالكامل!)
 # ================================================================
@@ -122,9 +144,11 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
     user_id = message.from_user.id
     telegram_id = str(user_id)
 
+    args = (command.args or '').strip()
+    shortcut_action = resolve_miniapp_shortcut(args)
+
     # معالجة الإحالة: /start ref_123456
-    args = command.args
-    if args and args.startswith("ref_"):
+    if args.startswith("ref_"):
         referrer_id = args[4:].strip()
         existing = repo.get_user(telegram_id)
         if not existing:
@@ -141,6 +165,12 @@ async def cmd_start(message: Message, state: FSMContext, command: CommandObject)
     # المستخدم العادي لا يرى القائمة الرئيسية قبل قبول الشروط
     if not is_admin_user(user_id) and user and not user.get('terms_accepted'):
         await message.answer(get_terms_text(), reply_markup=get_terms_keyboard(), parse_mode="HTML")
+        return
+
+    # اختصارات Mini App لا تنفذ أي حركة مالية؛ تفتح فقط أول شاشة
+    # من مسار البوت الحالي بعد التحقق من المستخدم والشروط.
+    if shortcut_action:
+        await open_miniapp_shortcut_flow(message, user_id, state, shortcut_action)
         return
 
     await show_main_menu(message, user_id)
