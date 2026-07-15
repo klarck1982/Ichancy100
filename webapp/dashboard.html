@@ -276,6 +276,25 @@
   .nav-item .nav-icon{font-size:22px}
   .nav-item .nav-badge{position:absolute;top:-2px;right:2px;background:var(--red);color:#fff;padding:1px 5px;border-radius:12px;font-size:9px;font-weight:900}
 
+
+  /* ===== غرفة العمليات ومركز التحكم ===== */
+  .ops-room{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px}
+  .ops-card{appearance:none;-webkit-appearance:none;text-align:right;color:var(--text);font:inherit;min-height:92px;padding:13px;border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018));border:1px solid var(--line);position:relative;overflow:hidden;cursor:pointer}
+  .ops-card::after{content:'';position:absolute;right:0;top:14px;bottom:14px;width:3px;border-radius:3px;background:var(--ops)}
+  .ops-card .ops-top{display:flex;align-items:center;justify-content:space-between}.ops-card .ops-icon{font-size:20px}.ops-card .ops-value{font-size:25px;font-weight:950;color:var(--ops)}.ops-card .ops-label{font-size:11px;font-weight:900;margin-top:4px}.ops-card .ops-sub{font-size:9px;color:var(--hint);margin-top:3px}
+  .ops-dep{--ops:var(--green)}.ops-wit{--ops:var(--red)}.ops-support{--ops:var(--blue)}.ops-system{--ops:var(--gold)}
+  .oldest-request{display:flex;gap:8px;align-items:center;margin:-5px 0 15px;padding:10px 12px;border-radius:14px;background:rgba(255,165,2,.07);border:1px solid rgba(255,165,2,.17);font-size:10px;color:#d9be85}.oldest-request b{color:var(--orange)}
+  .control-group{border:1px solid var(--line);border-radius:17px;background:rgba(255,255,255,.025);margin-bottom:10px;overflow:hidden}.control-group summary{list-style:none;display:flex;align-items:center;gap:10px;padding:13px;font-size:12px;font-weight:900;cursor:pointer}.control-group summary::-webkit-details-marker{display:none}.control-body{border-top:1px solid var(--line);padding:5px 12px 10px}
+  .control-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.045)}.control-row:last-child{border:none}.control-copy{flex:1}.control-copy b{font-size:11px}.control-copy small{display:block;color:var(--hint);font-size:9px;margin-top:2px}
+  .toggle{position:relative;width:44px;height:25px;flex:0 0 auto}.toggle input{position:absolute;opacity:0}.toggle span{position:absolute;inset:0;border-radius:20px;background:#29303a;border:1px solid var(--line);transition:.2s}.toggle span::before{content:'';position:absolute;width:19px;height:19px;border-radius:50%;top:2px;right:2px;background:#747e8d;transition:.2s}.toggle input:checked+span{background:rgba(0,214,143,.15);border-color:rgba(0,214,143,.34)}.toggle input:checked+span::before{right:21px;background:var(--green);box-shadow:0 0 8px rgba(0,214,143,.4)}
+  .cashier-active{padding:13px;border-radius:17px;border:1px solid rgba(255,215,0,.25);background:linear-gradient(135deg,rgba(255,215,0,.075),rgba(255,255,255,.02));margin-bottom:10px}.cashier-active-head{display:flex;align-items:center;justify-content:space-between}.cashier-active b{color:var(--gold)}.cashier-active small{color:var(--hint)}
+  .cashier-address-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.cashier-address{padding:8px;border-radius:11px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.04);font-size:9px}.cashier-address span{display:block;color:var(--hint);font-size:8px}.cashier-address code{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px;direction:ltr;text-align:right}
+  .cashier-profile{padding:11px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.02);margin-top:7px}.cashier-profile-head{display:flex;align-items:center;gap:8px}.cashier-profile-head b{flex:1}.cashier-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:9px}.cashier-actions .btn{padding:9px 4px;font-size:10px;margin:0}
+  .cashier-form{border:1px solid rgba(255,215,0,.25);border-radius:16px;padding:12px;margin-top:10px}.cashier-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.cashier-form .field{margin-bottom:8px}.cashier-form input{padding:9px 10px;font-size:12px}
+  .filter-bar{display:flex;gap:6px;overflow-x:auto;padding-bottom:7px;scrollbar-width:none}.filter-chip{appearance:none;border:1px solid var(--line);border-radius:999px;padding:7px 11px;background:rgba(255,255,255,.025);color:var(--hint);font-size:10px;white-space:nowrap}.filter-chip.active{color:var(--gold);border-color:rgba(255,215,0,.35);background:rgba(255,215,0,.07)}
+  .request-tools{display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:8px}.request-tools select{margin:0;padding:9px;font-size:11px}.copy-mini{border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--gold);border-radius:10px;padding:6px 9px;font-size:10px}
+  .group-menu{display:grid;grid-template-columns:1fr 1fr;gap:8px}.group-menu .action-btn{padding:13px 7px}
+
 </style>
 </head>
 <body>
@@ -351,6 +370,7 @@ let settingsData = null;
 tg.ready(); tg.expand();
 
 function fmt(n){return new Intl.NumberFormat('en-US').format(Number(n||0));}
+function esc(value){return String(value??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));}
 function val(id){return document.getElementById(id)?.value || '';}
 function setNotice(msg,type='success'){const el=document.getElementById('notice');el.innerHTML=msg?`<div class="${type==='error'?'error-box':'success-box'}">${msg}</div>`:''; if(msg)setTimeout(()=>{el.innerHTML=''},3500)}
 function statusEmoji(s){return s==='approved'?'🟢':s==='pending'?'🟡':'🔴'}
@@ -365,6 +385,7 @@ function setNavActive(tab){
 
 function showTab(tab){
   currentTab=tab;
+  try{sessionStorage.setItem('caesar_admin_last_tab',tab)}catch(_){}
   setNavActive(tab);
   document.getElementById('notice').innerHTML='';
   if(tab==='dashboard')loadDashboard();
@@ -378,6 +399,7 @@ function showTab(tab){
   else if(tab==='predictions')loadPredictions();
   else if(tab==='contests')loadContests();
   else if(tab==='features')loadFeatures();
+  else if(tab==='control')loadControlCenter();
   else if(tab==='more')loadMoreMenu();
   else loadSettings(tab);
 }
@@ -466,9 +488,23 @@ function renderDashboard(d){
   const netProfit=d.net_profit||0;
   const profitClass=netProfit>=0?'gold':'red';
   const profitSign=netProfit>=0?'+':'';
+  const oldest=d.oldest_pending||null;
+  const oldestText=oldest?`#${oldest.id} • ${oldest.age_minutes} دقيقة`:'لا يوجد طلب معلق';
+  const activeCashier=d.active_cashier_profile?.name||'العناوين الافتراضية';
   
   document.getElementById('content').innerHTML=`
     ${alertsHtml?`<div class="card" style="background:rgba(255,82,82,0.05);border-color:rgba(255,82,82,0.1)"><div class="card-title"><span>🚨 التنبيهات</span></div>${alertsHtml}</div>`:''}
+
+    <div class="card">
+      <div class="card-title"><span>👑 غرفة العمليات</span><span class="see-all" onclick="showTab('control')">مركز التحكم →</span></div>
+      <div class="ops-room">
+        <button class="ops-card ops-dep" onclick="showTab('requests')"><div class="ops-top"><span class="ops-icon">📥</span><span class="ops-value">${d.pending_deposits?.length||0}</span></div><div class="ops-label">إيداعات معلقة</div><div class="ops-sub">اضغط للفرز والمراجعة</div></button>
+        <button class="ops-card ops-wit" onclick="showTab('requests')"><div class="ops-top"><span class="ops-icon">📤</span><span class="ops-value">${d.pending_withdraws?.length||0}</span></div><div class="ops-label">سحوبات معلقة</div><div class="ops-sub">الأولوية للأقدم</div></button>
+        <button class="ops-card ops-support" onclick="showTab('support')"><div class="ops-top"><span class="ops-icon">📩</span><span class="ops-value">${d.open_support_count||0}</span></div><div class="ops-label">تذاكر مفتوحة</div><div class="ops-sub">مركز الدعم</div></button>
+        <button class="ops-card ops-system" onclick="showTab('health')"><div class="ops-top"><span class="ops-icon">🩺</span><span class="ops-value">${d.is_cookie_alive?'✓':'!'}</span></div><div class="ops-label">النظام ${d.is_cookie_alive?'سليم':'يحتاج فحصًا'}</div><div class="ops-sub">الكاشير: ${activeCashier}</div></button>
+      </div>
+      <div class="oldest-request">⏱️ أقدم طلب: <b>${oldestText}</b></div>
+    </div>
     
     <!-- 📊 لوحة الماليات الحية -->
     <div class="card" style="background:linear-gradient(135deg,rgba(255,215,0,0.08) 0%,rgba(255,215,0,0.02) 100%);border-color:var(--card-border)">
@@ -649,23 +685,68 @@ function renderSparkline(deposits, withdraws, burnRev, commRev, labels){
 function loadMoreMenu(){
   currentTab='more';setNavActive('more');
   document.getElementById('content').innerHTML=`
-    <div class="card">
-      <div class="card-title">⚙️ المزيد من الأدوات</div>
-      <div class="quick-actions">
-        <div class="action-btn" onclick="showTab('settings')"><div class="action-icon">💱</div><div class="action-label">الأسعار</div></div>
-        <div class="action-btn" onclick="showTab('payments')"><div class="action-icon">💳</div><div class="action-label">عناوين الإيداع</div></div>
-        <div class="action-btn" onclick="showTab('buttons')"><div class="action-icon">🔗</div><div class="action-label">تعيين الأزرار</div></div>
-        <div class="action-btn" onclick="showTab('finance')"><div class="action-icon">💸</div><div class="action-label">حركة الوكيل</div></div>
-        <div class="action-btn" onclick="showTab('health')"><div class="action-icon">🩺</div><div class="action-label">حالة النظام</div></div>
-        <div class="action-btn" onclick="showTab('broadcast')"><div class="action-icon">📢</div><div class="action-label">البث الجماعي</div></div>
-        <div class="action-btn" onclick="showTab('bonuses')"><div class="action-icon">🎁</div><div class="action-label">البونصات</div></div>
-        <div class="action-btn" onclick="showTab('predictions')"><div class="action-icon">🎫</div><div class="action-label">التوقعات</div></div>
-        <div class="action-btn" onclick="showTab('contests')"><div class="action-icon">👑</div><div class="action-label">المسابقات</div></div>
-        <div class="action-btn" onclick="showTab('features')"><div class="action-icon">✨</div><div class="action-label">ميزات المستخدمين</div></div>
-      </div>
-    </div>
+    <div class="card"><div class="card-title">⚙️ الأدوات المنظمة</div><div class="sub">اختر مجموعة العمل المطلوبة:</div></div>
+    <details class="control-group" open><summary>👑 مركز القيادة والتحكم</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('control')"><div class="action-icon">🎛️</div><div class="action-label">التحكم الكامل</div></div><div class="action-btn" onclick="showTab('health')"><div class="action-icon">🩺</div><div class="action-label">حالة النظام</div></div></div></div></details>
+    <details class="control-group"><summary>💰 الماليات والدفع</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('settings')"><div class="action-icon">💱</div><div class="action-label">الأسعار والحدود</div></div><div class="action-btn" onclick="showTab('payments')"><div class="action-icon">💳</div><div class="action-label">عناوين الدفع</div></div><div class="action-btn" onclick="showTab('finance')"><div class="action-icon">💸</div><div class="action-label">حركة الوكيل</div></div><div class="action-btn" onclick="showTab('requests')"><div class="action-icon">📥</div><div class="action-label">الطلبات</div></div></div></div></details>
+    <details class="control-group"><summary>📣 التسويق والمحتوى</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('bonuses')"><div class="action-icon">🎁</div><div class="action-label">البونصات</div></div><div class="action-btn" onclick="showTab('broadcast')"><div class="action-icon">📢</div><div class="action-label">البث الجماعي</div></div><div class="action-btn" onclick="showTab('contests')"><div class="action-icon">👑</div><div class="action-label">المسابقات</div></div><div class="action-btn" onclick="showTab('predictions')"><div class="action-icon">🎫</div><div class="action-label">التوقعات</div></div></div></div></details>
+    <details class="control-group"><summary>✨ مزايا المستخدمين والتكاملات</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('features')"><div class="action-icon">✨</div><div class="action-label">كل المزايا</div></div><div class="action-btn" onclick="showTab('buttons')"><div class="action-icon">🔗</div><div class="action-label">روابط الأزرار</div></div><div class="action-btn" onclick="showTab('support')"><div class="action-icon">📩</div><div class="action-label">الدعم</div></div><div class="action-btn" onclick="showTab('users')"><div class="action-icon">👥</div><div class="action-label">المستخدمون</div></div></div></div></details>
   `;
 }
+
+// ===== مركز القيادة والتحكم =====
+let controlSettings=null;
+let adminActionBusy=false;
+
+async function copyText(value){
+  try{await navigator.clipboard.writeText(String(value||''));setNotice('✅ تم النسخ')}catch(_){setNotice('تعذر النسخ','error')}
+}
+
+async function loadControlCenter(){
+  currentTab='control';setNavActive('more');
+  const el=document.getElementById('content');
+  el.innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل مركز التحكم...</div>';
+  try{controlSettings=await apiGet(SETTINGS_API);renderControlCenter(controlSettings)}catch(e){el.innerHTML=`<div class="error-box">${esc(e.message)}</div>`}
+}
+
+function gateRow(id,title,desc,checked){return `<div class="control-row"><div class="control-copy"><b>${title}</b><small>${desc}</small></div><label class="toggle"><input id="${id}" type="checkbox" ${checked?'checked':''} onchange="confirmServiceGateChange(this)"><span></span></label></div>`}
+function addressBox(label,value){return `<div class="cashier-address"><span>${label}</span><code>${esc(value||'—')}</code></div>`}
+
+function renderControlCenter(d){
+  const g=d.service_gates||{};const active=d.active_cashier_profile;const profiles=d.cashier_profiles||[];const audit=d.cashier_switch_audit||[];
+  const activeHtml=active?`<div class="cashier-active"><div class="cashier-active-head"><div><small>المشرف النشط</small><br><b>${esc(active.name)}</b></div><span class="pill green">نشط الآن</span></div><div class="cashier-address-grid">${addressBox('شام SYP',active.sham_syp_address)}${addressBox('شام USD',active.sham_usd_address)}${addressBox('سيريتل',active.syriatel_address)}${addressBox('MTN',active.mtn_address)}</div></div>`:`<div class="warn-box">لا يوجد ملف مشرف نشط. تستخدم بوابات الدفع العناوين القديمة/Render حتى تضيف ملفًا وتفعّله.</div>`;
+  const profileHtml=profiles.map(p=>`<div class="cashier-profile"><div class="cashier-profile-head"><b>${esc(p.name)}</b>${p.id===active?.id?'<span class="pill green">نشط</span>':p.is_enabled?'<span class="pill">متاح</span>':'<span class="badge">متوقف</span>'}</div><div class="hint">Telegram ID: ${esc(p.telegram_id||'غير محدد')}</div><div class="cashier-actions"><button class="btn green" ${p.id===active?.id?'disabled':''} onclick="activateCashierProfile(${p.id})">تفعيل</button><button class="btn outline" onclick="openCashierForm(${p.id})">تعديل</button><button class="btn danger" ${p.id===active?.id?'disabled':''} onclick="deleteCashierProfile(${p.id})">حذف</button></div></div>`).join('')||'<div class="empty">لا توجد ملفات مشرفين بعد</div>';
+  const auditHtml=audit.slice(0,5).map(a=>`<div class="row"><span class="label">${esc(a.switched_by)}: ${esc(a.previous_profile_name||'الافتراضي')} ← ${esc(a.new_profile_name||'—')}</span><span class="value">${esc(a.switched_at)}</span></div>`).join('')||'<div class="empty">لا توجد عمليات تبديل</div>';
+  document.getElementById('content').innerHTML=`
+    <div class="card"><div class="card-title">🎛️ مركز القيادة والتحكم</div><div class="sub">المفاتيح الحساسة تحتاج تأكيدًا، ولا يوجد تحديث دوري.</div></div>
+    <details class="control-group" open><summary>🛡️ الطوارئ والبوابات المالية</summary><div class="control-body">${gateRow('gate_maintenance','وضع الصيانة','إيقاف العمليات المالية والمكافآت مؤقتًا',g.maintenance_mode)}${gateRow('gate_deposits','بوابة الإيداع','السماح بطلبات الإيداع الجديدة',g.deposits_enabled!==false)}${gateRow('gate_withdrawals','بوابة السحب','السماح بطلبات السحب الجديدة',g.withdrawals_enabled!==false)}${gateRow('gate_game','تحويلات iChancy','شحن وسحب حساب اللعبة',g.game_transfers_enabled!==false)}</div></details>
+    <details class="control-group" open><summary>👥 مناوبة المشرفين المالية</summary><div class="control-body">${activeHtml}<button class="btn gold" onclick="openCashierForm()">＋ إضافة مشرف جديد</button><div id="cashierForm"></div>${profileHtml}<div class="card-title" style="margin-top:14px">سجل التبديل</div>${auditHtml}</div></details>
+    <details class="control-group"><summary>✨ مزايا المستخدمين</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('features')"><div class="action-icon">🏆</div><div class="action-label">VIP والعجلة والحضور والكاش باك</div></div><div class="action-btn" onclick="showTab('bonuses')"><div class="action-icon">🤝</div><div class="action-label">الإحالات والبونصات</div></div></div></div></details>
+    <details class="control-group"><summary>📣 التسويق والمحتوى</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('broadcast')"><div class="action-icon">📢</div><div class="action-label">البث الجماعي</div></div><div class="action-btn" onclick="showTab('contests')"><div class="action-icon">👑</div><div class="action-label">المسابقات</div></div><div class="action-btn" onclick="showTab('predictions')"><div class="action-icon">🎫</div><div class="action-label">التوقعات</div></div><div class="action-btn" onclick="showTab('features')"><div class="action-icon">⚡</div><div class="action-label">فلاش البونص</div></div></div></div></details>
+    <details class="control-group"><summary>⚙️ الدفع والتكاملات والنظام</summary><div class="control-body"><div class="group-menu"><div class="action-btn" onclick="showTab('settings')"><div class="action-icon">💱</div><div class="action-label">الأسعار والحدود</div></div><div class="action-btn" onclick="showTab('payments')"><div class="action-icon">💳</div><div class="action-label">العناوين القديمة</div></div><div class="action-btn" onclick="showTab('health')"><div class="action-icon">🩺</div><div class="action-label">Neon وRender والجلسة</div></div><div class="action-btn" onclick="showTab('buttons')"><div class="action-icon">🔗</div><div class="action-label">روابط البوت</div></div></div></div></details>
+    <button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;
+}
+
+function confirmServiceGateChange(input){
+  const title=input.closest('.control-row').querySelector('b').textContent;const intended=input.checked;
+  tg.showConfirm(`${intended?'تفعيل':'إيقاف'} ${title}؟`,async ok=>{if(!ok){input.checked=!intended;return}await saveServiceGates()});
+}
+async function saveServiceGates(){
+  if(adminActionBusy)return;adminActionBusy=true;
+  try{await apiPost(SETTINGS_API,{action:'update_service_gates',maintenance_mode:document.getElementById('gate_maintenance').checked,deposits_enabled:document.getElementById('gate_deposits').checked,withdrawals_enabled:document.getElementById('gate_withdrawals').checked,game_transfers_enabled:document.getElementById('gate_game').checked});setNotice('✅ تم تحديث بوابات الخدمة');await loadControlCenter()}catch(e){setNotice('❌ '+e.message,'error');await loadControlCenter()}finally{adminActionBusy=false}
+}
+
+function openCashierForm(profileId=null){
+  const p=(controlSettings?.cashier_profiles||[]).find(x=>x.id===profileId)||{};
+  document.getElementById('cashierForm').innerHTML=`<div class="cashier-form"><div class="card-title">${profileId?'تعديل':'إضافة'} ملف مشرف</div><input type="hidden" id="cashier_profile_id" value="${profileId||''}"><div class="cashier-form-grid"><div class="field"><label>اسم المشرف</label><input id="cashier_name" value="${esc(p.name||'')}"></div><div class="field"><label>Telegram ID</label><input id="cashier_telegram" value="${esc(p.telegram_id||'')}"></div></div><div class="field"><label>شام كاش SYP</label><input id="cashier_sham_syp" value="${esc(p.sham_syp_address||'')}"></div><div class="field"><label>شام كاش USD</label><input id="cashier_sham_usd" value="${esc(p.sham_usd_address||'')}"></div><div class="cashier-form-grid"><div class="field"><label>سيريتل كاش</label><input id="cashier_syriatel" value="${esc(p.syriatel_address||'')}"></div><div class="field"><label>MTN كاش</label><input id="cashier_mtn" value="${esc(p.mtn_address||'')}"></div></div><div class="btn-row"><button class="btn green" onclick="saveCashierProfile()">💾 حفظ</button><button class="btn outline" onclick="document.getElementById('cashierForm').innerHTML=''">إلغاء</button></div></div>`;
+  document.getElementById('cashierForm').scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function saveCashierProfile(){
+  if(adminActionBusy)return;const id=val('cashier_profile_id');const payload={action:id?'update_cashier_profile':'create_cashier_profile',profile_id:id||undefined,name:val('cashier_name'),telegram_id:val('cashier_telegram'),sham_syp_address:val('cashier_sham_syp'),sham_usd_address:val('cashier_sham_usd'),syriatel_address:val('cashier_syriatel'),mtn_address:val('cashier_mtn'),is_enabled:true};adminActionBusy=true;
+  try{await apiPost(SETTINGS_API,payload);setNotice('✅ تم حفظ ملف المشرف');await loadControlCenter()}catch(e){setNotice('❌ '+e.message,'error')}finally{adminActionBusy=false}
+}
+function activateCashierProfile(id){const name=(controlSettings?.cashier_profiles||[]).find(x=>x.id===id)?.name||'المشرف';tg.showConfirm(`تفعيل ${name}؟ ستستخدم الطلبات الجديدة عناوينه فورًا.`,async ok=>{if(!ok||adminActionBusy)return;adminActionBusy=true;try{await apiPost(SETTINGS_API,{action:'activate_cashier_profile',profile_id:id});setNotice('✅ تم تبديل المشرف النشط');await loadControlCenter()}catch(e){setNotice('❌ '+e.message,'error')}finally{adminActionBusy=false}})}
+function deleteCashierProfile(id){tg.showConfirm('حذف ملف المشرف غير النشط؟',async ok=>{if(!ok||adminActionBusy)return;adminActionBusy=true;try{await apiPost(SETTINGS_API,{action:'delete_cashier_profile',profile_id:id});setNotice('✅ تم حذف الملف');await loadControlCenter()}catch(e){setNotice('❌ '+e.message,'error')}finally{adminActionBusy=false}})}
+
 
 // ===== الإعدادات =====
 async function loadSettings(tab=currentTab,force=false){
@@ -793,8 +874,8 @@ async function saveRates(){
 // ===== عناوين الإيداع =====
 function renderPayments(d){
   const rows=(d.payment_addresses||[]).map(item=>{
-    const source=item.source==='database'?'لوحة الأدمن':'Render';
-    const sourceClass=item.source==='database'?'gold':'blue';
+    const source=item.source==='cashier_profile'?`المشرف: ${item.cashier_profile_name||'النشط'}`:item.source==='database'?'لوحة الأدمن':'Render';
+    const sourceClass=item.source==='cashier_profile'?'green':item.source==='database'?'gold':'blue';
     return `<div class="card"><div class="card-title">${item.label} <span class="pill ${sourceClass}">${source}</span></div><div class="field"><label>العنوان/الأرقام</label><textarea id="pay_${item.method}">${(item.address||'').replaceAll('&','&').replaceAll('<','<')}</textarea><div class="hint">قيمة Render: ${(item.fallback||'غير محددة').replaceAll('<','<')}</div></div><div class="btn-row"><button class="btn green" onclick="savePayment('${item.method}')">✅ حفظ</button><button class="btn outline" onclick="resetPayment('${item.method}')">♻️ Render</button></div></div>`;
   }).join('');
   document.getElementById('content').innerHTML=`<div class="warn-box">قيمة لوحة الأدمن أولاً، وإذا لم توجد يستخدم البوت قيمة Render تلقائياً.</div>${rows||'<div class="empty">لا توجد طرق دفع</div>'}<button class="btn outline" onclick="showTab('more')">🔙 رجوع</button>`;
@@ -915,9 +996,14 @@ function loadSupportTicket(id){document.getElementById('content').innerHTML='<di
 function renderSupportTicket(d){const t=d.ticket||{},u=d.user||{},msgs=d.messages||[];document.getElementById('content').innerHTML=`
 <div class="card"><div class="card-title">🎫 تذكرة #${t.id}</div><div class="row"><span class="label">المستخدم</span><span class="value">${u.telegram_username||t.user_telegram_id}</span></div><div class="row"><span class="label">iChancy</span><span class="value">${u.ichancy_username||'—'}</span></div><div class="row"><span class="label">الحالة</span><span>${t.status==='open'?'🟢 مفتوحة':'🔒 مغلقة'}</span></div><button class="btn outline" onclick="loadUserDetail('${t.user_telegram_id}')">👥 ملف المستخدم</button></div>
 <div class="card"><div class="card-title">💬 المحادثة</div>${msgs.map(m=>`<div class="pending-item" style="border-right-color:${m.sender_type==='admin'?'var(--green)':'var(--blue)'}"><b>${m.sender_type==='admin'?'👑 الإدارة':'👤 المستخدم'}</b><br>${m.message_text||'['+(m.content_type||'message')+']'}<br><span class="label">${m.created_at||''}</span></div>`).join('')||'<div class="empty">لا توجد رسائل</div>'}</div>
-<div class="card"><div class="card-title">↩️ رد الإدارة</div><textarea id="support_reply_text" style="direction:rtl;text-align:right" placeholder="اكتب الرد..."></textarea><button class="btn green" onclick="sendSupportReply(${t.id})">📩 إرسال الرد</button><button class="btn outline" onclick="closeSupportTicket(${t.id})">🔒 إغلاق</button><button class="btn outline" onclick="loadSupport()">🔙 رجوع</button></div>`}
+<div class="card"><div class="card-title">↩️ رد الإدارة</div><div class="field"><label>رد جاهز</label><select onchange="applySupportTemplate(this.value)"><option value="">اختر ردًا...</option><option value="review">طلبك قيد المراجعة</option><option value="proof">يرجى إرسال رقم العملية/الإثبات</option><option value="address">يرجى التأكد من عنوان الاستلام</option><option value="done">تم حل المشكلة</option></select></div><textarea id="support_reply_text" style="direction:rtl;text-align:right" placeholder="اكتب الرد..." oninput="saveSupportDraft(${t.id})"></textarea><button class="btn green" onclick="sendSupportReply(${t.id})">📩 إرسال الرد</button><button class="btn outline" onclick="closeSupportTicket(${t.id})">🔒 إغلاق</button><button class="btn outline" onclick="loadSupport()">🔙 رجوع</button></div>`;restoreSupportDraft(t.id)}
 
-function sendSupportReply(id){const msg=val('support_reply_text');if(!msg.trim()){setNotice('❌ الرد فارغ','error');return}supportApi({action:'reply',ticket_id:id,message:msg}).then(()=>{setNotice('✅ تم إرسال الرد');loadSupportTicket(id)}).catch(e=>setNotice('❌ '+e.message,'error'))}
+const SUPPORT_TEMPLATES={review:'مرحباً، طلبك قيد المراجعة حاليًا وسيتم إشعارك فور الانتهاء.',proof:'يرجى إرسال رقم العملية أو صورة إثبات التحويل حتى نتمكن من المتابعة.',address:'يرجى التأكد من عنوان أو رقم الاستلام وإرساله مرة أخرى بدقة.',done:'تم حل المشكلة بنجاح. نحن في خدمتك دائمًا.'};
+function applySupportTemplate(key){const el=document.getElementById('support_reply_text');if(el&&SUPPORT_TEMPLATES[key]){el.value=SUPPORT_TEMPLATES[key];el.dispatchEvent(new Event('input'))}}
+function saveSupportDraft(id){try{localStorage.setItem('caesar_support_draft_'+id,val('support_reply_text'))}catch(_){}}
+function restoreSupportDraft(id){setTimeout(()=>{try{const draft=localStorage.getItem('caesar_support_draft_'+id);if(draft)document.getElementById('support_reply_text').value=draft}catch(_){}},0)}
+function clearSupportDraft(id){try{localStorage.removeItem('caesar_support_draft_'+id)}catch(_){}}
+function sendSupportReply(id){const msg=val('support_reply_text');if(!msg.trim()){setNotice('❌ الرد فارغ','error');return}supportApi({action:'reply',ticket_id:id,message:msg}).then(()=>{clearSupportDraft(id);setNotice('✅ تم إرسال الرد');loadSupportTicket(id)}).catch(e=>setNotice('❌ '+e.message,'error'))}
 function closeSupportTicket(id){tg.showConfirm('إغلاق التذكرة؟',ok=>{if(!ok)return;supportApi({action:'close',ticket_id:id}).then(()=>{setNotice('✅ تم الإغلاق');loadSupport('open')}).catch(e=>setNotice('❌ '+e.message,'error'))})}
 
 // ===== مركز الطلبات =====
@@ -925,22 +1011,37 @@ async function requestsApi(payload){return apiPost(REQUESTS_API,payload);}
 function typeLabel(t){return t==='deposit_bot'?'📥 إيداع':t==='withdraw_bot'?'📤 سحب':t==='deposit_to_game'?'🎮 شحن لعبة':t==='withdraw_from_game'?'↩️ سحب لعبة':t||'—'}
 function statusLabel(s){return s==='pending'?'🟡 معلّق':s==='approved'?'✅ مقبول':s==='rejected'?'❌ مرفوض':s==='completed'?'🟢 مكتمل':s||'—'}
 
-function loadRequests(){currentTab='requests';setNavActive('requests');document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل الطلبات...</div>';requestsApi({action:'list',limit:40}).then(renderRequests).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`})}
+function loadRequests(){currentTab='requests';setNavActive('requests');try{requestFilter=localStorage.getItem('caesar_request_filter')||requestFilter;requestSort=localStorage.getItem('caesar_request_sort')||requestSort}catch(_){}document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل الطلبات...</div>';requestsApi({action:'list',limit:40}).then(renderRequests).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div>`})}
 
-function renderRequests(d){const sm=d.summary||{};const pending=d.pending||[];const recent=d.recent||[];document.getElementById('content').innerHTML=`
-<div class="card"><div class="card-title">📥 مركز الطلبات</div><div class="field"><label>بحث</label><input id="req_search_q" placeholder="رقم الطلب أو مستخدم"></div><button class="btn green" onclick="searchRequests()">🔎 بحث</button></div>
-<div class="card"><div class="card-title">📊 ملخص</div><div class="stat-grid"><div class="stat-box"><div class="stat-label">⏳ معلقة</div><div class="stat-value gold">${fmt(sm.pending_total)}</div></div><div class="stat-box"><div class="stat-label">📥 إيداع</div><div class="stat-value blue">${fmt(sm.pending_deposits)}</div></div><div class="stat-box"><div class="stat-label">📤 سحب</div><div class="stat-value red">${fmt(sm.pending_withdraws)}</div></div><div class="stat-box"><div class="stat-label">🔄 اليوم</div><div class="stat-value green">${fmt(sm.today_tx)}</div></div></div></div>
-<div class="card"><div class="card-title">🟡 الطلبات المعلقة</div>${pending.map(renderReqItem).join('')||'<div class="empty">لا توجد طلبات معلقة</div>'}</div>
-<div class="card"><div class="card-title">🕒 آخر الطلبات</div>${recent.map(renderReqItem).join('')||'<div class="empty">لا توجد طلبات</div>'}</div>`;}
-
-function renderReqItem(t){return `<div class="pending-item"><b>#${t.id} ${typeLabel(t.type)}</b> • ${statusLabel(t.status)}<br>👤 ${t.telegram_username||'—'} <span class="label">${t.user_telegram_id}</span><br>💰 <b>${fmt(t.amount)} SYP</b> | 💳 ${t.payment_method||'—'}<br><span class="label">${t.created_at||''}</span><button class="btn outline" onclick="loadRequestDetail(${t.id})">👁️ التفاصيل</button></div>`}
+let requestViewData=null;
+let requestFilter='pending';
+let requestSort='oldest';
+function renderRequests(d){requestViewData=d;renderRequestsView()}
+function requestAge(createdAt){const dt=new Date(String(createdAt||'').replace(' ','T'));if(Number.isNaN(dt.getTime()))return '';const mins=Math.max(0,Math.floor((Date.now()-dt.getTime())/60000));if(mins<60)return `${mins} دقيقة`;if(mins<1440)return `${Math.floor(mins/60)} ساعة`;return `${Math.floor(mins/1440)} يوم`}
+function setRequestFilter(filter){requestFilter=filter;try{localStorage.setItem('caesar_request_filter',filter)}catch(_){}renderRequestsView()}
+function setRequestSort(sort){requestSort=sort;try{localStorage.setItem('caesar_request_sort',sort)}catch(_){}renderRequestsView()}
+function renderRequestsView(){
+  const d=requestViewData||{};const sm=d.summary||{};const pending=d.pending||[];const recent=d.recent||[];
+  let items=requestFilter==='pending'?[...pending]:[...pending,...recent.filter(r=>!pending.some(p=>p.id===r.id))];
+  if(requestFilter==='deposit')items=items.filter(x=>x.type==='deposit_bot');
+  else if(requestFilter==='withdraw')items=items.filter(x=>x.type==='withdraw_bot');
+  else if(requestFilter==='game')items=items.filter(x=>String(x.type||'').includes('game'));
+  if(requestSort==='amount')items.sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
+  else items.sort((a,b)=>{const av=new Date(String(a.created_at||'').replace(' ','T')).getTime()||0;const bv=new Date(String(b.created_at||'').replace(' ','T')).getTime()||0;return requestSort==='newest'?bv-av:av-bv});
+  document.getElementById('content').innerHTML=`
+  <div class="card"><div class="card-title">📥 مركز الطلبات</div><div class="field"><label>بحث</label><input id="req_search_q" placeholder="رقم الطلب أو مستخدم"></div><button class="btn green" onclick="searchRequests()">🔎 بحث</button></div>
+  <div class="card"><div class="card-title">📊 ملخص</div><div class="stat-grid"><div class="stat-box"><div class="stat-label">⏳ معلقة</div><div class="stat-value gold">${fmt(sm.pending_total)}</div></div><div class="stat-box"><div class="stat-label">📥 إيداع</div><div class="stat-value blue">${fmt(sm.pending_deposits)}</div></div><div class="stat-box"><div class="stat-label">📤 سحب</div><div class="stat-value red">${fmt(sm.pending_withdraws)}</div></div><div class="stat-box"><div class="stat-label">🔄 اليوم</div><div class="stat-value green">${fmt(sm.today_tx)}</div></div></div></div>
+  <div class="card"><div class="card-title">🔎 الفرز السريع</div><div class="filter-bar">${[['pending','المعلقة'],['all','الكل'],['deposit','إيداع'],['withdraw','سحب'],['game','اللعبة']].map(([k,l])=>`<button class="filter-chip ${requestFilter===k?'active':''}" onclick="setRequestFilter('${k}')">${l}</button>`).join('')}</div><div class="request-tools"><select onchange="setRequestSort(this.value)"><option value="oldest" ${requestSort==='oldest'?'selected':''}>الأقدم أولًا</option><option value="newest" ${requestSort==='newest'?'selected':''}>الأحدث أولًا</option><option value="amount" ${requestSort==='amount'?'selected':''}>الأكبر مبلغًا</option></select><span class="pill">${items.length} طلب</span></div></div>
+  <div class="card"><div class="card-title">📋 النتائج</div>${items.map(renderReqItem).join('')||'<div class="empty">لا توجد نتائج</div>'}</div>`;
+}
+function renderReqItem(t){const age=requestAge(t.created_at);return `<div class="pending-item"><b>#${t.id} ${typeLabel(t.type)}</b> • ${statusLabel(t.status)}${age?` <span class="pill">${age}</span>`:''}<br>👤 ${esc(t.telegram_username||'—')} <span class="label">${esc(t.user_telegram_id)}</span><br>💰 <b>${fmt(t.amount)} SYP</b> | 💳 ${esc(t.payment_method||'—')}${t.cashier_profile_name?`<br>👑 مشرف الاستلام: <b>${esc(t.cashier_profile_name)}</b>`:''}${t.payment_destination?`<br>🏦 <code>${esc(t.payment_destination)}</code>`:''}<br><span class="label">${esc(t.created_at||'')}</span><div class="btn-row"><button class="btn outline" onclick="loadRequestDetail(${t.id})">👁️ التفاصيل</button><button class="copy-mini" onclick="copyText('${String(t.amount||0).replace(/'/g,'')}')">⧉ نسخ المبلغ</button></div></div>`}
 
 function searchRequests(){const q=val('req_search_q').trim();if(!q){setNotice('أدخل قيمة','error');return}document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ البحث...</div>';requestsApi({action:'search',query:q}).then(d=>{document.getElementById('content').innerHTML=`<div class="card"><div class="card-title">🔎 النتائج</div><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button>${(d.items||[]).map(renderReqItem).join('')||'<div class="empty">لا توجد نتائج</div>'}</div>`}).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button>`})}
 
 function loadRequestDetail(id){document.getElementById('content').innerHTML='<div class="loader"><div class="spinner"></div>جارٍ تحميل التفاصيل...</div>';requestsApi({action:'detail',tx_id:id}).then(renderRequestDetail).catch(e=>{document.getElementById('content').innerHTML=`<div class="error-box">${e.message}</div><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button>`})}
 
 function renderRequestDetail(d){const t=d.transaction||{},u=d.user||{},h=d.history||[];document.getElementById('content').innerHTML=`
-<div class="card"><div class="card-title">📌 الطلب #${t.id}</div><div class="row"><span class="label">النوع</span><span class="value">${typeLabel(t.type)}</span></div><div class="row"><span class="label">الحالة</span><span>${statusLabel(t.status)}</span></div><div class="row"><span class="label">المبلغ</span><span class="value gold">${fmt(t.amount)} SYP</span></div><div class="row"><span class="label">الوسيلة</span><span class="value">${t.payment_method||'—'}</span></div><div class="row"><span class="label">التاريخ</span><span class="value">${t.created_at||'—'}</span></div><div class="hint">${t.transfer_number||''}</div></div>
+<div class="card"><div class="card-title">📌 الطلب #${t.id}</div><div class="row"><span class="label">النوع</span><span class="value">${typeLabel(t.type)}</span></div><div class="row"><span class="label">الحالة</span><span>${statusLabel(t.status)}</span></div><div class="row"><span class="label">المبلغ</span><span class="value gold">${fmt(t.amount)} SYP</span></div><div class="row"><span class="label">الوسيلة</span><span class="value">${esc(t.payment_method||'—')}</span></div>${t.cashier_profile_name?`<div class="row"><span class="label">مشرف الاستلام</span><span class="value gold">${esc(t.cashier_profile_name)}</span></div>`:''}${t.payment_destination?`<div class="row"><span class="label">العنوان المثبت</span><span class="value"><code>${esc(t.payment_destination)}</code> <button class="copy-mini" onclick="copyText(this.previousElementSibling.textContent)">⧉</button></span></div>`:''}<div class="row"><span class="label">التاريخ</span><span class="value">${t.created_at||'—'}</span></div><div class="hint">${esc(t.transfer_number||'')}</div></div>
 <div class="card"><div class="card-title">👤 المستخدم</div><div class="row"><span class="label">Telegram</span><span class="value">${u.telegram_id||t.user_telegram_id}</span></div><div class="row"><span class="label">Username</span><span class="value">${u.telegram_username||'—'}</span></div><div class="row"><span class="label">iChancy</span><span class="value">${u.ichancy_username||'—'}</span></div><div class="row"><span class="label">رصيد البوت</span><span class="value gold">${fmt(u.bot_balance)} SYP</span></div><button class="btn outline" onclick="promptRequestMessage('${u.telegram_id||t.user_telegram_id}',${t.id})">📩 رسالة للمستخدم</button><button class="btn outline" onclick="loadUserDetail('${u.telegram_id||t.user_telegram_id}')">👥 ملف المستخدم</button><div class="warn-box" style="margin-top:10px">⚠️ حذف الطلب نهائي يُزيله من كل السجلات. ${t.type==='withdraw_bot'||t.type==='deposit_to_game'?'هذا طلب سحب/شحن، رصيده <b>مخصوم من المستخدم</b>. يمكنك إعادته عند الحذف.':'هذا طلب إيداع، رصيده <b>لم يُضاف بعد</b>، لذا لا حاجة لإعادة.'}</div><button class="btn danger" onclick="deleteTransaction(${t.id},${t.type==='withdraw_bot'||t.type==='deposit_to_game'?'true':'false'})">🗑️ حذف الطلب نهائياً</button><button class="btn outline" onclick="loadRequests()">🔙 رجوع</button></div>
 <div class="card"><div class="card-title">🕒 آخر معاملات</div>${h.map(x=>`<div class="pending-item"><b>#${x.id} ${x.type}</b> • ${x.status}<br>💰 ${fmt(x.amount)} | ${x.created_at}</div>`).join('')||'<div class="empty">لا يوجد سجل</div>'}</div>`}
 
@@ -1282,7 +1383,9 @@ async function stopFlash(id){
 }
 
 // ===== بدء التشغيل =====
-loadDashboard();
+let initialAdminTab='dashboard';
+try{const saved=sessionStorage.getItem('caesar_admin_last_tab');if(['dashboard','requests','support','users','more','control'].includes(saved))initialAdminTab=saved}catch(_){}
+showTab(initialAdminTab);
 </script>
 </body>
 </html>

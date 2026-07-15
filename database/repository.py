@@ -453,13 +453,17 @@ def create_transaction(
     original_currency=None,
     converted_amount_syp=None,
     external_ref=None,
+    cashier_profile_id=None,
+    cashier_profile_name=None,
+    payment_destination=None,
 ):
     query = """
     INSERT INTO transactions (
         user_telegram_id, type, payment_method, amount, transfer_number, status,
-        original_amount, original_currency, converted_amount_syp, external_ref
+        original_amount, original_currency, converted_amount_syp, external_ref,
+        cashier_profile_id, cashier_profile_name, payment_destination
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     RETURNING id
     """
     result = DatabaseManager.execute_query(
@@ -475,6 +479,9 @@ def create_transaction(
             original_currency,
             converted_amount_syp,
             external_ref,
+            int(cashier_profile_id) if cashier_profile_id is not None else None,
+            str(cashier_profile_name)[:120] if cashier_profile_name else None,
+            str(payment_destination)[:2000] if payment_destination else None,
         ),
         fetch='one'
     )
@@ -1486,6 +1493,10 @@ def get_bot_settings():
         settings_dict['game_bonus_apply_percent'] = 10 if settings_dict.get('game_bonus_apply_percent') is None else settings_dict.get('game_bonus_apply_percent')
         settings_dict['syriatel_auto_mode'] = settings_dict.get('syriatel_auto_mode') or 'off'
         settings_dict['syriatel_auto_channel_id'] = settings_dict.get('syriatel_auto_channel_id') or ''
+        settings_dict['maintenance_mode'] = bool(settings_dict.get('maintenance_mode', False))
+        settings_dict['deposits_enabled'] = True if settings_dict.get('deposits_enabled') is None else bool(settings_dict.get('deposits_enabled'))
+        settings_dict['withdrawals_enabled'] = True if settings_dict.get('withdrawals_enabled') is None else bool(settings_dict.get('withdrawals_enabled'))
+        settings_dict['game_transfers_enabled'] = True if settings_dict.get('game_transfers_enabled') is None else bool(settings_dict.get('game_transfers_enabled'))
         
     return settings_dict
 
@@ -1551,6 +1562,58 @@ def update_bot_settings(exchange_rate=None, usd_buy_rate=None, usd_sell_rate=Non
     )
     if hasattr(DatabaseManager, 'invalidate_settings_cache'):
         DatabaseManager.invalidate_settings_cache()
+
+
+def get_service_gates():
+    settings = get_bot_settings() or {}
+    return {
+        'maintenance_mode': bool(settings.get('maintenance_mode', False)),
+        'deposits_enabled': True if settings.get('deposits_enabled') is None else bool(settings.get('deposits_enabled')),
+        'withdrawals_enabled': True if settings.get('withdrawals_enabled') is None else bool(settings.get('withdrawals_enabled')),
+        'game_transfers_enabled': True if settings.get('game_transfers_enabled') is None else bool(settings.get('game_transfers_enabled')),
+    }
+
+
+def update_service_gates(maintenance_mode=None, deposits_enabled=None, withdrawals_enabled=None, game_transfers_enabled=None):
+    current = get_service_gates()
+    values = {
+        'maintenance_mode': current['maintenance_mode'] if maintenance_mode is None else bool(maintenance_mode),
+        'deposits_enabled': current['deposits_enabled'] if deposits_enabled is None else bool(deposits_enabled),
+        'withdrawals_enabled': current['withdrawals_enabled'] if withdrawals_enabled is None else bool(withdrawals_enabled),
+        'game_transfers_enabled': current['game_transfers_enabled'] if game_transfers_enabled is None else bool(game_transfers_enabled),
+    }
+    DatabaseManager.execute_query(
+        """
+        UPDATE bot_settings SET maintenance_mode=%s, deposits_enabled=%s,
+            withdrawals_enabled=%s, game_transfers_enabled=%s WHERE id=1
+        """,
+        (
+            values['maintenance_mode'], values['deposits_enabled'],
+            values['withdrawals_enabled'], values['game_transfers_enabled'],
+        )
+    )
+    if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+        DatabaseManager.invalidate_settings_cache()
+    return values
+
+
+def service_gate_status(service):
+    gates = get_service_gates()
+    if gates['maintenance_mode']:
+        return False, 'البوت في وضع الصيانة حالياً. يرجى المحاولة لاحقاً.'
+    key = {
+        'deposit': 'deposits_enabled',
+        'withdraw': 'withdrawals_enabled',
+        'game': 'game_transfers_enabled',
+    }.get(service)
+    if key and not gates[key]:
+        messages = {
+            'deposit': 'خدمة الإيداع متوقفة مؤقتاً من الإدارة.',
+            'withdraw': 'خدمة السحب متوقفة مؤقتاً من الإدارة.',
+            'game': 'تحويلات حساب اللعبة متوقفة مؤقتاً من الإدارة.',
+        }
+        return False, messages[service]
+    return True, None
 
 
 # ==================== دوال إضافية للوحة الأدمن ====================
@@ -2212,40 +2275,231 @@ def get_payment_address_fallback(payment_method):
         return ''
 
 
-def get_payment_address(payment_method):
-    """يرجع عنوان الإيداع من قاعدة البيانات أولاً، ثم من Render/.env كاحتياط."""
+CASHIER_METHOD_COLUMNS = {
+    'syriatel': 'syriatel_address',
+    'mtn': 'mtn_address',
+    'sham_syp': 'sham_syp_address',
+    'sham_usd': 'sham_usd_address',
+}
+
+
+def _cashier_profile_to_dict(row):
+    if not row:
+        return None
+    data = dict(row)
+    for key in ('id',):
+        if data.get(key) is not None:
+            data[key] = int(data[key])
+    data['is_enabled'] = bool(data.get('is_enabled'))
+    return data
+
+
+def list_cashier_profiles(include_disabled=True):
+    where = '' if include_disabled else 'WHERE is_enabled = TRUE'
+    rows = DatabaseManager.execute_query_dict(
+        f"SELECT * FROM cashier_profiles {where} ORDER BY is_enabled DESC, name ASC, id ASC",
+        fetch='all'
+    ) or []
+    return [_cashier_profile_to_dict(row) for row in rows]
+
+
+def get_cashier_profile(profile_id):
+    if profile_id in (None, ''):
+        return None
+    row = DatabaseManager.execute_query_dict(
+        "SELECT * FROM cashier_profiles WHERE id = %s",
+        (int(profile_id),), fetch='one'
+    )
+    return _cashier_profile_to_dict(row)
+
+
+def create_cashier_profile(name, telegram_id, sham_syp_address, sham_usd_address, syriatel_address, mtn_address, created_by=None):
+    values = [str(v or '').strip() for v in (name, sham_syp_address, sham_usd_address, syriatel_address, mtn_address)]
+    if any(not value for value in values):
+        return None
+    result = DatabaseManager.execute_query(
+        """
+        INSERT INTO cashier_profiles (
+            name, telegram_id, sham_syp_address, sham_usd_address,
+            syriatel_address, mtn_address, created_by, updated_by
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            values[0], str(telegram_id or '').strip() or None,
+            values[1], values[2], values[3], values[4],
+            str(created_by or '').strip() or None,
+            str(created_by or '').strip() or None,
+        ), fetch='one'
+    )
+    return int(result[0]) if result else None
+
+
+def update_cashier_profile(profile_id, name, telegram_id, sham_syp_address, sham_usd_address, syriatel_address, mtn_address, updated_by=None, is_enabled=True):
+    values = [str(v or '').strip() for v in (name, sham_syp_address, sham_usd_address, syriatel_address, mtn_address)]
+    if any(not value for value in values):
+        return False
+    DatabaseManager.execute_query(
+        """
+        UPDATE cashier_profiles
+        SET name=%s, telegram_id=%s, sham_syp_address=%s, sham_usd_address=%s,
+            syriatel_address=%s, mtn_address=%s, is_enabled=%s,
+            updated_by=%s, updated_at=CURRENT_TIMESTAMP
+        WHERE id=%s
+        """,
+        (
+            values[0], str(telegram_id or '').strip() or None,
+            values[1], values[2], values[3], values[4], bool(is_enabled),
+            str(updated_by or '').strip() or None, int(profile_id),
+        )
+    )
+    return True
+
+
+def delete_cashier_profile(profile_id):
+    settings = get_bot_settings() or {}
+    if int(settings.get('active_cashier_profile_id') or 0) == int(profile_id):
+        return {'ok': False, 'reason': 'active_profile'}
+    DatabaseManager.execute_query("DELETE FROM cashier_profiles WHERE id = %s", (int(profile_id),))
+    return {'ok': True}
+
+
+def get_active_cashier_profile():
+    settings = get_bot_settings() or {}
+    profile_id = settings.get('active_cashier_profile_id')
+    profile = get_cashier_profile(profile_id) if profile_id else None
+    return profile if profile and profile.get('is_enabled') else None
+
+
+def activate_cashier_profile(profile_id, switched_by):
+    """Atomically switch the active cashier and write an audit row."""
+    conn = None
+    cursor = None
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, name, sham_syp_address, sham_usd_address, syriatel_address, mtn_address
+            FROM cashier_profiles WHERE id = %s AND is_enabled = TRUE FOR UPDATE
+            """,
+            (int(profile_id),)
+        )
+        profile = cursor.fetchone()
+        if not profile or any(not str(v or '').strip() for v in profile[2:]):
+            conn.rollback()
+            return {'ok': False, 'reason': 'invalid_profile'}
+        cursor.execute("SELECT active_cashier_profile_id FROM bot_settings WHERE id = 1 FOR UPDATE")
+        previous_row = cursor.fetchone()
+        previous_id = int(previous_row[0]) if previous_row and previous_row[0] is not None else None
+        cursor.execute(
+            "UPDATE bot_settings SET active_cashier_profile_id = %s WHERE id = 1",
+            (int(profile_id),)
+        )
+        cursor.execute(
+            """
+            INSERT INTO cashier_switch_audit (previous_profile_id, new_profile_id, switched_by)
+            VALUES (%s, %s, %s)
+            """,
+            (previous_id, int(profile_id), str(switched_by))
+        )
+        conn.commit()
+        if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+            DatabaseManager.invalidate_settings_cache()
+        return {'ok': True, 'previous_profile_id': previous_id, 'profile_id': int(profile_id), 'profile_name': profile[1]}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"activate_cashier_profile error: {e}")
+        return {'ok': False, 'reason': 'error', 'message': str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
+def get_cashier_switch_audit(limit=20):
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT a.id, a.previous_profile_id, p1.name AS previous_profile_name,
+               a.new_profile_id, p2.name AS new_profile_name,
+               a.switched_by, a.switched_at
+        FROM cashier_switch_audit a
+        LEFT JOIN cashier_profiles p1 ON p1.id = a.previous_profile_id
+        LEFT JOIN cashier_profiles p2 ON p2.id = a.new_profile_id
+        ORDER BY a.switched_at DESC LIMIT %s
+        """,
+        (int(limit),), fetch='all'
+    ) or []
+
+
+def resolve_cashier_payment_route(payment_method, active_profile, legacy_address, legacy_source='database'):
+    """Pure routing helper used by runtime and offline simulations."""
+    method = str(payment_method or '').strip()
+    column = CASHIER_METHOD_COLUMNS.get(method)
+    if active_profile and active_profile.get('is_enabled') and column:
+        address = str(active_profile.get(column) or '').strip()
+        if address:
+            return {
+                'address': address,
+                'source': 'cashier_profile',
+                'cashier_profile_id': int(active_profile.get('id')),
+                'cashier_profile_name': active_profile.get('name') or '',
+            }
+    return {
+        'address': str(legacy_address or ''),
+        'source': legacy_source,
+        'cashier_profile_id': None,
+        'cashier_profile_name': None,
+    }
+
+
+def _get_legacy_payment_route(payment_method):
     row = DatabaseManager.execute_query_dict(
         "SELECT address FROM payment_settings WHERE payment_method = %s",
-        (payment_method,),
-        fetch='one'
+        (payment_method,), fetch='one'
     )
     if row and row.get('address'):
-        return row['address']
-    return get_payment_address_fallback(payment_method)
+        return row['address'], 'database'
+    return get_payment_address_fallback(payment_method), 'render'
+
+
+def get_payment_routing_context(payment_method):
+    legacy_address, legacy_source = _get_legacy_payment_route(payment_method)
+    return resolve_cashier_payment_route(
+        payment_method,
+        get_active_cashier_profile(),
+        legacy_address,
+        legacy_source,
+    )
+
+
+def get_payment_address(payment_method):
+    """Return active cashier address for local cash methods, then legacy fallback."""
+    return get_payment_routing_context(payment_method)['address']
 
 
 def get_payment_address_source(payment_method):
-    row = DatabaseManager.execute_query_dict(
-        "SELECT address FROM payment_settings WHERE payment_method = %s",
-        (payment_method,),
-        fetch='one'
-    )
-    if row and row.get('address'):
-        return 'database'
-    return 'render'
+    return get_payment_routing_context(payment_method)['source']
 
 
 def get_all_payment_addresses():
-    return [
-        {
+    result = []
+    active_profile = get_active_cashier_profile()
+    for method in PAYMENT_METHOD_LABELS.keys():
+        legacy_address, legacy_source = _get_legacy_payment_route(method)
+        route = resolve_cashier_payment_route(method, active_profile, legacy_address, legacy_source)
+        result.append({
             'method': method,
             'label': PAYMENT_METHOD_LABELS.get(method, method),
-            'address': get_payment_address(method),
-            'source': get_payment_address_source(method),
+            'address': route['address'],
+            'source': route['source'],
+            'cashier_profile_id': route.get('cashier_profile_id'),
+            'cashier_profile_name': route.get('cashier_profile_name'),
             'fallback': get_payment_address_fallback(method),
-        }
-        for method in PAYMENT_METHOD_LABELS.keys()
-    ]
+        })
+    return result
 
 
 def set_payment_address(payment_method, address, updated_by=None):

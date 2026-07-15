@@ -685,6 +685,20 @@ async def dashboard_api_handler(request):
             'id': t['id'], 'amount': float(t['amount']),
             'created_at_str': t['created_at'].strftime('%m-%d %H:%M') if t.get('created_at') else ''
         } for t in pending if t['type'] == 'withdraw_bot']
+        oldest_pending = None
+        if pending:
+            candidates = [t for t in pending if t.get('created_at')]
+            if candidates:
+                oldest = min(candidates, key=lambda x: x.get('created_at'))
+                age_minutes = max(0, int((datetime.now(oldest['created_at'].tzinfo) - oldest['created_at']).total_seconds() / 60))
+                oldest_pending = {
+                    'id': oldest.get('id'),
+                    'type': oldest.get('type'),
+                    'age_minutes': age_minutes,
+                }
+        open_support_count = len(repo.get_support_tickets(status='open', limit=200))
+        active_cashier = repo.get_active_cashier_profile()
+        service_gates = repo.get_service_gates()
         recent_transactions = [{
             'id': t['id'], 'type': t['type'], 'amount': float(t['amount']), 'status': t['status']
         } for t in recent[:5]]
@@ -833,12 +847,72 @@ async def dashboard_api_handler(request):
             'inactive_users': inactive_count,
             'agent_balance_alert': agent_balance_alert,
             'pending_count': len(pending_deposits) + len(pending_withdraws),
+            'open_support_count': open_support_count,
+            'oldest_pending': oldest_pending,
+            'service_gates': service_gates,
+            'active_cashier_profile': _cashier_profile_json(active_cashier),
         }
         return web.json_response(data)
     except Exception as e:
         logger.error(f"Dashboard API error: {e}", exc_info=True)
         return web.json_response({'error': 'خطأ داخلي'}, status=500)
 
+
+
+def _cashier_profile_json(profile):
+    if not profile:
+        return None
+    return {
+        'id': int(profile.get('id')),
+        'name': profile.get('name') or '',
+        'telegram_id': str(profile.get('telegram_id') or ''),
+        'sham_syp_address': profile.get('sham_syp_address') or '',
+        'sham_usd_address': profile.get('sham_usd_address') or '',
+        'syriatel_address': profile.get('syriatel_address') or '',
+        'mtn_address': profile.get('mtn_address') or '',
+        'is_enabled': bool(profile.get('is_enabled')),
+        'created_at': profile.get('created_at').strftime('%Y-%m-%d %H:%M') if profile.get('created_at') else '',
+        'updated_at': profile.get('updated_at').strftime('%Y-%m-%d %H:%M') if profile.get('updated_at') else '',
+    }
+
+
+def _cashier_audit_json(item):
+    return {
+        'id': int(item.get('id')),
+        'previous_profile_id': int(item.get('previous_profile_id')) if item.get('previous_profile_id') is not None else None,
+        'previous_profile_name': item.get('previous_profile_name'),
+        'new_profile_id': int(item.get('new_profile_id')) if item.get('new_profile_id') is not None else None,
+        'new_profile_name': item.get('new_profile_name'),
+        'switched_by': str(item.get('switched_by') or ''),
+        'switched_at': item.get('switched_at').strftime('%Y-%m-%d %H:%M') if item.get('switched_at') else '',
+    }
+
+
+def _coerce_bool(value, default=False):
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _parse_cashier_profile_payload(payload):
+    data = {
+        'name': str(payload.get('name') or '').strip(),
+        'telegram_id': str(payload.get('telegram_id') or '').strip(),
+        'sham_syp_address': str(payload.get('sham_syp_address') or '').strip(),
+        'sham_usd_address': str(payload.get('sham_usd_address') or '').strip(),
+        'syriatel_address': str(payload.get('syriatel_address') or '').strip(),
+        'mtn_address': str(payload.get('mtn_address') or '').strip(),
+    }
+    if not data['name'] or len(data['name']) > 120:
+        return None, 'اسم المشرف غير صالح'
+    for key in ('sham_syp_address', 'sham_usd_address', 'syriatel_address', 'mtn_address'):
+        if not data[key] or len(data[key]) > 900:
+            return None, 'يجب إدخال العناوين الأربعة بصورة صحيحة'
+    if data['telegram_id'] and (not data['telegram_id'].lstrip('-').isdigit() or len(data['telegram_id']) > 30):
+        return None, 'Telegram ID غير صالح'
+    return data, None
 
 
 async def admin_settings_get_handler(request):
@@ -862,6 +936,11 @@ async def admin_settings_get_handler(request):
             except Exception as e:
                 logger.warning(f"Could not live refresh agent balance in settings API: {e}")
 
+        cashier_profiles = repo.list_cashier_profiles(include_disabled=True)
+        active_cashier = repo.get_active_cashier_profile()
+        cashier_audit = repo.get_cashier_switch_audit(limit=10)
+        service_gates = repo.get_service_gates()
+
         return web.json_response({
             'agent_balance': agent_bal,
             'exchange_rate': int(bot_settings.get('exchange_rate') or 1000),
@@ -883,6 +962,10 @@ async def admin_settings_get_handler(request):
             'agent_balance_alert_threshold': int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)),
             'payment_addresses': repo.get_all_payment_addresses(),
             'button_links': repo.get_all_button_links(),
+            'service_gates': service_gates,
+            'cashier_profiles': [_cashier_profile_json(x) for x in cashier_profiles],
+            'active_cashier_profile': _cashier_profile_json(active_cashier),
+            'cashier_switch_audit': [_cashier_audit_json(x) for x in cashier_audit],
         })
     except Exception as e:
         logger.error(f"Admin settings GET error: {e}", exc_info=True)
@@ -894,9 +977,57 @@ async def admin_settings_post_handler(request):
     init_data_raw = request.headers.get('X-Telegram-Init-Data', '')
     if not _is_admin(init_data_raw):
         return web.json_response({'error': 'غير مصرّح'}, status=403)
+    admin_obj = _verify_telegram_init_data(init_data_raw) or {}
+    admin_id = str(admin_obj.get('id') or '')
     try:
         payload = await request.json()
         action = payload.get('action')
+
+        if action == 'update_service_gates':
+            current = repo.get_service_gates()
+            updated = repo.update_service_gates(
+                maintenance_mode=_coerce_bool(payload.get('maintenance_mode'), current['maintenance_mode']),
+                deposits_enabled=_coerce_bool(payload.get('deposits_enabled'), current['deposits_enabled']),
+                withdrawals_enabled=_coerce_bool(payload.get('withdrawals_enabled'), current['withdrawals_enabled']),
+                game_transfers_enabled=_coerce_bool(payload.get('game_transfers_enabled'), current['game_transfers_enabled']),
+            )
+            return web.json_response({'ok': True, 'service_gates': updated})
+
+        if action == 'create_cashier_profile':
+            data, error = _parse_cashier_profile_payload(payload)
+            if error:
+                return web.json_response({'error': error}, status=400)
+            profile_id = repo.create_cashier_profile(**data, created_by=admin_id)
+            if not profile_id:
+                return web.json_response({'error': 'تعذر إنشاء ملف المشرف'}, status=400)
+            return web.json_response({'ok': True, 'profile': _cashier_profile_json(repo.get_cashier_profile(profile_id))})
+
+        if action == 'update_cashier_profile':
+            profile_id = int(payload.get('profile_id'))
+            data, error = _parse_cashier_profile_payload(payload)
+            if error:
+                return web.json_response({'error': error}, status=400)
+            ok = repo.update_cashier_profile(
+                profile_id=profile_id,
+                **data,
+                updated_by=admin_id,
+                is_enabled=_coerce_bool(payload.get('is_enabled'), True),
+            )
+            return web.json_response({'ok': bool(ok), 'profile': _cashier_profile_json(repo.get_cashier_profile(profile_id))})
+
+        if action == 'activate_cashier_profile':
+            profile_id = int(payload.get('profile_id'))
+            result = repo.activate_cashier_profile(profile_id, switched_by=admin_id)
+            if not result.get('ok'):
+                return web.json_response({'error': 'الملف غير مكتمل أو غير صالح للتفعيل'}, status=400)
+            return web.json_response({'ok': True, **result, 'active_profile': _cashier_profile_json(repo.get_active_cashier_profile())})
+
+        if action == 'delete_cashier_profile':
+            profile_id = int(payload.get('profile_id'))
+            result = repo.delete_cashier_profile(profile_id)
+            if not result.get('ok'):
+                return web.json_response({'error': 'لا يمكن حذف ملف المشرف النشط'}, status=400)
+            return web.json_response({'ok': True})
 
         if action == 'update_alert_threshold':
             thresh = int(str(payload.get('agent_balance_alert_threshold', '100000')).replace(',', ''))
@@ -1606,6 +1737,9 @@ def _request_tx_to_json(tx):
         'original_amount': float(tx.get('original_amount') or 0) if tx.get('original_amount') is not None else None,
         'original_currency': tx.get('original_currency'),
         'converted_amount_syp': float(tx.get('converted_amount_syp') or 0) if tx.get('converted_amount_syp') is not None else None,
+        'cashier_profile_id': int(tx.get('cashier_profile_id')) if tx.get('cashier_profile_id') is not None else None,
+        'cashier_profile_name': tx.get('cashier_profile_name'),
+        'payment_destination': tx.get('payment_destination'),
     }
 
 
@@ -2527,6 +2661,7 @@ async def user_me_api_handler(request):
             'bonus_eligibility': bonus_eligibility,
             'vip': vip_info,
             'cashback': cashback_info,
+            'service_gates': repo.get_service_gates(),
         })
     except Exception as e:
         logger.error(f"user_me_api error: {e}", exc_info=True)
@@ -2540,6 +2675,9 @@ async def user_checkin_handler(request):
         return web.json_response({'error': 'غير مصرّح'}, status=403)
     telegram_id = str(user_obj.get('id', ''))
     try:
+        allowed, reason = repo.service_gate_status(None)
+        if not allowed:
+            return web.json_response({'error': reason}, status=503)
         result = repo.do_daily_checkin(telegram_id)
         if not result.get('ok'):
             if result.get('reason') == 'already_checked_in':
@@ -2613,6 +2751,9 @@ async def user_spin_wheel_handler(request):
         return web.json_response({'error': 'غير مصرّح'}, status=403)
     telegram_id = str(user_obj.get('id', ''))
     try:
+        allowed, reason = repo.service_gate_status(None)
+        if not allowed:
+            return web.json_response({'error': reason}, status=503)
         payload = await request.json()
         deposit_tx_id = int(payload.get('deposit_tx_id') or 0)
         if not deposit_tx_id:

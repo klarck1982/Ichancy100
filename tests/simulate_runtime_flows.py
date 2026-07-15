@@ -45,6 +45,10 @@ class FakeRepository(types.ModuleType):
         self.read_calls.append(("get_button_link", key))
         return "https://example.invalid/" + str(key)
 
+    def service_gate_status(self, service):
+        self.read_calls.append(("service_gate_status", service))
+        return True, None
+
 
 fake_repo = FakeRepository()
 sys.modules["database.repository"] = fake_repo

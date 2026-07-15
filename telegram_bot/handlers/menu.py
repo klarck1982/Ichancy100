@@ -391,8 +391,23 @@ async def _deliver_flow_message(target_message, text, reply_markup=None, parse_m
     return True
 
 
+async def _ensure_service_gate(target_message, user_id, service, edit=False):
+    allowed, reason = repo.service_gate_status(service)
+    if allowed:
+        return True
+    await _deliver_flow_message(
+        target_message,
+        f"🛡️ <b>الخدمة غير متاحة مؤقتاً</b>\n\n{reason}",
+        reply_markup=get_user_menu_keyboard(user_id),
+        edit=edit,
+    )
+    return False
+
+
 async def start_deposit_flow(target_message, user_id, state: FSMContext, edit=False):
     """Open the existing deposit flow without creating a financial transaction."""
+    if not await _ensure_service_gate(target_message, user_id, 'deposit', edit=edit):
+        return False
     telegram_id = str(user_id)
     user = repo.get_user(telegram_id)
     if not user or not user.get('player_id'):
@@ -434,6 +449,8 @@ async def start_deposit_flow(target_message, user_id, state: FSMContext, edit=Fa
 
 async def start_withdraw_flow(target_message, user_id, state: FSMContext, edit=False):
     """Open the existing withdraw flow without deducting any balance."""
+    if not await _ensure_service_gate(target_message, user_id, 'withdraw', edit=edit):
+        return False
     telegram_id = str(user_id)
     user = repo.get_user(telegram_id)
     if not user or not user.get('player_id'):
@@ -510,6 +527,8 @@ async def start_withdraw_flow(target_message, user_id, state: FSMContext, edit=F
 
 async def start_gift_flow(target_message, user_id, state: FSMContext, edit=False):
     """Open the existing gift-code flow without deducting any balance yet."""
+    if not await _ensure_service_gate(target_message, user_id, None, edit=edit):
+        return False
     telegram_id = str(user_id)
     user = repo.get_user(telegram_id)
     if not user or safe_balance(user) <= 0:
@@ -1192,9 +1211,16 @@ async def process_deposit_currency(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("dep_gate_"), BotStates.selecting_deposit_gateway)
 async def process_deposit_gateway(callback: CallbackQuery, state: FSMContext):
     gateway = callback.data.replace("dep_gate_", "")
-    await state.update_data(deposit_gateway=gateway)
+    payment_route = repo.get_payment_routing_context(gateway)
+    payment_address = payment_route.get('address') or ''
+    await state.update_data(
+        deposit_gateway=gateway,
+        deposit_payment_destination=payment_address,
+        deposit_cashier_profile_id=payment_route.get('cashier_profile_id'),
+        deposit_cashier_profile_name=payment_route.get('cashier_profile_name'),
+        deposit_payment_source=payment_route.get('source'),
+    )
 
-    payment_address = repo.get_payment_address(gateway)
     min_dep_syp = _get_min_deposit_syp()
     min_dep_syp_new = min_dep_syp / 100
     min_dep_syp_new_str = f"{int(min_dep_syp_new):,}" if min_dep_syp_new == int(min_dep_syp_new) else f"{min_dep_syp_new:,.2f}"
@@ -1403,6 +1429,12 @@ async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext
         await safe_answer_callback(callback, "⏳ جاري إرسال طلبك، يرجى الانتظار...", show_alert=True)
         return
     try:
+        allowed, reason = repo.service_gate_status('deposit')
+        if not allowed:
+            await callback.message.answer(f"🛡️ {reason}", reply_markup=get_user_menu_keyboard(callback.from_user.id))
+            await state.clear()
+            await safe_answer_callback(callback, reason, show_alert=True)
+            return
         data = await state.get_data()
         if not data:
             await send_expired_flow_message(callback.message, callback.from_user.id)
@@ -1427,6 +1459,14 @@ async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext
         short_tx_code = data.get('short_tx_code')
         transfer_number = data.get('transfer_number')
         photo_id = data.get('photo_id')
+        cashier_profile_id = data.get('deposit_cashier_profile_id')
+        cashier_profile_name = data.get('deposit_cashier_profile_name')
+        payment_destination = data.get('deposit_payment_destination')
+        if not payment_destination:
+            fallback_route = repo.get_payment_routing_context(gateway)
+            payment_destination = fallback_route.get('address')
+            cashier_profile_id = fallback_route.get('cashier_profile_id')
+            cashier_profile_name = fallback_route.get('cashier_profile_name')
 
         if not all([currency, gateway, amount, amount_to_save_syp, short_tx_code]):
             await send_expired_flow_message(callback.message, callback.from_user.id)
@@ -1440,7 +1480,10 @@ async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext
             amount=amount_to_save_syp,
             payment_method=gateway,
             transfer_number=f"Code: {short_tx_code} | Info: {transfer_number}",
-            status='pending'
+            status='pending',
+            cashier_profile_id=cashier_profile_id,
+            cashier_profile_name=cashier_profile_name,
+            payment_destination=payment_destination,
         )
 
         # ✅ تحقق تلقائي لإيداعات Syriatel Cash عبر API عند توفر رقم العملية/رقم المرسل
@@ -1533,6 +1576,10 @@ async def confirm_my_deposit_callback(callback: CallbackQuery, state: FSMContext
             player_id=repo.get_user(telegram_id).get('player_id'),
             ichancy_username=repo.get_user(telegram_id).get('ichancy_username')
         )
+        if cashier_profile_name:
+            admin_text += f"\n👤 <b>مشرف الاستلام:</b> <code>{cashier_profile_name}</code>"
+        if payment_destination:
+            admin_text += f"\n🏦 <b>عنوان الاستلام المثبت:</b> <code>{payment_destination}</code>"
         if auto_verify_note:
             admin_text += f"\n\n{auto_verify_note}"
 
@@ -1774,6 +1821,12 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_my_withdraw", BotStates.confirming_withdraw)
 async def confirm_withdraw_callback(callback: CallbackQuery, state: FSMContext):
+    allowed, reason = repo.service_gate_status('withdraw')
+    if not allowed:
+        await callback.message.answer(f"🛡️ {reason}", reply_markup=get_user_menu_keyboard(callback.from_user.id))
+        await state.clear()
+        await safe_answer_callback(callback, reason, show_alert=True)
+        return
     data = await state.get_data()
     if not data:
         await send_expired_flow_message(callback.message, callback.from_user.id)
@@ -2507,6 +2560,9 @@ async def prediction_select_callback(callback: CallbackQuery):
 @router.callback_query(F.data == "deposit_game_acc")
 async def deposit_game_acc_callback(callback: CallbackQuery, state: FSMContext):
     """شحن حساب اللعبة: تحويل رصيد البوت (SYP) إلى رصيد اللعبة (NSP) — فوري."""
+    if not await _ensure_service_gate(callback.message, callback.from_user.id, 'game', edit=True):
+        await safe_answer_callback(callback)
+        return
     if not await require_ichancy_registered(callback):
         return
 
@@ -2636,6 +2692,12 @@ async def process_game_deposit_amount(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_game_deposit", BotStates.confirming_game_deposit)
 async def confirm_game_deposit_callback(callback: CallbackQuery, state: FSMContext):
+    allowed, reason = repo.service_gate_status('game')
+    if not allowed:
+        await callback.message.answer(f"🛡️ {reason}", reply_markup=get_user_menu_keyboard(callback.from_user.id))
+        await state.clear()
+        await safe_answer_callback(callback, reason, show_alert=True)
+        return
     data = await state.get_data()
     if not data or 'game_deposit_syp' not in data:
         await send_expired_flow_message(callback.message, callback.from_user.id)
@@ -2704,6 +2766,9 @@ async def confirm_game_deposit_callback(callback: CallbackQuery, state: FSMConte
 @router.callback_query(F.data == "withdraw_game_acc")
 async def withdraw_game_acc_callback(callback: CallbackQuery, state: FSMContext):
     """سحب من حساب اللعبة: تحويل رصيد اللعبة (NSP) إلى رصيد البوت (SYP) — فوري."""
+    if not await _ensure_service_gate(callback.message, callback.from_user.id, 'game', edit=True):
+        await safe_answer_callback(callback)
+        return
     if not await require_ichancy_registered(callback):
         return
 
@@ -2812,6 +2877,12 @@ async def process_game_withdraw_amount(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_game_withdraw", BotStates.confirming_game_withdraw)
 async def confirm_game_withdraw_callback(callback: CallbackQuery, state: FSMContext):
+    allowed, reason = repo.service_gate_status('game')
+    if not allowed:
+        await callback.message.answer(f"🛡️ {reason}", reply_markup=get_user_menu_keyboard(callback.from_user.id))
+        await state.clear()
+        await safe_answer_callback(callback, reason, show_alert=True)
+        return
     data = await state.get_data()
     if not data or 'game_withdraw_nsp' not in data:
         await send_expired_flow_message(callback.message, callback.from_user.id)
@@ -2970,6 +3041,11 @@ async def gift_send_callback(callback: CallbackQuery, state: FSMContext):
 
 @router.message(BotStates.entering_gift_amount)
 async def process_gift_amount(message: Message, state: FSMContext):
+    allowed, reason = repo.service_gate_status(None)
+    if not allowed:
+        await message.answer(f"🛡️ {reason}", reply_markup=get_user_menu_keyboard(message.from_user.id))
+        await state.clear()
+        return
     try:
         amount = int(message.text.strip().replace(',', ''))
         if amount <= 0:
@@ -3002,6 +3078,9 @@ async def process_gift_amount(message: Message, state: FSMContext):
 @router.callback_query(F.data == "gift_redeem")
 async def gift_redeem_callback(callback: CallbackQuery, state: FSMContext):
     """بدء عملية استرداد كود هدية."""
+    if not await _ensure_service_gate(callback.message, callback.from_user.id, None, edit=True):
+        await safe_answer_callback(callback)
+        return
     await safe_edit_text(
         callback.message,
         "🎫 <b>استرداد كود هدية</b>\n\nأرسل الآن كود الهدية الذي تريد استرداده:",
@@ -3013,6 +3092,11 @@ async def gift_redeem_callback(callback: CallbackQuery, state: FSMContext):
 
 @router.message(BotStates.entering_gift_code_to_redeem)
 async def process_gift_redeem(message: Message, state: FSMContext):
+    allowed, reason = repo.service_gate_status(None)
+    if not allowed:
+        await message.answer(f"🛡️ {reason}", reply_markup=get_user_menu_keyboard(message.from_user.id))
+        await state.clear()
+        return
     code = message.text.strip()
     success, msg = repo.redeem_gift(code, str(message.from_user.id))
     if success:

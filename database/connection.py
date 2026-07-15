@@ -243,6 +243,9 @@ class DatabaseManager:
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cashback_amount_syp BIGINT DEFAULT 0;",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS checkin_amount_syp BIGINT DEFAULT 0;",
             "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS bonus_base_added_syp BIGINT DEFAULT 0;",
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cashier_profile_id INTEGER;",
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS cashier_profile_name VARCHAR(120);",
+            "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payment_destination TEXT;",
         ]
 
         gifts_table = """
@@ -315,6 +318,34 @@ class DatabaseManager:
             address TEXT,
             updated_by VARCHAR(50),
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
+        # ملفات المشرفين/الكاشير لعناوين الدفع المحلية.
+        cashier_profiles_table = """
+        CREATE TABLE IF NOT EXISTS cashier_profiles (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(120) NOT NULL,
+            telegram_id VARCHAR(50),
+            sham_syp_address TEXT NOT NULL,
+            sham_usd_address TEXT NOT NULL,
+            syriatel_address TEXT NOT NULL,
+            mtn_address TEXT NOT NULL,
+            is_enabled BOOLEAN DEFAULT TRUE,
+            created_by VARCHAR(50),
+            updated_by VARCHAR(50),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
+        cashier_switch_audit_table = """
+        CREATE TABLE IF NOT EXISTS cashier_switch_audit (
+            id BIGSERIAL PRIMARY KEY,
+            previous_profile_id INTEGER REFERENCES cashier_profiles(id) ON DELETE SET NULL,
+            new_profile_id INTEGER REFERENCES cashier_profiles(id) ON DELETE SET NULL,
+            switched_by VARCHAR(50) NOT NULL,
+            switched_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
         """
 
@@ -509,6 +540,11 @@ class DatabaseManager:
         # 🆕 نسخة الليرة السورية (old = قديمة, new = جديدة ÷100)
         alter_settings_syp_version = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS syp_version VARCHAR(10) DEFAULT 'old';"
         alter_settings_alert_threshold = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS agent_balance_alert_threshold BIGINT DEFAULT 100000;"
+        alter_settings_active_cashier = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS active_cashier_profile_id INTEGER;"
+        alter_settings_maintenance = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS maintenance_mode BOOLEAN DEFAULT FALSE;"
+        alter_settings_deposits_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS deposits_enabled BOOLEAN DEFAULT TRUE;"
+        alter_settings_withdrawals_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS withdrawals_enabled BOOLEAN DEFAULT TRUE;"
+        alter_settings_game_transfers_enabled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS game_transfers_enabled BOOLEAN DEFAULT TRUE;"
 
         # 🆕 (Update 14) رصيد المكافآت للمستخدم (غير قابل للسحب)
         alter_users_bonus_balance = "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_balance BIGINT DEFAULT 0;"
@@ -619,6 +655,8 @@ class DatabaseManager:
             referral_commissions_table,
             bonus_rules_table,
             payment_settings_table,
+            cashier_profiles_table,
+            cashier_switch_audit_table,
             # يجب إنشاء جدول إعدادات الميزات قبل أي ALTER عليه
             user_features_settings_table,
             alter_settings_agent_balance,
@@ -638,6 +676,11 @@ class DatabaseManager:
             alter_settings_min_withdraw_usd,
             alter_settings_syp_version,
             alter_settings_alert_threshold,
+            alter_settings_active_cashier,
+            alter_settings_maintenance,
+            alter_settings_deposits_enabled,
+            alter_settings_withdrawals_enabled,
+            alter_settings_game_transfers_enabled,
             alter_users_bonus_balance,
             alter_users_game_bonus_amount,
             alter_users_bonus_base_balance,
