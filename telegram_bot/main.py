@@ -63,6 +63,53 @@ SERVER_START_TS = time.time()
 last_agent_balance_db_update_ts = 0
 last_agent_balance_db_value = None
 
+# مفاتيح فلاش البونص المسموح بها وتسمياتها الموحدة للواجهات.
+FLASH_PAYMENT_METHOD_LABELS = {
+    'all': 'كل طرق الإيداع',
+    'syriatel': 'سيريتل كاش',
+    'mtn': 'MTN كاش',
+    'sham_syp': 'شام كاش (ليرة)',
+    'sham_usd': 'شام كاش (دولار)',
+    'usdt_trc': 'USDT (TRC20)',
+    'usdt_bep': 'USDT (BEP20)',
+}
+FLASH_PAYMENT_METHODS = frozenset(FLASH_PAYMENT_METHOD_LABELS)
+FLASH_PAYMENT_METHOD_ALIASES = {
+    'syriatel_cash': 'syriatel',
+    'mtn_cash': 'mtn',
+    'sham_cash_syp': 'sham_syp',
+    'sham_cash_usd': 'sham_usd',
+    'usdt_trc20': 'usdt_trc',
+    'usdt_bep20': 'usdt_bep',
+}
+
+
+def _normalize_flash_payment_method(value):
+    method = str(value or 'all').strip().lower()
+    method = FLASH_PAYMENT_METHOD_ALIASES.get(method, method)
+    return method if method in FLASH_PAYMENT_METHODS else None
+
+
+def _flash_method_label(value):
+    method = _normalize_flash_payment_method(value)
+    return FLASH_PAYMENT_METHOD_LABELS.get(method, 'طريقة دفع غير معروفة')
+
+
+def _serialize_flash_bonus(record):
+    """Build the canonical Flash Bonus payload shared by user/admin APIs."""
+    if not record:
+        return None
+    raw_method = str(record.get('payment_method') or 'all').strip().lower()
+    method = _normalize_flash_payment_method(raw_method) or 'unknown'
+    ends_at = record.get('ends_at')
+    return {
+        'id': record.get('id'),
+        'percent': float(record.get('percent') or 0),
+        'payment_method': method,
+        'method_label': _flash_method_label(raw_method),
+        'ends_at': ends_at.isoformat() if ends_at else None,
+    }
+
 
 def _should_update_agent_balance_cache(new_balance):
     """تقليل الكتابة على Neon: لا نحدّث رصيد الكاشيرة إلا إذا تغير أو مر وقت كافٍ."""
@@ -2360,11 +2407,7 @@ async def user_me_api_handler(request):
         try:
             fb = repo.get_active_flash_bonus()
             if fb:
-                flash = {
-                    'id': fb.get('id'),
-                    'percent': float(fb.get('percent') or 0),
-                    'ends_at': fb.get('ends_at').isoformat() if fb.get('ends_at') else None,
-                }
+                flash = _serialize_flash_bonus(fb)
         except Exception as e:
             logger.warning(f"user_me flash error: {e}")
 
@@ -2533,7 +2576,9 @@ async def admin_flash_handler(request):
         if action == 'create':
             percent = float(str(payload.get('percent') or '0').replace('%', '').replace(',', '.'))
             duration = int(payload.get('duration_minutes') or 30)
-            payment_method = (payload.get('payment_method') or 'all').strip()
+            payment_method = _normalize_flash_payment_method(payload.get('payment_method'))
+            if not payment_method:
+                return web.json_response({'error': 'طريقة الدفع غير صالحة لفلاش البونص'}, status=400)
             withdraw_commission = float(repo.get_bot_settings().get('withdraw_commission') or 0)
             if percent <= 0 or percent > withdraw_commission:
                 return web.json_response({'error': f'النسبة يجب أن تكون أقل من عمولة السحب ({withdraw_commission}%)'}, status=400)
@@ -2550,13 +2595,7 @@ async def admin_flash_handler(request):
         if action == 'status':
             fb = repo.get_active_flash_bonus()
             if fb:
-                return web.json_response({
-                    'active': True,
-                    'id': fb.get('id'),
-                    'percent': float(fb.get('percent') or 0),
-                    'payment_method': fb.get('payment_method') or 'all',
-                    'ends_at': fb.get('ends_at').isoformat() if fb.get('ends_at') else None,
-                })
+                return web.json_response({'active': True, **_serialize_flash_bonus(fb)})
             return web.json_response({'active': False})
 
         return web.json_response({'error': 'إجراء غير معروف'}, status=400)
@@ -2676,21 +2715,17 @@ async def admin_features_get_handler(request):
 
         # جلب حالة فلاش البونص الحالي
         flash = repo.get_active_flash_bonus()
-        flash_info = None
-        if flash:
-            flash_info = {
-                'id': flash.get('id'),
-                'percent': float(flash.get('percent') or 0),
-                'payment_method': flash.get('payment_method') or 'all',
-                'ends_at': flash.get('ends_at').isoformat() if flash.get('ends_at') else None,
-            }
+        flash_info = _serialize_flash_bonus(flash)
         recent_flashes = repo.get_recent_flash_bonuses(limit=5)
         recent = []
         for f in recent_flashes:
+            raw_flash_method = str(f.get('payment_method') or 'all').strip().lower()
+            flash_method = _normalize_flash_payment_method(raw_flash_method) or 'unknown'
             recent.append({
                 'id': f.get('id'),
                 'percent': float(f.get('percent') or 0),
-                'payment_method': f.get('payment_method') or 'all',
+                'payment_method': flash_method,
+                'method_label': _flash_method_label(raw_flash_method),
                 'ends_at': f.get('ends_at').strftime('%Y-%m-%d %H:%M') if f.get('ends_at') else '',
                 'is_active': f.get('is_active'),
             })

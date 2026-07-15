@@ -1,5 +1,5 @@
-تحديث Caesar Robert — النسخة الخامسة Production UX — 15 يوليو 2026
-==================================================================
+تحديث Caesar Robert — النسخة السادسة Flash Method Fix — 15 يوليو 2026
+======================================================================
 
 1) الشعار والتحديث
 - الشعار الأفقي الكبير المعتمد ومحاذاة الكلمات على قطر الشعار.
@@ -32,12 +32,22 @@
 - عداد الفلاش محلي بالكامل.
 - لا توجد تعديلات على قاعدة البيانات أو Environment Variables.
 
-6) المحاكاة
+6) إصلاح طريقة فلاش البونص
+- بانر المستخدم يعرض طريقة الدفع المحددة بدل عبارة «كل الإيداعات» الثابتة.
+- API المستخدم يرسل payment_method وmethod_label.
+- لوحة الأدمن تعرض الطريقة في الفلاش النشط وسجل الفلاشات.
+- إضافة USDT (BEP20) إلى خيارات الفلاش.
+- رفض أي طريقة غير صالحة مع دعم المفاتيح القديمة تلقائيًا.
+- منطق احتساب البونص المالي بقي كما هو.
+
+7) المحاكاة
 - tests/simulate_miniapp_shortcuts.py
 - tests/simulate_runtime_flows.py
 - tests/simulate_ux_pack.py
+- tests/simulate_flash_payment_method.py
 - SIMULATION_REPORT_MINIAPP_SHORTCUTS_AR.md
 - SIMULATION_REPORT_UX_PACK_AR.md
+- SIMULATION_REPORT_FLASH_METHOD_AR.md
 
 الملفات الرئيسية المعدلة أو المضافة:
 - webapp/user_app_pingo.html

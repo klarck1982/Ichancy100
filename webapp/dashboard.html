@@ -1059,6 +1059,19 @@ function showFeatureSubTab(subTab) {
   if(window.lastFeaturesData) renderFeatures(window.lastFeaturesData);
 }
 
+const FLASH_METHOD_LABELS_ADMIN=Object.freeze({
+  all:'كل طرق الإيداع',
+  syriatel:'سيريتل كاش',
+  mtn:'MTN كاش',
+  sham_syp:'شام كاش (ليرة)',
+  sham_usd:'شام كاش (دولار)',
+  usdt_trc:'USDT (TRC20)',
+  usdt_bep:'USDT (BEP20)'
+});
+function flashMethodLabel(method){
+  return FLASH_METHOD_LABELS_ADMIN[String(method||'all').trim().toLowerCase()]||'طريقة غير معروفة';
+}
+
 function renderFeatures(d){
   window.lastFeaturesData = d;
   const s=d.settings||{},cs=d.checkin_stats||{},af=d.active_flash,rf=d.recent_flashes||[];
@@ -1135,14 +1148,14 @@ function renderFeatures(d){
     subContent = `
       <div class="card">
         <div class="card-title">⚡ فلاش البونص ${af?'<span class="pill">نشط الآن</span>':''}</div>
-        ${af?`<div class="warn-box" style="border-color:var(--gold);color:var(--gold)">⚡ فلاش نشط: ${af.percent}% — ينتهي ${new Date(af.ends_at).toLocaleString('ar-EG')}<br><button class="btn danger" style="margin-top:8px" onclick="stopFlash(${af.id})">🛑 إيقاف الفلاش الآن</button></div>`:`
+        ${af?`<div class="warn-box" style="border-color:var(--gold);color:var(--gold)">⚡ فلاش نشط: ${af.percent}%<br>💳 طريقة الدفع: <b>${flashMethodLabel(af.payment_method)}</b><br>🕒 ينتهي: ${new Date(af.ends_at).toLocaleString('ar-EG')}<br><button class="btn danger" style="margin-top:8px" onclick="stopFlash(${af.id})">🛑 إيقاف الفلاش الآن</button></div>`:`
         <div class="field"><label>نسبة الفلاش %</label><input id="flash_percent" inputmode="decimal" placeholder="مثال: 15"></div>
         <div class="field"><label>المدة (دقائق)</label><input id="flash_duration" inputmode="numeric" value="30"></div>
-        <div class="field"><label>طريقة الدفع</label><select id="flash_method"><option value="all">كل الطرق</option><option value="syriatel">سيريتل</option><option value="mtn">MTN</option><option value="sham_syp">شام SYP</option><option value="sham_usd">شام USD</option><option value="usdt_trc">USDT</option></select></div>
+        <div class="field"><label>طريقة الدفع</label><select id="flash_method"><option value="all">كل طرق الإيداع</option><option value="syriatel">سيريتل كاش</option><option value="mtn">MTN كاش</option><option value="sham_syp">شام كاش (ليرة)</option><option value="sham_usd">شام كاش (دولار)</option><option value="usdt_trc">USDT (TRC20)</option><option value="usdt_bep">USDT (BEP20)</option></select></div>
         <button class="btn gold" onclick="createFlash()">⚡ إطلاق فلاش بونص</button>
         `}
       </div>
-      ${rf.length?`<div class="card"><div class="card-title">📜 سجل الفلاشات</div>${rf.map(f=>`<div class="pending-item"><b>#${f.id} — ${f.percent}%</b> ${f.is_active?'<span class="pill green">نشط</span>':'<span class="pill">منتهي</span>'}<br><span class="label">ينتهي: ${f.ends_at}</span></div>`).join('')}</div>`:''}`;
+      ${rf.length?`<div class="card"><div class="card-title">📜 سجل الفلاشات</div>${rf.map(f=>`<div class="pending-item"><b>#${f.id} — ${f.percent}%</b> ${f.is_active?'<span class="pill green">نشط</span>':'<span class="pill">منتهي</span>'}<br><span class="label">الطريقة: ${flashMethodLabel(f.payment_method)} • ينتهي: ${f.ends_at}</span></div>`).join('')}</div>`:''}`;
   } else if(currentFeatureSubTab === 'checkin') {
     subContent = `
       <div class="card">

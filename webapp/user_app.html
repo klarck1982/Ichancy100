@@ -1243,12 +1243,30 @@ async function doSpin(depositTxId){
 }
 
 // ===== فلاش البونص =====
+// FLASH_METHOD_DISPLAY_BEGIN
+const FLASH_METHOD_LABELS=Object.freeze({
+  all:'كل طرق الإيداع',
+  syriatel:'سيريتل كاش',
+  mtn:'MTN كاش',
+  sham_syp:'شام كاش (ليرة)',
+  sham_usd:'شام كاش (دولار)',
+  usdt_trc:'USDT (TRC20)',
+  usdt_bep:'USDT (BEP20)'
+});
+function getFlashBannerDescription(flash){
+  const method=String(flash?.payment_method||'all').trim().toLowerCase();
+  if(method==='all')return 'على كل طرق الإيداع — لوقت محدود';
+  const label=FLASH_METHOD_LABELS[method]||'طريقة الدفع المحددة';
+  return `حصريًا على إيداعات ${label} — لوقت محدود`;
+}
+// FLASH_METHOD_DISPLAY_END
 let flashInterval=null;
 function renderFlash(d){
   const fb=d.flash_bonus;
   const box=document.getElementById('flashBanner');
   if(!fb){box.innerHTML='';if(flashInterval){clearInterval(flashInterval);flashInterval=null}return}
   const endsAt=new Date(fb.ends_at);
+  const methodDescription=getFlashBannerDescription(fb);
   function update(){
     const now=new Date();
     const diff=endsAt-now;
@@ -1258,7 +1276,7 @@ function renderFlash(d){
     box.innerHTML=`
       <div class="flash-banner">
         <div class="fl-title">⚡ فلاش بونص ${fb.percent}%!</div>
-        <div class="fl-desc">بونص إضافي على كل إيداع — لوقت محدود</div>
+        <div class="fl-desc">${methodDescription}</div>
         <div class="fl-timer">⏰ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}</div>
       </div>`;
   }
