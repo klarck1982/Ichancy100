@@ -1,4 +1,5 @@
 import logging
+import secrets
 from datetime import datetime, timezone, timedelta
 from database.connection import DatabaseManager
 
@@ -1356,6 +1357,241 @@ def create_bot_gift(admin_id, amount, code):
         return False, "تعذر إنشاء كود الهدية. يرجى المحاولة مجدداً."
 
 
+def calculate_campaign_distribution(input_mode, input_value, max_redemptions):
+    """Calculate per-redemption value and actual maximum campaign spend."""
+    count = int(max_redemptions or 0)
+    value = int(input_value or 0)
+    if count <= 0 or value <= 0:
+        return {'ok': False, 'reward_amount': 0, 'total_budget': 0, 'remainder': 0}
+    if str(input_mode or 'per_code') == 'total_budget':
+        reward = value // count
+        actual = reward * count
+        return {'ok': reward > 0, 'reward_amount': reward, 'total_budget': actual, 'remainder': value - actual}
+    return {'ok': True, 'reward_amount': value, 'total_budget': value * count, 'remainder': 0}
+
+
+def create_gift_campaign(name, reward_type, code_mode, reward_amount, max_redemptions, duration_hours, requires_ichancy=True, created_by=None):
+    """Create a campaign and its unique batch/shared code inside one transaction."""
+    reward_type = str(reward_type or '').strip().lower()
+    code_mode = str(code_mode or '').strip().lower()
+    amount = int(reward_amount or 0)
+    max_uses = int(max_redemptions or 0)
+    hours = int(duration_hours or 0)
+    if reward_type not in ('bonus', 'cash') or code_mode not in ('unique', 'shared'):
+        return {'ok': False, 'reason': 'invalid_type'}
+    if amount < 1 or max_uses < 1 or max_uses > 1000 or hours < 1 or hours > 2160:
+        return {'ok': False, 'reason': 'invalid_values'}
+    conn = None
+    cursor = None
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO gift_campaigns (name, reward_type, code_mode, reward_amount,
+                max_redemptions, requires_ichancy, status, starts_at, ends_at, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, 'active', CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP + (%s * INTERVAL '1 hour'), %s)
+            RETURNING id
+            """,
+            (str(name).strip(), reward_type, code_mode, amount, max_uses, bool(requires_ichancy), hours, str(created_by or ''))
+        )
+        row = cursor.fetchone()
+        campaign_id = int(row[0])
+        prefix = 'CAESAR-BONUS' if reward_type == 'bonus' else 'CAESAR-CASH'
+        code_count = max_uses if code_mode == 'unique' else 1
+        per_code_limit = 1 if code_mode == 'unique' else max_uses
+        codes = []
+        for _ in range(code_count):
+            code = f"{prefix}-C{campaign_id}-{secrets.token_hex(4).upper()}"
+            cursor.execute(
+                """
+                INSERT INTO gift_campaign_codes (campaign_id, code, max_redemptions, redemptions_count, is_active)
+                VALUES (%s, %s, %s, 0, TRUE)
+                """,
+                (campaign_id, code, per_code_limit)
+            )
+            codes.append(code)
+        conn.commit()
+        return {
+            'ok': True,
+            'campaign_id': campaign_id,
+            'codes': codes,
+            'reward_amount': amount,
+            'max_redemptions': max_uses,
+            'total_budget': amount * max_uses,
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"create_gift_campaign error: {e}")
+        return {'ok': False, 'reason': 'error', 'message': str(e)}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
+def get_gift_campaigns(limit=100):
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT c.*,
+            COALESCE((SELECT COUNT(*) FROM gift_campaign_redemptions r WHERE r.campaign_id=c.id),0) AS redeemed_count,
+            COALESCE((SELECT COUNT(*) FROM gift_campaign_codes cc WHERE cc.campaign_id=c.id),0) AS codes_count
+        FROM gift_campaigns c ORDER BY c.created_at DESC LIMIT %s
+        """,
+        (int(limit),), fetch='all'
+    ) or []
+
+
+def get_gift_campaign(campaign_id):
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT c.*,
+            COALESCE((SELECT COUNT(*) FROM gift_campaign_redemptions r WHERE r.campaign_id=c.id),0) AS redeemed_count,
+            COALESCE((SELECT COUNT(*) FROM gift_campaign_codes cc WHERE cc.campaign_id=c.id),0) AS codes_count
+        FROM gift_campaigns c WHERE c.id=%s
+        """,
+        (int(campaign_id),), fetch='one'
+    )
+
+
+def get_gift_campaign_codes(campaign_id):
+    return DatabaseManager.execute_query_dict(
+        "SELECT * FROM gift_campaign_codes WHERE campaign_id=%s ORDER BY id ASC",
+        (int(campaign_id),), fetch='all'
+    ) or []
+
+
+def get_gift_campaign_redemptions(campaign_id, limit=200):
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT r.*, u.telegram_username, u.ichancy_username
+        FROM gift_campaign_redemptions r
+        LEFT JOIN users u ON u.telegram_id=r.user_telegram_id
+        WHERE r.campaign_id=%s ORDER BY r.redeemed_at DESC LIMIT %s
+        """,
+        (int(campaign_id), int(limit)), fetch='all'
+    ) or []
+
+
+def set_gift_campaign_status(campaign_id, status):
+    status = str(status or '').strip().lower()
+    if status not in ('active', 'paused', 'closed'):
+        return False
+    DatabaseManager.execute_query(
+        "UPDATE gift_campaigns SET status=%s WHERE id=%s",
+        (status, int(campaign_id))
+    )
+    return True
+
+
+def get_campaign_code_info(code):
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT cc.id AS code_id, cc.code, cc.campaign_id, c.name AS campaign_name,
+               c.reward_type, c.reward_amount, c.reward_amount AS amount,
+               ('CAMPAIGN:' || c.id::text) AS sender_telegram_id, c.status, c.ends_at
+        FROM gift_campaign_codes cc JOIN gift_campaigns c ON c.id=cc.campaign_id
+        WHERE UPPER(cc.code)=UPPER(%s)
+        """,
+        (str(code).strip(),), fetch='one'
+    )
+
+
+def redeem_campaign_code(code, receiver_id):
+    """Redeem a campaign code atomically, enforcing one reward per user/campaign."""
+    conn = None
+    cursor = None
+    normalized = str(code or '').strip().upper()
+    receiver_tid = str(receiver_id)
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT cc.id, cc.campaign_id, cc.max_redemptions, cc.redemptions_count, cc.is_active,
+                   c.name, c.reward_type, c.reward_amount, c.max_redemptions,
+                   c.requires_ichancy, c.status, c.starts_at, c.ends_at
+            FROM gift_campaign_codes cc
+            JOIN gift_campaigns c ON c.id=cc.campaign_id
+            WHERE UPPER(cc.code)=%s
+            FOR UPDATE OF cc, c
+            """,
+            (normalized,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.rollback()
+            return {'found': False, 'ok': False, 'reason': 'not_found'}
+        (code_id, campaign_id, code_max, code_used, code_active, campaign_name,
+         reward_type, reward_amount, campaign_max, requires_ichancy, status,
+         starts_at, ends_at) = row
+        now = datetime.now(timezone.utc)
+        if status != 'active' or not code_active or (starts_at and now < starts_at) or (ends_at and now >= ends_at):
+            conn.rollback()
+            return {'found': True, 'ok': False, 'reason': 'inactive', 'message': 'هذه الحملة غير نشطة أو انتهت صلاحيتها.'}
+        if int(code_used or 0) >= int(code_max or 0):
+            conn.rollback()
+            return {'found': True, 'ok': False, 'reason': 'code_exhausted', 'message': 'تم استخدام هذا الكود بالكامل.'}
+        cursor.execute("SELECT bot_balance, player_id FROM users WHERE telegram_id=%s FOR UPDATE", (receiver_tid,))
+        user = cursor.fetchone()
+        if not user:
+            conn.rollback()
+            return {'found': True, 'ok': False, 'reason': 'user_not_found', 'message': 'استخدم /start أولاً ثم حاول مجددًا.'}
+        if requires_ichancy and not user[1]:
+            conn.rollback()
+            return {'found': True, 'ok': False, 'reason': 'ichancy_required', 'message': 'هذه الحملة متاحة للمستخدمين الذين لديهم حساب iChancy مرتبط.'}
+        cursor.execute(
+            "SELECT id FROM gift_campaign_redemptions WHERE campaign_id=%s AND user_telegram_id=%s",
+            (campaign_id, receiver_tid)
+        )
+        if cursor.fetchone():
+            conn.rollback()
+            return {'found': True, 'ok': False, 'reason': 'user_limit', 'message': 'لقد حصلت على مكافأتك من هذه الحملة مسبقًا.'}
+        cursor.execute("SELECT COUNT(*) FROM gift_campaign_redemptions WHERE campaign_id=%s", (campaign_id,))
+        campaign_used = int((cursor.fetchone() or [0])[0] or 0)
+        if campaign_used >= int(campaign_max or 0):
+            conn.rollback()
+            return {'found': True, 'ok': False, 'reason': 'campaign_exhausted', 'message': 'اكتمل عدد المستفيدين من هذه الحملة.'}
+        amount_int = int(reward_amount or 0)
+        cursor.execute(
+            """
+            INSERT INTO gift_campaign_redemptions
+                (campaign_id, code_id, user_telegram_id, reward_type, reward_amount)
+            VALUES (%s,%s,%s,%s,%s)
+            """,
+            (campaign_id, code_id, receiver_tid, reward_type, amount_int)
+        )
+        cursor.execute(
+            """
+            UPDATE gift_campaign_codes SET redemptions_count=redemptions_count+1,
+                is_active=(redemptions_count+1 < max_redemptions)
+            WHERE id=%s
+            """,
+            (code_id,)
+        )
+        if reward_type == 'bonus':
+            cursor.execute("UPDATE users SET bonus_balance=COALESCE(bonus_balance,0)+%s WHERE telegram_id=%s", (amount_int, receiver_tid))
+            message = f"تمت إضافة {amount_int:,} ل.س إلى رصيد مكافآت اللعب من حملة {campaign_name}."
+        else:
+            cursor.execute("UPDATE users SET bot_balance=COALESCE(bot_balance,0)+%s WHERE telegram_id=%s", (amount_int, receiver_tid))
+            message = f"تمت إضافة {amount_int:,} ل.س إلى رصيدك القابل للسحب من حملة {campaign_name}."
+        conn.commit()
+        return {'found': True, 'ok': True, 'campaign_id': int(campaign_id), 'amount': amount_int, 'reward_type': reward_type, 'message': message}
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"redeem_campaign_code error: {e}")
+        return {'found': True, 'ok': False, 'reason': 'error', 'message': 'تعذر استرداد كود الحملة حاليًا.'}
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
 def redeem_gift(code, receiver_id):
     """استرداد كود هدية بشكل ذري وآمن.
 
@@ -1366,6 +1602,13 @@ def redeem_gift(code, receiver_id):
     cursor = None
     receiver_tid = str(receiver_id)
     normalized_code = str(code).strip().upper()
+
+    code_parts = normalized_code.split('-')
+    is_campaign_format = len(code_parts) >= 4 and code_parts[2].startswith('C') and code_parts[2][1:].isdigit()
+    if is_campaign_format:
+        campaign_result = redeem_campaign_code(normalized_code, receiver_tid)
+        if campaign_result.get('found'):
+            return bool(campaign_result.get('ok')), campaign_result.get('message') or 'تعذر استرداد كود الحملة.'
 
     try:
         conn = DatabaseManager.get_connection()

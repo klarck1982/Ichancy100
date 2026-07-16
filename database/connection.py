@@ -261,6 +261,48 @@ class DatabaseManager:
         );
         """
 
+        gift_campaigns_table = """
+        CREATE TABLE IF NOT EXISTS gift_campaigns (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(160) NOT NULL,
+            reward_type VARCHAR(20) NOT NULL DEFAULT 'bonus',
+            code_mode VARCHAR(20) NOT NULL DEFAULT 'unique',
+            reward_amount BIGINT NOT NULL,
+            max_redemptions INTEGER NOT NULL,
+            requires_ichancy BOOLEAN DEFAULT TRUE,
+            status VARCHAR(20) DEFAULT 'active',
+            starts_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            ends_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            created_by VARCHAR(50),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
+        gift_campaign_codes_table = """
+        CREATE TABLE IF NOT EXISTS gift_campaign_codes (
+            id BIGSERIAL PRIMARY KEY,
+            campaign_id INTEGER NOT NULL REFERENCES gift_campaigns(id) ON DELETE CASCADE,
+            code VARCHAR(120) UNIQUE NOT NULL,
+            max_redemptions INTEGER NOT NULL DEFAULT 1,
+            redemptions_count INTEGER NOT NULL DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
+        gift_campaign_redemptions_table = """
+        CREATE TABLE IF NOT EXISTS gift_campaign_redemptions (
+            id BIGSERIAL PRIMARY KEY,
+            campaign_id INTEGER NOT NULL REFERENCES gift_campaigns(id) ON DELETE CASCADE,
+            code_id BIGINT NOT NULL REFERENCES gift_campaign_codes(id) ON DELETE CASCADE,
+            user_telegram_id VARCHAR(50) NOT NULL,
+            reward_type VARCHAR(20) NOT NULL,
+            reward_amount BIGINT NOT NULL,
+            redeemed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(campaign_id, user_telegram_id)
+        );
+        """
+
         bot_settings_table = """
         CREATE TABLE IF NOT EXISTS bot_settings (
             id SERIAL PRIMARY KEY,
@@ -651,6 +693,9 @@ class DatabaseManager:
             transactions_table,
             *alter_transactions_columns,
             gifts_table,
+            gift_campaigns_table,
+            gift_campaign_codes_table,
+            gift_campaign_redemptions_table,
             bot_settings_table,
             referral_commissions_table,
             bonus_rules_table,

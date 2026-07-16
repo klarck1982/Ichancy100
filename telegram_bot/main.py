@@ -2701,6 +2701,101 @@ async def user_bonus_to_game_handler(request):
     }, status=400)
 
 
+def _campaign_json(item):
+    return {
+        'id': int(item.get('id')),
+        'name': item.get('name') or '',
+        'reward_type': item.get('reward_type') or 'bonus',
+        'code_mode': item.get('code_mode') or 'unique',
+        'reward_amount': int(item.get('reward_amount') or 0),
+        'max_redemptions': int(item.get('max_redemptions') or 0),
+        'redeemed_count': int(item.get('redeemed_count') or 0),
+        'codes_count': int(item.get('codes_count') or 0),
+        'requires_ichancy': bool(item.get('requires_ichancy')),
+        'status': item.get('status') or 'active',
+        'starts_at': item.get('starts_at').isoformat() if item.get('starts_at') else None,
+        'ends_at': item.get('ends_at').isoformat() if item.get('ends_at') else None,
+        'created_by': str(item.get('created_by') or ''),
+        'created_at': item.get('created_at').isoformat() if item.get('created_at') else None,
+        'total_budget': int(item.get('reward_amount') or 0) * int(item.get('max_redemptions') or 0),
+    }
+
+
+async def admin_gift_campaigns_handler(request):
+    """Create and manage social marketing gift-code campaigns."""
+    init_data_raw = request.headers.get('X-Telegram-Init-Data', '')
+    if not _is_admin(init_data_raw):
+        return web.json_response({'error': 'غير مصرّح'}, status=403)
+    admin_obj = _verify_telegram_init_data(init_data_raw) or {}
+    admin_id = str(admin_obj.get('id') or '')
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    action = payload.get('action') or 'list'
+    try:
+        if action == 'list':
+            return web.json_response({'campaigns': [_campaign_json(x) for x in repo.get_gift_campaigns(limit=100)]})
+        if action == 'create':
+            name = str(payload.get('name') or '').strip()
+            count = int(payload.get('max_redemptions') or 0)
+            input_mode = str(payload.get('input_mode') or 'per_code')
+            input_value = int(str(payload.get('input_value') or '0').replace(',', ''))
+            distribution = repo.calculate_campaign_distribution(input_mode, input_value, count)
+            if len(name) < 3 or not distribution.get('ok') or distribution['reward_amount'] < 1000:
+                return web.json_response({'error': 'تحقق من الاسم والعدد والقيمة؛ الحد الأدنى لكل استفادة 1,000 SYP'}, status=400)
+            if distribution['total_budget'] > 1_000_000_000_000:
+                return web.json_response({'error': 'ميزانية الحملة كبيرة جدًا'}, status=400)
+            result = repo.create_gift_campaign(
+                name=name,
+                reward_type=str(payload.get('reward_type') or 'bonus'),
+                code_mode=str(payload.get('code_mode') or 'unique'),
+                reward_amount=distribution['reward_amount'],
+                max_redemptions=count,
+                duration_hours=int(payload.get('duration_hours') or 24),
+                requires_ichancy=_coerce_bool(payload.get('requires_ichancy'), True),
+                created_by=admin_id,
+            )
+            if not result.get('ok'):
+                return web.json_response({'error': 'تعذر إنشاء الحملة أو أن القيم غير صالحة'}, status=400)
+            return web.json_response({'ok': True, **result, 'remainder': distribution['remainder']})
+        if action == 'detail':
+            campaign_id = int(payload.get('campaign_id'))
+            campaign = repo.get_gift_campaign(campaign_id)
+            if not campaign:
+                return web.json_response({'error': 'الحملة غير موجودة'}, status=404)
+            codes = repo.get_gift_campaign_codes(campaign_id)
+            redemptions = repo.get_gift_campaign_redemptions(campaign_id, limit=200)
+            return web.json_response({
+                'campaign': _campaign_json(campaign),
+                'codes': [{
+                    'id': int(c.get('id')), 'code': c.get('code'),
+                    'max_redemptions': int(c.get('max_redemptions') or 0),
+                    'redemptions_count': int(c.get('redemptions_count') or 0),
+                    'is_active': bool(c.get('is_active')),
+                } for c in codes],
+                'redemptions': [{
+                    'user_telegram_id': str(r.get('user_telegram_id')),
+                    'telegram_username': r.get('telegram_username'),
+                    'reward_type': r.get('reward_type'),
+                    'reward_amount': int(r.get('reward_amount') or 0),
+                    'redeemed_at': r.get('redeemed_at').isoformat() if r.get('redeemed_at') else None,
+                } for r in redemptions],
+            })
+        if action == 'set_status':
+            campaign_id = int(payload.get('campaign_id'))
+            status = str(payload.get('status') or '')
+            if not repo.set_gift_campaign_status(campaign_id, status):
+                return web.json_response({'error': 'حالة غير صالحة'}, status=400)
+            return web.json_response({'ok': True})
+        return web.json_response({'error': 'إجراء غير معروف'}, status=400)
+    except ValueError:
+        return web.json_response({'error': 'قيمة رقمية غير صحيحة'}, status=400)
+    except Exception as e:
+        logger.error(f"admin_gift_campaigns error: {e}", exc_info=True)
+        return web.json_response({'error': 'خطأ داخلي'}, status=500)
+
+
 async def admin_flash_handler(request):
     """🆕 (Update 12) إدارة فلاش البونص من الداشبورد."""
     if not _is_admin(request.headers.get('X-Telegram-Init-Data', '')):
@@ -3001,6 +3096,7 @@ def main():
     app.router.add_post("/api/user/bonus-to-game", user_bonus_to_game_handler)
     app.router.add_post("/api/user/spin-wheel", user_spin_wheel_handler)
     app.router.add_post("/api/admin/flash", admin_flash_handler)
+    app.router.add_post("/api/admin/gift-campaigns", admin_gift_campaigns_handler)
     app.router.add_get("/api/admin/features", admin_features_get_handler)
     app.router.add_post("/api/admin/features", admin_features_post_handler)
     app.router.add_get("/games-hub", serve_games_hub_html)

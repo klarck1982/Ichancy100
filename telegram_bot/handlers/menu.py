@@ -3103,7 +3103,7 @@ async def process_gift_redeem(message: Message, state: FSMContext):
         try:
             user = repo.get_user(str(message.from_user.id)) or {}
             username = user.get('telegram_username') or message.from_user.username or '—'
-            gift_data = repo.get_gift_by_code(code) or {}
+            gift_data = repo.get_gift_by_code(code) or repo.get_campaign_code_info(code) or {}
             sender_id = gift_data.get('sender_telegram_id', 'Unknown')
             amount = gift_data.get('amount', 0)
             is_bonus = str(code).upper().startswith('CAESAR-BONUS-')

@@ -203,7 +203,7 @@ def get_admin_keyboard():
 
 
 def get_admin_dashboard_keyboard(refresh_callback="caesar_control_panel"):
-    webapp_url = f"{getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')}/dashboard?v=admin-command-v7-20260715"
+    webapp_url = f"{getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')}/dashboard?v=admin-campaigns-v9-20260716"
     from aiogram.types import WebAppInfo
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 فتح لوحة التحكم المتقدمة", web_app=WebAppInfo(url=webapp_url))],
