@@ -73,9 +73,16 @@ def simulate_frontend(path: Path) -> None:
     native_harness = f"""
 const calls=[];
 const haptics=[];
+const timers=[];
+let closeCount=0;
+const overlay={{shown:false,attrs:{{}},classList:{{add:()=>overlay.shown=true,remove:()=>overlay.shown=false}},setAttribute:(k,v)=>overlay.attrs[k]=v}};
+const title={{textContent:''}};
+const document={{getElementById:(id)=>id==='botFlowOverlay'?overlay:id==='botFlowTitle'?title:null}};
 const window={{location:{{href:''}}}};
+const setTimeout=(fn,delay)=>{{timers.push(delay);fn();return timers.length}};
 const tg={{
   openTelegramLink:(url)=>calls.push(url),
+  close:()=>closeCount++,
   HapticFeedback:{{impactOccurred:(kind)=>haptics.push(kind)}}
 }};
 {js}
@@ -86,12 +93,18 @@ if(openBotFlow('invalid')!==false)throw new Error('invalid action accepted');
 const expected={expected_json};
 if(JSON.stringify(calls)!==JSON.stringify(expected))throw new Error('URLs mismatch: '+JSON.stringify(calls));
 if(haptics.length!==3)throw new Error('haptic mismatch');
+if(closeCount!==3)throw new Error('Mini App close mismatch: '+closeCount);
+if(!timers.includes(420)||!timers.includes(1800))throw new Error('handoff timers missing');
 if(window.location.href!=='')throw new Error('unexpected browser fallback');
 """
     run_node(native_harness, f"Telegram frontend simulation ({path.name})")
 
     fallback_harness = f"""
+const overlay={{classList:{{add:()=>{{}},remove:()=>{{}}}},setAttribute:()=>{{}}}};
+const title={{textContent:''}};
+const document={{getElementById:(id)=>id==='botFlowOverlay'?overlay:id==='botFlowTitle'?title:null}};
 const window={{location:{{href:''}}}};
+const setTimeout=(fn,delay)=>{{fn();return 1}};
 const tg={{HapticFeedback:{{impactOccurred:()=>{{}}}}}};
 {js}
 if(openBotFlow('deposit')!==true)throw new Error('fallback rejected');

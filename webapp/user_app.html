@@ -392,6 +392,14 @@
   .wheel-result.lose{background:rgba(255,255,255,0.04);color:var(--hint)}
   .wheel-result.pingo{background:linear-gradient(135deg,#fff0a8,var(--gold),#b8860b);color:#050505;box-shadow:0 0 16px rgba(255,215,0,0.35)}
 
+  /* ===== انتقال واضح من Mini App إلى مسار البوت ===== */
+  .bot-flow-overlay{position:fixed;inset:0;z-index:500;display:grid;place-items:center;padding:24px;background:rgba(3,5,10,.84);backdrop-filter:blur(9px);opacity:0;visibility:hidden;transition:opacity .18s,visibility .18s}
+  .bot-flow-overlay.show{opacity:1;visibility:visible}
+  .bot-flow-card{width:min(88vw,310px);padding:22px 18px;border-radius:20px;text-align:center;background:linear-gradient(150deg,#151713,#090c14);border:1px solid rgba(224,178,67,.48);box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 22px rgba(224,178,67,.08)}
+  .bot-flow-spinner{width:34px;height:34px;margin:0 auto 12px;border:3px solid rgba(224,178,67,.16);border-top-color:#e0b243;border-radius:50%;animation:botFlowSpin .7s linear infinite}
+  .bot-flow-card b{display:block;color:#f0d17b;font-size:14px}.bot-flow-card small{display:block;color:var(--hint);font-size:10px;margin-top:6px;line-height:1.6}
+  @keyframes botFlowSpin{to{transform:rotate(360deg)}}
+
   /* ===== شريط التنقّل السفلي ===== */
   .bottom-nav{
     position:fixed;bottom:0;left:0;right:0;
@@ -526,6 +534,11 @@
   </div>
 </div>
 
+<!-- شاشة انتقال قصيرة حتى يرى المستخدم نتيجة الضغط قبل إغلاق Mini App -->
+<div class="bot-flow-overlay" id="botFlowOverlay" role="status" aria-live="assertive" aria-hidden="true">
+  <div class="bot-flow-card"><div class="bot-flow-spinner" aria-hidden="true"></div><b id="botFlowTitle">جارٍ نقلك إلى البوت</b><small>سيتم إغلاق الداشبورد تلقائيًا وإظهار المسار المطلوب.</small></div>
+</div>
+
 <!-- شريط التنقّل السفلي -->
 <div class="bottom-nav">
   <button class="nav-item active" id="navHome" onclick="showPage('home')">
@@ -601,27 +614,40 @@ async function refreshFromLogo(){
 function fmt(n){return new Intl.NumberFormat('en-US').format(Number(n||0));}
 function closeApp(){tg.close();}
 
-// MINIAPP_SHORTCUTS_BEGIN — pure client routing; no API or Neon request.
+// MINIAPP_SHORTCUTS_BEGIN — client handoff; no API or Neon request.
 const BOT_USERNAME = 'Caesar_Robert_bot';
 const BOT_FLOW_PAYLOADS = Object.freeze({
   deposit: 'app_deposit',
   withdraw: 'app_withdraw',
   gift: 'app_gift'
 });
+const BOT_FLOW_LABELS = Object.freeze({deposit:'مسار شحن الرصيد',withdraw:'مسار سحب الرصيد',gift:'مسار إهداء الرصيد'});
+let botFlowOpening=false;
 
 function buildBotFlowUrl(action){
   const payload=BOT_FLOW_PAYLOADS[action];
   return payload ? `https://t.me/${BOT_USERNAME}?start=${payload}` : null;
 }
-
+function showBotFlowOverlay(action){
+  const overlay=document.getElementById('botFlowOverlay');
+  const title=document.getElementById('botFlowTitle');
+  if(title)title.textContent=`جارٍ فتح ${BOT_FLOW_LABELS[action]||'المسار المطلوب'}`;
+  overlay?.classList.add('show');overlay?.setAttribute('aria-hidden','false');
+}
+function hideBotFlowOverlay(){const overlay=document.getElementById('botFlowOverlay');overlay?.classList.remove('show');overlay?.setAttribute('aria-hidden','true')}
+function scheduleMiniAppClose(){
+  setTimeout(()=>{try{tg?.close?.()}catch(_){}},420);
+  setTimeout(()=>{hideBotFlowOverlay();botFlowOpening=false},1800);
+}
 function openBotFlow(action){
   const url=buildBotFlowUrl(action);
-  if(!url)return false;
+  if(!url||botFlowOpening)return false;
+  botFlowOpening=true;showBotFlowOverlay(action);
   tg?.HapticFeedback?.impactOccurred?.('light');
   if(typeof tg?.openTelegramLink==='function'){
-    tg.openTelegramLink(url);
+    try{tg.openTelegramLink(url);scheduleMiniAppClose()}catch(_){botFlowOpening=false;hideBotFlowOverlay();window.location.href=url}
   }else{
-    window.location.href=url;
+    botFlowOpening=false;window.location.href=url;
   }
   return true;
 }
