@@ -2474,6 +2474,8 @@ async def public_links_handler(request):
         'robert_vip_url': repo.get_button_link('robert_vip_url'),
         'robert_vip_register_url': repo.get_button_link('robert_vip_register_url'),
         'robert_vip_login_url': repo.get_button_link('robert_vip_login_url'),
+        'robert_vip_bet_url': repo.get_button_link('robert_vip_bet_url'),
+        'robert_vip_predictions_url': repo.get_button_link('robert_vip_predictions_url'),
     })
 
 

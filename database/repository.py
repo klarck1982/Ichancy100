@@ -2427,6 +2427,8 @@ BUTTON_LINK_LABELS = {
     'robert_vip_url': '🌟 Robert VIP — المنصة',
     'robert_vip_register_url': '🆕 Robert VIP — التسجيل',
     'robert_vip_login_url': '🔐 Robert VIP — الدخول',
+    'robert_vip_bet_url': '⚽ Robert VIP — راهن مع روبيرت',
+    'robert_vip_predictions_url': '🎫 Robert VIP — باقات التوقعات',
 }
 
 
@@ -2439,7 +2441,9 @@ def get_button_link_fallback(key):
         'games_url': getattr(settings, 'GAMES_URL', ''),
         'robert_vip_url': getattr(settings, 'ROBERT_VIP_URL', 'https://robert.vip/dashboard/games'),
         'robert_vip_register_url': getattr(settings, 'ROBERT_VIP_REGISTER_URL', 'https://robert.vip/register'),
-        'robert_vip_login_url': getattr(settings, 'ROBERT_VIP_LOGIN_URL', 'https://robert.vip/login'),
+        'robert_vip_login_url': getattr(settings, 'ROBERT_VIP_LOGIN_URL', 'https://robert.vip/login?redirect=%2Fdashboard%2Fgames'),
+        'robert_vip_bet_url': getattr(settings, 'ROBERT_VIP_BET_URL', 'https://robert.vip/dashboard/bet-with-robert'),
+        'robert_vip_predictions_url': getattr(settings, 'ROBERT_VIP_PREDICTIONS_URL', 'https://robert.vip/dashboard/prediction-packages'),
     }
     return mapping.get(key, '')
 

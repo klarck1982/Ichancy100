@@ -20,7 +20,7 @@ def get_user_app_url():
 
 def get_robert_vip_hub_url():
     base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
-    return f"{base}/robert-vip?v=robert-hub-v1-20260718"
+    return f"{base}/robert-vip?v=robert-hub-v2-20260719"
 
 
 def get_main_menu_keyboard(is_admin=False):
@@ -31,7 +31,7 @@ def get_main_menu_keyboard(is_admin=False):
         InlineKeyboardButton(text="👑 لوحة القيصر", web_app=WebAppInfo(url=get_user_app_url()))
     ])
     keyboard.append([
-        InlineKeyboardButton(text="🌟 ROBERT VIP — فتح المنصة", web_app=WebAppInfo(url=get_robert_vip_hub_url()))
+        InlineKeyboardButton(text="♛ Robert.VIP", web_app=WebAppInfo(url=get_robert_vip_hub_url()))
     ])
 
     if is_admin:

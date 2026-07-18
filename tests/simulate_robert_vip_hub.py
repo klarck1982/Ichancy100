@@ -39,14 +39,17 @@ def main():
  assert len(session.calls)==2 and first['data']['cached'] is False and second['data']['cached'] is True
  assert first['data']['stories'][0]['link_url']==''
  hub=HUB.read_text();keys=KEYS.read_text();main_src=MAIN.read_text()
- for token in ('فتح المنصة الآن','إنشاء حساب','تسجيل الدخول','/api/robert-vip/public','/api/public/links','ROBERT VIP HUB'):assert token in hub
+ for token in ('دخول إلى المنصة','إنشاء حساب جديد','تسجيل الدخول أو تبديل الحساب','راهن مع روبيرت','باقات التوقّعات','/api/robert-vip/public','/api/public/links','ROBERT VIP HUB'):assert token in hub
+ assert '/dashboard/bet-with-robert' in hub and '/dashboard/prediction-packages' in hub
+ assert 'لم يتم ربط الحساب بعد' not in hub and 'الوصول الذكي' in hub
  assert 'password' not in hub.lower() and 'كلمة المرور' in hub
- assert 'get_robert_vip_hub_url' in keys and '🌟 ROBERT VIP — فتح المنصة' in keys
+ assert 'get_robert_vip_hub_url' in keys and '♛ Robert.VIP' in keys
  assert 'app.router.add_get("/robert-vip"' in main_src and 'app.router.add_get("/api/robert-vip/public"' in main_src
  assert 'ROBERT_PUBLIC_CACHE' in main_src and 'expires_at' in main_src and 'now + 300' in main_src
  assert 'DatabaseManager' not in ast.get_source_segment(main_src,next(n for n in ast.parse(main_src).body if isinstance(n,ast.AsyncFunctionDef) and n.name=='robert_vip_public_handler'))
  print('PASS: bot menu contains a wide Robert VIP WebApp button')
- print('PASS: Hub provides platform, register, login, offers, stories, and help actions')
+ print('PASS: Hub provides smart platform entry, registration, account switching, offers, stories, and help')
+ print('PASS: direct Bet with Robert and Prediction Packages routes are visible')
  print('PASS: public proxy sanitizes external URLs')
  print('PASS: banners and stories are fetched once then served from 5-minute memory cache')
  print('PASS: second simulated request performs no upstream calls')
