@@ -2424,6 +2424,9 @@ BUTTON_LINK_LABELS = {
     'app_download_url': '📱 تحميل التطبيق',
     'betting_url': '📘 Facebook البوت',
     'games_url': '🎮 ألعاب iChancy',
+    'robert_vip_url': '🌟 Robert VIP — المنصة',
+    'robert_vip_register_url': '🆕 Robert VIP — التسجيل',
+    'robert_vip_login_url': '🔐 Robert VIP — الدخول',
 }
 
 
@@ -2434,6 +2437,9 @@ def get_button_link_fallback(key):
         'app_download_url': getattr(settings, 'APP_DOWNLOAD_URL', ''),
         'betting_url': getattr(settings, 'BETTING_URL', ''),
         'games_url': getattr(settings, 'GAMES_URL', ''),
+        'robert_vip_url': getattr(settings, 'ROBERT_VIP_URL', 'https://robert.vip/dashboard/games'),
+        'robert_vip_register_url': getattr(settings, 'ROBERT_VIP_REGISTER_URL', 'https://robert.vip/register'),
+        'robert_vip_login_url': getattr(settings, 'ROBERT_VIP_LOGIN_URL', 'https://robert.vip/login'),
     }
     return mapping.get(key, '')
 

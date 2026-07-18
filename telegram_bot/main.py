@@ -60,6 +60,8 @@ daily_report_task = None
 routers_registered = False
 last_cookie_warning_sent = None  # 🆕 يمنع تكرار تنبيه الكوكيز
 SERVER_START_TS = time.time()
+ROBERT_VIP_API_BASE = "https://api.robert.vip/api/v1"
+ROBERT_PUBLIC_CACHE = {'data': None, 'expires_at': 0.0, 'updated_at': 0.0}
 last_agent_balance_db_update_ts = 0
 last_agent_balance_db_value = None
 
@@ -2388,12 +2390,90 @@ async def serve_site_hub_html(request):
     return web.FileResponse(html_path)
 
 
+async def serve_robert_vip_hub_html(request):
+    html_path = os.path.join(WEBAPP_DIR, "robert_vip_hub.html")
+    if not os.path.exists(html_path):
+        return web.Response(text="Robert VIP Hub not found", status=404)
+    return _no_cache_file_response(html_path)
+
+
+def _safe_robert_public_item(item, kind):
+    if not isinstance(item, dict):
+        return None
+    def safe_url(value):
+        text = str(value or '').strip()
+        if text.startswith('/'):
+            text = urllib.parse.urljoin('https://robert.vip', text)
+        try:
+            parsed = urllib.parse.urlparse(text)
+            if parsed.scheme == 'https' and (parsed.hostname == 'robert.vip' or str(parsed.hostname or '').endswith('.robert.vip')):
+                return text
+        except Exception:
+            pass
+        return ''
+    if kind == 'banner':
+        return {
+            'ref_id': str(item.get('ref_id') or ''),
+            'title': str(item.get('title') or '')[:200],
+            'title_ar': str(item.get('title_ar') or '')[:200],
+            'description': str(item.get('description') or '')[:500],
+            'description_ar': str(item.get('description_ar') or '')[:500],
+            'image_url': safe_url(item.get('image_url')),
+            'mobile_image_url': safe_url(item.get('mobile_image_url')),
+            'link_url': safe_url(item.get('link_url')),
+        }
+    return {
+        'ref_id': str(item.get('ref_id') or ''),
+        'title': str(item.get('title') or '')[:200],
+        'title_ar': str(item.get('title_ar') or '')[:200],
+        'thumbnail_url': safe_url(item.get('thumbnail_url')),
+        'media_url': safe_url(item.get('media_url')),
+        'webp_url': safe_url(item.get('webp_url')),
+        'link_url': safe_url(item.get('link_url')),
+    }
+
+
+async def robert_vip_public_handler(request):
+    """Cached proxy for Robert.vip public banners/stories; no user token involved."""
+    now = time.time()
+    cached = ROBERT_PUBLIC_CACHE.get('data')
+    if cached is not None and now < float(ROBERT_PUBLIC_CACHE.get('expires_at') or 0):
+        return web.json_response({**cached, 'cached': True}, headers={'Cache-Control': 'public, max-age=120'})
+    session = request.app.get('neon_session')
+    if not session:
+        return web.json_response(cached or {'banners': [], 'stories': [], 'available': False})
+    async def fetch_list(path):
+        async with session.get(ROBERT_VIP_API_BASE + path, headers={'Accept': 'application/json'}) as response:
+            if response.status != 200:
+                return []
+            payload = await response.json(content_type=None)
+            data = payload.get('data', payload) if isinstance(payload, dict) else payload
+            return data if isinstance(data, list) else []
+    try:
+        banners_raw, stories_raw = await asyncio.gather(fetch_list('/banners'), fetch_list('/stories'))
+        data = {
+            'banners': [x for x in (_safe_robert_public_item(i, 'banner') for i in banners_raw[:8]) if x],
+            'stories': [x for x in (_safe_robert_public_item(i, 'story') for i in stories_raw[:10]) if x],
+            'available': True,
+            'updated_at': int(now),
+        }
+        ROBERT_PUBLIC_CACHE.update({'data': data, 'expires_at': now + 300, 'updated_at': now})
+        return web.json_response({**data, 'cached': False}, headers={'Cache-Control': 'public, max-age=120'})
+    except Exception as e:
+        logger.warning(f"Robert VIP public content fetch failed: {e}")
+        stale = cached or {'banners': [], 'stories': [], 'available': False, 'updated_at': 0}
+        return web.json_response({**stale, 'cached': True}, headers={'Cache-Control': 'public, max-age=60'})
+
+
 async def public_links_handler(request):
     return web.json_response({
         'website_url': repo.get_button_link('website_url'),
         'app_download_url': repo.get_button_link('app_download_url'),
         'betting_url': repo.get_button_link('betting_url'),
         'games_url': repo.get_button_link('games_url'),
+        'robert_vip_url': repo.get_button_link('robert_vip_url'),
+        'robert_vip_register_url': repo.get_button_link('robert_vip_register_url'),
+        'robert_vip_login_url': repo.get_button_link('robert_vip_login_url'),
     })
 
 
@@ -3101,6 +3181,8 @@ def main():
     app.router.add_post("/api/admin/features", admin_features_post_handler)
     app.router.add_get("/games-hub", serve_games_hub_html)
     app.router.add_get("/site-hub", serve_site_hub_html)
+    app.router.add_get("/robert-vip", serve_robert_vip_hub_html)
+    app.router.add_get("/api/robert-vip/public", robert_vip_public_handler)
     app.router.add_get("/api/public/links", public_links_handler)
     app.router.add_get("/api/dashboard", dashboard_api_handler)
     app.router.add_get("/api/admin/settings", admin_settings_get_handler)

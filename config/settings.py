@@ -38,6 +38,9 @@ WEBSITE_URL = os.getenv('WEBSITE_URL', 'https://www.ichancy100.com')
 APP_DOWNLOAD_URL = os.getenv('APP_DOWNLOAD_URL', 'https://www.ichancy100.com')
 BETTING_URL = os.getenv('BETTING_URL', 'https://facebook.com/your-bot-page')
 GAMES_URL = os.getenv('GAMES_URL', 'https://ichancy100.com/games')
+ROBERT_VIP_URL = os.getenv('ROBERT_VIP_URL', 'https://robert.vip/dashboard/games')
+ROBERT_VIP_REGISTER_URL = os.getenv('ROBERT_VIP_REGISTER_URL', 'https://robert.vip/register')
+ROBERT_VIP_LOGIN_URL = os.getenv('ROBERT_VIP_LOGIN_URL', 'https://robert.vip/login')
 
 RENDER_EXTERNAL_URL = os.getenv('RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
 
