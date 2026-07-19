@@ -31,7 +31,7 @@ def get_main_menu_keyboard(is_admin=False):
         InlineKeyboardButton(text="👑 لوحة القيصر", web_app=WebAppInfo(url=get_user_app_url()))
     ])
     keyboard.append([
-        InlineKeyboardButton(text="♛ Robert.VIP", web_app=WebAppInfo(url=get_robert_vip_hub_url()))
+        InlineKeyboardButton(text="👑 Robert.VIP", web_app=WebAppInfo(url=get_robert_vip_hub_url()))
     ])
 
     if is_admin:

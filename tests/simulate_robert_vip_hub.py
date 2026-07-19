@@ -43,11 +43,11 @@ def main():
  assert '/dashboard/bet-with-robert' in hub and '/dashboard/prediction-packages' in hub
  assert 'لم يتم ربط الحساب بعد' not in hub and 'الوصول الذكي' in hub
  assert 'password' not in hub.lower() and 'كلمة المرور' in hub
- assert 'get_robert_vip_hub_url' in keys and '♛ Robert.VIP' in keys
+ assert 'get_robert_vip_hub_url' in keys and '👑 Robert.VIP' in keys and '♛ Robert.VIP' not in keys
  assert 'app.router.add_get("/robert-vip"' in main_src and 'app.router.add_get("/api/robert-vip/public"' in main_src
  assert 'ROBERT_PUBLIC_CACHE' in main_src and 'expires_at' in main_src and 'now + 300' in main_src
  assert 'DatabaseManager' not in ast.get_source_segment(main_src,next(n for n in ast.parse(main_src).body if isinstance(n,ast.AsyncFunctionDef) and n.name=='robert_vip_public_handler'))
- print('PASS: bot menu contains a wide Robert VIP WebApp button')
+ print('PASS: bot menu contains a Robert VIP WebApp button with colored crown emoji')
  print('PASS: Hub provides smart platform entry, registration, account switching, offers, stories, and help')
  print('PASS: direct Bet with Robert and Prediction Packages routes are visible')
  print('PASS: public proxy sanitizes external URLs')
