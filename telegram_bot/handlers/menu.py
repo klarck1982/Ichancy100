@@ -2183,7 +2183,19 @@ async def contact_us_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data == "guides_menu")
 async def guides_menu_callback(callback: CallbackQuery):
-    await send_coming_soon(callback, "💭 الشروحات")
+    base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
+    url = f"{base}/guides.html"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💭 فتح الشروحات", web_app=WebAppInfo(url=url))],
+        [InlineKeyboardButton(text="🏠 القائمة الرئيسية", callback_data="back_to_main_menu")]
+    ])
+    await safe_edit_text(
+        callback.message,
+        "💭 <b>الشروحات — Caesar 👑</b>\n\nاختر ما تريد الاطلاع عليه من خلال فتح دليل الشروحات أدناه 👇",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await safe_answer_callback(callback)
 
 
 @router.callback_query(F.data == "contests_menu")
