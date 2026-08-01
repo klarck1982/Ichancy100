@@ -6,22 +6,26 @@
 <title>💭 الشروحات — Caesar 👑</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Cairo', sans-serif; background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); color: #f0e6d2; min-height: 100vh; padding: 20px; }
-.container { max-width: 520px; margin: 0 auto; }
-header { text-align: center; margin-bottom: 28px; }
-header h1 { font-size: 28px; font-weight: 900; color: #ffd700; text-shadow: 0 0 14px rgba(255,215,0,0.35); letter-spacing: 1px; }
-header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
-.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,215,0,0.15); border-radius: 18px; padding: 18px 20px; margin-bottom: 14px; backdrop-filter: blur(10px); cursor: pointer; transition: all .25s ease; position: relative; overflow: hidden; }
-.card:hover { border-color: rgba(255,215,0,0.45); transform: translateY(-2px); box-shadow: 0 10px 28px rgba(255,215,0,0.1); }
-.card.active { border-color: #ffd700; box-shadow: 0 12px 32px rgba(255,215,0,0.2); }
-.card h3 { font-size: 17px; font-weight: 700; color: #ffd700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
-.card .icon { font-size: 22px; }
-.card .summary { color: #d4c89a; font-size: 14px; line-height: 1.6; }
-.card .detail { max-height: 0; overflow: hidden; transition: max-height .35s ease; color: #f0e6d2; font-size: 14px; line-height: 1.8; }
-.card.active .detail { max-height: 600px; margin-top: 10px; border-top: 1px solid rgba(255,215,0,0.2); padding-top: 10px; }
-.btn-back { display: block; width: 100%; padding: 14px; background: linear-gradient(90deg, #ffd700, #bfa100); color: #1a0f2e; border: none; border-radius: 12px; font-weight: 900; font-size: 16px; margin-top: 10px; cursor: pointer; text-decoration: none; text-align: center; transition: transform .15s ease; }
-.btn-back:hover { transform: scale(1.02); }
+:root { --bg:#0a0e1a; --gold:#ffd700; --gold-dim:#bfa100; --card:rgba(255,255,255,0.04); --card-border:rgba(255,215,0,0.12); --text:#f0e6d2; --sub:#caaa66; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',-apple-system,'Segoe UI',Tahoma,sans-serif;background:linear-gradient(160deg,#060814,#0a0e1a 40%,#0f1525);color:var(--text);min-height:100vh;padding:24px 16px;overflow-x:hidden}
+.container{max-width:540px;margin:0 auto;position:relative;z-index:1}
+header{text-align:center;margin-bottom:32px;animation:fadeUp .8s ease}
+header h1{font-size:32px;font-weight:900;color:var(--gold);text-shadow:0 0 22px rgba(255,215,0,0.35),0 4px 12px rgba(0,0,0,.6);letter-spacing:1px;position:relative;display:inline-block}
+header h1::after{content:'';display:block;width:60px;height:3px;background:linear-gradient(90deg,var(--gold),transparent);margin:8px auto 0;border-radius:3px}
+header p{color:var(--sub);margin-top:8px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:22px;padding:22px 22px 18px;margin-bottom:16px;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);cursor:pointer;transition:all .35s ease;position:relative;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.35)}
+.card::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,rgba(255,215,0,.04),transparent 60%);pointer-events:none}
+.card:hover{border-color:rgba(255,215,0,.45);transform:translateY(-3px);box-shadow:0 16px 36px rgba(255,215,0,.1),0 4px 12px rgba(0,0,0,.4)}
+.card.active{border-color:var(--gold);box-shadow:0 20px 40px rgba(255,215,0,.18),0 6px 16px rgba(0,0,0,.35)}
+.card h3{font-size:18px;font-weight:700;color:var(--gold);margin-bottom:6px;display:flex;align-items:center;gap:10px}
+.card .icon{font-size:24px;filter:drop-shadow(0 0 6px rgba(255,215,0,.45))}
+.card .summary{color:#d4c89a;font-size:14px;line-height:1.65}
+.card .detail{max-height:0;overflow:hidden;transition:max-height .45s ease,opacity .35s ease;opacity:0;color:#f0e6d2;font-size:14px;line-height:1.85}
+.card.active .detail{max-height:700px;margin-top:12px;border-top:1px solid rgba(255,215,0,.18);padding-top:12px;opacity:1}
+.btn-back{display:block;width:100%;padding:16px;background:linear-gradient(90deg,var(--gold),#cfa000);color:#0a0e1a;border:none;border-radius:14px;font-weight:900;font-size:17px;margin-top:8px;cursor:pointer;text-decoration:none;text-align:center;transition:transform .15s ease,box-shadow .2s ease;box-shadow:0 10px 28px rgba(255,215,0,.25)}
+.btn-back:hover{transform:scale(1.02);box-shadow:0 14px 36px rgba(255,215,0,.35)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 </style>
 </head>
 <body>
@@ -35,10 +39,10 @@ header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
 <h3><span class="icon">📌</span> التسجيل في البوت</h3>
 <div class="summary">اضغط /start → وافق على الشروط → يتم الربط تلقائياً.</div>
 <div class="detail">
-• ابدأ المحادثة مع البوت عبر <b>/start</b>.<br>
-• وافق على شروط الاستخدام من الزر الأخضر.<br>
-• سيتم إنشاء حساب تلقائي وربطه برقم Telegram الخاص بك.<br>
-• لإنشاء حساب <b>iChancy</b> توجه إلى ⚡ حساب iChancy وأدخل اسم المستخدم وكلمة المرور.
+<b>• ابدأ المحادثة مع البوت عبر /start.</b><br>
+<b>• وافق على شروط الاستخدام من الزر الأخضر.</b><br>
+<b>• سيتم إنشاء حساب تلقائي وربطه برقم Telegram الخاص بك.</b><br>
+<b>• لإنشاء حساب iChancy توجه إلى ⚡ حساب iChancy وأدخل اسم المستخدم وكلمة المرور.</b>
 </div>
 </div>
 
@@ -46,11 +50,11 @@ header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
 <h3><span class="icon">📥</span> الإيداع في البوت</h3>
 <div class="summary">اختر العملة والبوابة → أدخل المبلغ → أرسل إثبات التحويل.</div>
 <div class="detail">
-• من القائمة الرئيسية اختر <b>📥 شحن رصيد</b>.<br>
-• اختر العملة (ليرة سورية أو دولار) ثم البوابة (Syriatel / MTN / Sham Cash / USDT).<br>
-• أدخل قيمة المبلغ الذي قمت بتحويله.<br>
-• أرسل صورة إثبات التحويل أو رقم العملية.<br>
-• انتظر إشعار الموافقة من المشرف خلال دقائق.
+<b>• من القائمة الرئيسية اختر 📥 شحن رصيد.</b><br>
+<b>• اختر العملة (ليرة سورية أو دولار) ثم البوابة.</b><br>
+<b>• أدخل قيمة المبلغ الذي قمت بتحويله.</b><br>
+<b>• أرسل صورة إثبات التحويل أو رقم العملية.</b><br>
+<b>• انتظر إشعار الموافقة من المشرف خلال دقائق.</b>
 </div>
 </div>
 
@@ -58,11 +62,11 @@ header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
 <h3><span class="icon">📤</span> السحب من البوت</h3>
 <div class="summary">اختر وسيلة السحب → أدخل المبلغ ورقم المستلم → تأكيد.</div>
 <div class="detail">
-• من القائمة الرئيسية اختر <b>📤 سحب رصيد</b>.<br>
-• اختر العملة ثم وسيلة السحب (Syriatel / MTN / Sham Cash / USDT).<br>
-• أدخل المبلغ المراد سحبه ورقم المستلم أو عنوان المحفظة.<br>
-• تأكد من صحة البيانات ثم اضغط تأكيد.<br>
-• يتم إرسال الطلب للمشرف ويتم التنفيذ بعد المراجعة.
+<b>• من القائمة الرئيسية اختر 📤 سحب رصيد.</b><br>
+<b>• اختر العملة ثم وسيلة السحب.</b><br>
+<b>• أدخل المبلغ المراد سحبه ورقم المستلم أو عنوان المحفظة.</b><br>
+<b>• تأكد من صحة البيانات ثم اضغط تأكيد.</b><br>
+<b>• يتم إرسال الطلب للمشرف ويتم التنفيذ بعد المراجعة.</b>
 </div>
 </div>
 
@@ -70,12 +74,11 @@ header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
 <h3><span class="icon">📥</span> الإيداع في اللعبة</h3>
 <div class="summary">من رصيد البوت → حساب اللعبة (1 SYP = 1 NSP).</div>
 <div class="detail">
-• توجه إلى ⚡ <b>حساب iChancy</b> من القائمة الرئيسية.<br>
-• اضغط على <b>📥 شحن حساب اللعبة</b>.<br>
-• أدخل المبلغ بالليرة السورية (SYP).<br>
-• النسبة ثابتة: <b>1 SYP = 1 NSP</b>.<br>
-• قد يُضاف بونص لعب حسب إعدادات المشرف.<br>
-• يتم التحويل فوراً بعد الضغط على تأكيد.
+<b>• توجه إلى ⚡ حساب iChancy من القائمة الرئيسية.</b><br>
+<b>• اضغط على 📥 شحن حساب اللعبة.</b><br>
+<b>• أدخل المبلغ بالليرة السورية (SYP).</b><br>
+<b>• النسبة ثابتة: 1 SYP = 1 NSP.</b><br>
+<b>• قد يُضاف بونص لعب حسب إعدادات المشرف.</b>
 </div>
 </div>
 
@@ -83,12 +86,11 @@ header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
 <h3><span class="icon">📤</span> السحب من اللعبة</h3>
 <div class="summary">من رصيد اللعبة → رصيد البوت (1 NSP = 1 SYP).</div>
 <div class="detail">
-• توجه إلى ⚡ <b>حساب iChancy</b> من القائمة الرئيسية.<br>
-• اضغط على <b>📤 سحب من حساب اللعبة</b>.<br>
-• أدخل المبلغ بنقاط NSP التي تريد سحبها.<br>
-• النسبة ثابتة: <b>1 NSP = 1 SYP</b>.<br>
-• يُخصم بونص اللعب النشط أولاً قبل إضافة الرصيد النقدي للبوت.<br>
-• يتم التحويل فوراً بعد التأكيد.
+<b>• توجه إلى ⚡ حساب iChancy من القائمة الرئيسية.</b><br>
+<b>• اضغط على 📤 سحب من حساب اللعبة.</b><br>
+<b>• أدخل المبلغ بنقاط NSP التي تريد سحبها.</b><br>
+<b>• النسبة ثابتة: 1 NSP = 1 SYP.</b><br>
+<b>• يُخصم بونص اللعب النشط أولاً قبل إضافة الرصيد النقدي للبوت.</b>
 </div>
 </div>
 
@@ -104,7 +106,7 @@ header p { color: #caaa66; margin-top: 6px; font-size: 14px; }
 </div>
 </div>
 
-<a href="#" onclick="window.Telegram.WebApp.close();" class="btn-back">🏠 العودة للقائمة الرئيسية</a>
+<a href="#" onclick="window.Telegram.WebApp.close(); window.Telegram.WebApp.sendData('/start');" class="btn-back">🏠 العودة للقائمة الرئيسية</a>
 </div>
 </body>
 </html>
