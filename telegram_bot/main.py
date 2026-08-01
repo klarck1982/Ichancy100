@@ -2376,6 +2376,13 @@ async def _get_total_bot_balance_cached():
 
 
 
+async def serve_guides_html(request):
+    html_path = os.path.join(WEBAPP_DIR, "guides.html")
+    if not os.path.exists(html_path):
+        return web.Response(text="Guides not found", status=404)
+    return _no_cache_file_response(html_path)
+
+
 async def serve_games_hub_html(request):
     html_path = os.path.join(WEBAPP_DIR, "games_hub.html")
     if not os.path.exists(html_path):
@@ -3181,6 +3188,7 @@ def main():
     app.router.add_post("/api/admin/gift-campaigns", admin_gift_campaigns_handler)
     app.router.add_get("/api/admin/features", admin_features_get_handler)
     app.router.add_post("/api/admin/features", admin_features_post_handler)
+    app.router.add_get("/guides.html", serve_guides_html)
     app.router.add_get("/games-hub", serve_games_hub_html)
     app.router.add_get("/site-hub", serve_site_hub_html)
     app.router.add_get("/robert-vip", serve_robert_vip_hub_html)
