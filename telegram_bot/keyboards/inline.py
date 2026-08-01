@@ -26,7 +26,7 @@ def get_robert_vip_hub_url():
 def get_guides_url():
     """💭 رابط Mini App الشروحات (مع cache-buster لكسر كاش Telegram WebView)."""
     base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
-    return f"{base}/guides.html?v=guides-miniapp-v1-20260801"
+    return f"{base}/guides.html?v=guides-miniapp-v2-20260801"
 
 
 def get_main_menu_keyboard(is_admin=False):
@@ -65,7 +65,7 @@ def get_main_menu_keyboard(is_admin=False):
         ],
         [
             InlineKeyboardButton(text="📌 الشروط", callback_data="show_terms_only"),
-            InlineKeyboardButton(text="💭 الشروحات", callback_data="guides_menu")
+            InlineKeyboardButton(text="💭 الشروحات", web_app=WebAppInfo(url=get_guides_url()))
         ],
         [
             InlineKeyboardButton(text="👑 مسابقات القيصر", callback_data="contests_menu"),

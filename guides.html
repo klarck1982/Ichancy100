@@ -104,16 +104,17 @@ section{margin-top:22px;animation:fadeUp .5s ease}
 .faq .card .body b{display:block;margin-bottom:4px;color:var(--gold)}
 
 /* ===== Footer buttons ===== */
-.actions{position:sticky;bottom:10px;margin-top:26px;display:flex;gap:10px;z-index:5}
-.btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:15px 10px;
-  border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:900;cursor:pointer;
-  transition:transform .15s,box-shadow .2s;text-decoration:none}
-.btn:active{transform:scale(.97)}
+.actions{display:flex;gap:10px;justify-content:center;margin-top:26px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:none;border-radius:999px;
+  font-family:'Cairo',sans-serif;font-size:13px;font-weight:800;cursor:pointer;line-height:1.4;
+  transition:transform .15s,box-shadow .2s,background .2s;text-decoration:none}
+.btn:active{transform:scale(.96)}
 .btn-primary{background:linear-gradient(90deg,var(--gold),#cfa000);color:#0a0e1a;
-  box-shadow:0 10px 26px rgba(255,215,0,.28)}
-.btn-primary:hover{box-shadow:0 14px 34px rgba(255,215,0,.4)}
+  box-shadow:0 5px 14px rgba(255,215,0,.22)}
+.btn-primary:hover{box-shadow:0 8px 20px rgba(255,215,0,.32)}
 .btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid rgba(255,255,255,.14)}
-.note{text-align:center;color:var(--muted);font-size:11.5px;margin-top:12px}
+.btn-ghost:hover{background:rgba(255,255,255,.10)}
+.note{text-align:center;color:var(--muted);font-size:11px;margin-top:14px}
 
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -412,8 +413,8 @@ section{margin-top:22px;animation:fadeUp .5s ease}
 </main>
 
 <div class="actions">
-  <button class="btn btn-primary" id="btnBack">🏠 العودة للقائمة الرئيسية</button>
-  <button class="btn btn-ghost" id="btnClose">🔒 إغلاق</button>
+  <button class="btn btn-primary" id="btnBack">🏠 القائمة الرئيسية</button>
+  <button class="btn btn-ghost" id="btnClose">✕ إغلاق</button>
 </div>
 <div class="note">👑 Caesar Bot — دليل الاستخدام • آخر تحديث: 1 أغسطس 2026</div>
 
@@ -491,15 +492,19 @@ section{margin-top:22px;animation:fadeUp .5s ease}
   });
 
   /* ---------- Back / close buttons ---------- */
+  /* القائمة الرئيسية موجودة في الدردشة خلف الـ Mini App، لذا الإغلاق (close)
+     كافٍ للعودة إليها. لا نعتمد على sendData كآلية أساسية لأنها غير متاحة
+     لـ Mini Apps المفتوحة من الأزرار المضمّنة (Inline Buttons) — فقط من
+     أزرار لوحة المفاتيح (Keyboard Buttons). */
   function backToMenu(){
     if (tg) {
-      /* sendData يغلق الـ Mini App تلقائياً ويرسل الأمر للبوت ليعرض القائمة */
+      /* محاولة إرسال /start للبوت إن دعمته المنصة — إن نجحت تُغلق تلقائياً */
       try { tg.sendData('/start'); } catch(e){}
-      /* احتياط: أغلق بعد 150ms إن لم يُغلق */
-      setTimeout(function(){ try { tg.close(); } catch(e){} }, 150);
+      /* الإغلاق المضمون: يعيد المستخدم للدردشة حيث القائمة الرئيسية ظاهرة */
+      try { tg.close(); } catch(e){}
     } else {
       /* خارج Telegram: محاولة إغلاق النافذة */
-      window.close();
+      try { window.close(); } catch(e){}
     }
   }
 
@@ -507,7 +512,7 @@ section{margin-top:22px;animation:fadeUp .5s ease}
     if (tg) {
       try { tg.close(); } catch(e){}
     } else {
-      window.close();
+      try { window.close(); } catch(e){}
     }
   }
 
