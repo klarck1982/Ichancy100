@@ -2,111 +2,518 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>💭 الشروحات — Caesar 👑</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>👑 دليل استخدام Caesar</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
-:root { --bg:#0a0e1a; --gold:#ffd700; --gold-dim:#bfa100; --card:rgba(255,255,255,0.04); --card-border:rgba(255,215,0,0.12); --text:#f0e6d2; --sub:#caaa66; }
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Cairo',-apple-system,'Segoe UI',Tahoma,sans-serif;background:linear-gradient(160deg,#060814,#0a0e1a 40%,#0f1525);color:var(--text);min-height:100vh;padding:24px 16px;overflow-x:hidden}
-.container{max-width:540px;margin:0 auto;position:relative;z-index:1}
-header{text-align:center;margin-bottom:32px;animation:fadeUp .8s ease}
-header h1{font-size:32px;font-weight:900;color:var(--gold);text-shadow:0 0 22px rgba(255,215,0,0.35),0 4px 12px rgba(0,0,0,.6);letter-spacing:1px;position:relative;display:inline-block}
-header h1::after{content:'';display:block;width:60px;height:3px;background:linear-gradient(90deg,var(--gold),transparent);margin:8px auto 0;border-radius:3px}
-header p{color:var(--sub);margin-top:8px;font-size:14px}
-.card{background:var(--card);border:1px solid var(--card-border);border-radius:22px;padding:22px 22px 18px;margin-bottom:16px;backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);cursor:pointer;transition:all .35s ease;position:relative;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.35)}
-.card::before{content:'';position:absolute;inset:0;background:linear-gradient(120deg,rgba(255,215,0,.04),transparent 60%);pointer-events:none}
-.card:hover{border-color:rgba(255,215,0,.45);transform:translateY(-3px);box-shadow:0 16px 36px rgba(255,215,0,.1),0 4px 12px rgba(0,0,0,.4)}
-.card.active{border-color:var(--gold);box-shadow:0 20px 40px rgba(255,215,0,.18),0 6px 16px rgba(0,0,0,.35)}
-.card h3{font-size:18px;font-weight:700;color:var(--gold);margin-bottom:6px;display:flex;align-items:center;gap:10px}
-.card .icon{font-size:24px;filter:drop-shadow(0 0 6px rgba(255,215,0,.45))}
-.card .summary{color:#d4c89a;font-size:14px;line-height:1.65}
-.card .detail{max-height:0;overflow:hidden;transition:max-height .45s ease,opacity .35s ease;opacity:0;color:#f0e6d2;font-size:14px;line-height:1.85}
-.card.active .detail{max-height:700px;margin-top:12px;border-top:1px solid rgba(255,215,0,.18);padding-top:12px;opacity:1}
-.btn-back{display:block;width:100%;padding:16px;background:linear-gradient(90deg,var(--gold),#cfa000);color:#0a0e1a;border:none;border-radius:14px;font-weight:900;font-size:17px;margin-top:8px;cursor:pointer;text-decoration:none;text-align:center;transition:transform .15s ease,box-shadow .2s ease;box-shadow:0 10px 28px rgba(255,215,0,.25)}
-.btn-back:hover{transform:scale(1.02);box-shadow:0 14px 36px rgba(255,215,0,.35)}
-@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+:root{
+  --bg:#070b16; --bg2:#0a0e1a; --bg3:#0f1525;
+  --gold:#ffd700; --gold-soft:#e6c200; --gold-dim:#b89a00;
+  --text:#f2ead8; --sub:#c9ab6a; --muted:#8f8fa3;
+  --card:rgba(255,255,255,.045); --card-border:rgba(255,215,0,.14);
+  --chip:rgba(255,215,0,.08); --chip-border:rgba(255,215,0,.22);
+  --ok:#37d67a; --warn:#ffb454; --danger:#ff6b6b;
+  --radius:20px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Cairo',-apple-system,'Segoe UI',Tahoma,sans-serif;
+  background:linear-gradient(165deg,#060814 0%,#0a0e1a 45%,#101627 100%);
+  color:var(--text);min-height:100vh;padding:0 14px 34px;overflow-x:hidden;
+}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(600px 260px at 85% -5%,rgba(255,215,0,.10),transparent 60%),
+    radial-gradient(520px 240px at 10% 12%,rgba(60,120,255,.08),transparent 60%);}
+.wrap{max-width:560px;margin:0 auto;position:relative;z-index:1}
+
+/* ===== Header ===== */
+header{text-align:center;padding:26px 6px 6px;animation:fadeUp .55s ease}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+  color:var(--gold-dim);background:var(--chip);border:1px solid var(--chip-border);
+  padding:4px 12px;border-radius:999px;margin-bottom:12px;letter-spacing:.5px}
+header h1{font-size:30px;font-weight:900;color:var(--gold);letter-spacing:.5px;
+  text-shadow:0 0 24px rgba(255,215,0,.35),0 4px 14px rgba(0,0,0,.6)}
+header h1::after{content:'';display:block;width:64px;height:3px;margin:10px auto 0;
+  background:linear-gradient(90deg,var(--gold),transparent);border-radius:3px}
+.greet{color:var(--sub);font-size:14.5px;margin-top:10px;font-weight:600}
+.greet b{color:var(--gold)}
+
+/* ===== Search ===== */
+.search-box{position:relative;margin:20px 0 6px}
+.search-box input{width:100%;padding:13px 44px 13px 14px;border-radius:16px;border:1px solid var(--card-border);
+  background:var(--card);color:var(--text);font-family:'Cairo',sans-serif;font-size:14.5px;outline:none;
+  transition:border-color .25s,box-shadow .25s}
+.search-box input::placeholder{color:var(--muted)}
+.search-box input:focus{border-color:rgba(255,215,0,.55);box-shadow:0 0 0 3px rgba(255,215,0,.10)}
+.search-box .icon{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:17px;opacity:.85}
+
+/* ===== Section chips (fast nav) ===== */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;
+  color:var(--sub);background:var(--chip);border:1px solid var(--chip-border);
+  padding:7px 13px;border-radius:999px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.chip:hover,.chip.active{color:#0a0e1a;background:linear-gradient(90deg,var(--gold),var(--gold-soft));
+  border-color:var(--gold);transform:translateY(-1px);box-shadow:0 6px 16px rgba(255,215,0,.25)}
+
+/* ===== Sections ===== */
+section{margin-top:22px;animation:fadeUp .5s ease}
+.section-title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:900;color:var(--gold);
+  margin-bottom:12px;padding-right:2px}
+.section-title .n{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;
+  border-radius:9px;background:linear-gradient(135deg,rgba(255,215,0,.22),rgba(255,215,0,.06));
+  border:1px solid var(--chip-border);font-size:13px;color:var(--gold)}
+.section-title small{color:var(--muted);font-weight:600;font-size:12px;margin-inline-start:auto;padding-inline-start:8px}
+
+/* ===== Cards ===== */
+.card{background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius);
+  padding:16px 16px 14px;margin-bottom:11px;backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);cursor:pointer;position:relative;overflow:hidden;
+  transition:all .28s ease;box-shadow:0 4px 20px rgba(0,0,0,.32)}
+.card::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(120deg,rgba(255,215,0,.05),transparent 55%)}
+.card:hover{border-color:rgba(255,215,0,.45);transform:translateY(-2px)}
+.card.open{border-color:var(--gold);box-shadow:0 14px 34px rgba(255,215,0,.14),0 4px 14px rgba(0,0,0,.4)}
+.card h3{font-size:15.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:9px;margin-bottom:5px}
+.card h3 .ic{font-size:20px;filter:drop-shadow(0 0 7px rgba(255,215,0,.45))}
+.card h3 .chev{font-size:12px;color:var(--gold-dim);margin-inline-start:auto;transition:transform .3s;flex-shrink:0}
+.card.open h3 .chev{transform:rotate(180deg)}
+.card .summary{color:#cfc39a;font-size:13.5px;line-height:1.6}
+.card .body{max-height:0;overflow:hidden;transition:max-height .45s ease,opacity .35s ease,transform .35s ease;
+  opacity:0;transform:translateY(-4px);color:#efe7d6;font-size:13.8px;line-height:1.95}
+.card.open .body{max-height:1600px;margin-top:12px;border-top:1px solid rgba(255,215,0,.18);padding-top:12px;opacity:1;transform:none}
+.body p{margin-bottom:7px}
+.body b{color:var(--gold-soft);font-weight:700}
+.body .tip{display:flex;gap:8px;background:rgba(255,215,0,.06);border:1px dashed rgba(255,215,0,.3);
+  border-radius:12px;padding:9px 11px;margin-top:9px;font-size:12.8px;color:#e6d9ae}
+.body .tip b{color:var(--gold)}
+.body .step{display:flex;gap:9px;margin-bottom:6px;align-items:flex-start}
+.body .step .dot{flex-shrink:0;width:20px;height:20px;margin-top:2px;border-radius:7px;font-size:11px;font-weight:900;
+  display:inline-flex;align-items:center;justify-content:center;color:#0a0e1a;
+  background:linear-gradient(135deg,var(--gold),var(--gold-soft));box-shadow:0 2px 8px rgba(255,215,0,.3)}
+.body .step span{flex:1}
+.body code{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:7px;
+  padding:1px 7px;font-size:12.5px;color:var(--gold);direction:ltr;unicode-bidi:embed}
+.body .tbl{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}
+.body .tbl td{border:1px solid rgba(255,215,0,.16);padding:7px 10px;text-align:center}
+.body .tbl td:first-child{font-weight:800;color:var(--gold)}
+
+/* ===== FAQ ===== */
+.faq .card .body b{display:block;margin-bottom:4px;color:var(--gold)}
+
+/* ===== Footer buttons ===== */
+.actions{position:sticky;bottom:10px;margin-top:26px;display:flex;gap:10px;z-index:5}
+.btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:15px 10px;
+  border:none;border-radius:16px;font-family:'Cairo',sans-serif;font-size:15px;font-weight:900;cursor:pointer;
+  transition:transform .15s,box-shadow .2s;text-decoration:none}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(90deg,var(--gold),#cfa000);color:#0a0e1a;
+  box-shadow:0 10px 26px rgba(255,215,0,.28)}
+.btn-primary:hover{box-shadow:0 14px 34px rgba(255,215,0,.4)}
+.btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid rgba(255,255,255,.14)}
+.note{text-align:center;color:var(--muted);font-size:11.5px;margin-top:12px}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<div class="container">
+<div class="wrap">
+
 <header>
-<h1>💭 الشروحات</h1>
-<p>اضغط على أي بطاقة لعرض الطريقة بالتفصيل</p>
+  <div class="badge">👑 CAESAR — دليل الاستخدام</div>
+  <h1>💭 الشروحات</h1>
+  <div class="greet" id="greet">أهلاً بك في بوت القيصر 👋</div>
 </header>
 
-<div class="card" onclick="this.classList.toggle('active')">
-<h3><span class="icon">📌</span> التسجيل في البوت</h3>
-<div class="summary">اضغط /start → وافق على الشروط → يتم الربط تلقائياً.</div>
-<div class="detail">
-<b>• ابدأ المحادثة مع البوت عبر /start.</b><br>
-<b>• وافق على شروط الاستخدام من الزر الأخضر.</b><br>
-<b>• سيتم إنشاء حساب تلقائي وربطه برقم Telegram الخاص بك.</b><br>
-<b>• لإنشاء حساب iChancy توجه إلى ⚡ حساب iChancy وأدخل اسم المستخدم وكلمة المرور.</b>
-</div>
+<div class="search-box">
+  <span class="icon">🔎</span>
+  <input type="search" id="searchInput" placeholder="ابحث عن شرح… (مثال: إيداع، سحب، إحالة)" autocomplete="off">
 </div>
 
-<div class="card" onclick="this.classList.toggle('active')">
-<h3><span class="icon">📥</span> الإيداع في البوت</h3>
-<div class="summary">اختر العملة والبوابة → أدخل المبلغ → أرسل إثبات التحويل.</div>
-<div class="detail">
-<b>• من القائمة الرئيسية اختر 📥 شحن رصيد.</b><br>
-<b>• اختر العملة (ليرة سورية أو دولار) ثم البوابة.</b><br>
-<b>• أدخل قيمة المبلغ الذي قمت بتحويله.</b><br>
-<b>• أرسل صورة إثبات التحويل أو رقم العملية.</b><br>
-<b>• انتظر إشعار الموافقة من المشرف خلال دقائق.</b>
-</div>
+<div class="chips" id="chips">
+  <span class="chip" data-target="sec-start">🚀 البدء</span>
+  <span class="chip" data-target="sec-money">💰 الشحن والسحب</span>
+  <span class="chip" data-target="sec-game">⚡ حساب iChancy</span>
+  <span class="chip" data-target="sec-rewards">🎁 المكافآت</span>
+  <span class="chip" data-target="sec-robert">👑 Robert VIP</span>
+  <span class="chip" data-target="sec-faq">❓ أسئلة شائعة</span>
+  <span class="chip" data-target="sec-support">🛟 الدعم</span>
 </div>
 
-<div class="card" onclick="this.classList.toggle('active')">
-<h3><span class="icon">📤</span> السحب من البوت</h3>
-<div class="summary">اختر وسيلة السحب → أدخل المبلغ ورقم المستلم → تأكيد.</div>
-<div class="detail">
-<b>• من القائمة الرئيسية اختر 📤 سحب رصيد.</b><br>
-<b>• اختر العملة ثم وسيلة السحب.</b><br>
-<b>• أدخل المبلغ المراد سحبه ورقم المستلم أو عنوان المحفظة.</b><br>
-<b>• تأكد من صحة البيانات ثم اضغط تأكيد.</b><br>
-<b>• يتم إرسال الطلب للمشرف ويتم التنفيذ بعد المراجعة.</b>
+<main id="content">
+
+<!-- ============ 1) البدء ============ -->
+<section id="sec-start">
+  <div class="section-title"><span class="n">1</span> 🚀 البدء مع البوت <small>أول خطوة</small></div>
+
+  <div class="card" data-search="التسجيل بدء شروط قبول start">
+    <h3><span class="ic">📌</span> التسجيل في البوت <span class="chev">▾</span></h3>
+    <div class="summary">اضغط /start ثم وافق على الشروط، وسيُربط حسابك تلقائياً.</div>
+    <div class="body">
+      <div class="step"><span class="dot">1</span><span>افتح محادثة البوت واضغط <b>/start</b> أو زر <b>فتح</b>.</span></div>
+      <div class="step"><span class="dot">2</span><span>اقرأ الشروط واضغط على زر <b>✅ موافق</b> الأخضر.</span></div>
+      <div class="step"><span class="dot">3</span><span>يُفتح حسابك تلقائياً ويرتبط برقم Telegram الخاص بك.</span></div>
+      <div class="step"><span class="dot">4</span><span>لتفعيل اللعب أنشئ حساب iChancy من قسم <b>⚡ حساب iChancy</b>.</span></div>
+      <div class="tip">💡 بدون قبول الشروط لا يمكنك استخدام أي خدمة في البوت.</div>
+    </div>
+  </div>
+
+  <div class="card" data-search="الرصيد رصيد البوت رصيد اللعبة NSP ليرة">
+    <h3><span class="ic">👛</span> رصيدك وأين تجده <span class="chev">▾</span></h3>
+    <div class="summary">للبوت رصيدان: رصيد البوت (ل.س) ورصيد اللعبة (NSP).</div>
+    <div class="body">
+      <p>عند دخولك القائمة الرئيسية ترى:</p>
+      <div class="step"><span class="dot">💎</span><span><b>رصيد البوت</b> — بالليرة السورية (قديمة/جديدة)، تستخدمه للشحن والسحب والإهداء.</span></div>
+      <div class="step"><span class="dot">🎮</span><span><b>رصيد اللعبة (iChancy)</b> — بنقاط NSP، وهو رصيدك داخل منصة اللعب.</span></div>
+      <div class="step"><span class="dot">🔄</span><span>من زر <b>السجل</b> تستعرض كل معاملاتك السابقة وحالتها.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2) الشحن والسحب ============ -->
+<section id="sec-money">
+  <div class="section-title"><span class="n">2</span> 💰 الشحن والسحب <small>رصيد البوت</small></div>
+
+  <div class="card" data-search="إيداع شحن رصيد سيريتل MTN شام usdt دولار ليرة">
+    <h3><span class="ic">📥</span> الإيداع (شحن رصيد البوت) <span class="chev">▾</span></h3>
+    <div class="summary">اختر العملة والبوابة → أدخل المبلغ → أرسل إثبات التحويل → موافقة المشرف.</div>
+    <div class="body">
+      <div class="step"><span class="dot">1</span><span>من القائمة الرئيسية اضغط <b>📥 شحن رصيد</b>.</span></div>
+      <div class="step"><span class="dot">2</span><span>اختر العملة: <b>ليرة سورية (SYP)</b> أو <b>دولار (USD)</b>.</span></div>
+      <div class="step"><span class="dot">3</span><span>اختر بوابة الدفع المتوفرة: <b>سيريتل كاش، MTN كاش، شام كاش، USDT (TRC20/BEP20)</b>.</span></div>
+      <div class="step"><span class="dot">4</span><span>أدخل المبلغ الذي حوّلته، وسيعرض البوت رقم/عنوان الدفع الصحيح.</span></div>
+      <div class="step"><span class="dot">5</span><span>أرسل <b>إثبات التحويل</b> (صورة أو رقم عملية).</span></div>
+      <div class="step"><span class="dot">6</span><span>انتظر إشعار <b>الموافقة</b> من المشرف، ويُضاف الرصيد تلقائياً.</span></div>
+      <div class="tip">💡 إيداعات الدولار تُحتسب بسعر الصرف المعروض في البوت (شراء/بيع) وتُدار من لوحة المشرف.</div>
+      <div class="tip">💡 بعض الإيداعات يضاف عليها <b>بونص</b> تلقائياً إن توفر عرض مطابق — انظر قسم المكافآت.</div>
+    </div>
+  </div>
+
+  <div class="card" data-search="سحب رصيد تحويل خروج مبلغ مستلم">
+    <h3><span class="ic">📤</span> السحب (سحب رصيد البوت) <span class="chev">▾</span></h3>
+    <div class="summary">اختر الوسيلة → أدخل المبلغ ورقم المستلم → تأكيد → تنفيذ المشرف.</div>
+    <div class="body">
+      <div class="step"><span class="dot">1</span><span>من القائمة الرئيسية اضغط <b>📤 سحب رصيد</b>.</span></div>
+      <div class="step"><span class="dot">2</span><span>اختر العملة ثم وسيلة السحب (سيريتل/MTN/شام/USDT…).</span></div>
+      <div class="step"><span class="dot">3</span><span>أدخل رقم المستلم أو عنوان المحفظة بدقة.</span></div>
+      <div class="step"><span class="dot">4</span><span>أدخل المبلغ المطلوب، وراجع التفاصيل ثم <b>تأكيد</b>.</span></div>
+      <div class="step"><span class="dot">5</span><span>يصل طلبك للمشرف، ويتم تنفيذ التحويل وإشعارك فوراً.</span></div>
+      <div class="tip">⚠️ تحقق جيداً من رقم المستلم قبل التأكيد — الأخطاء قد تعرقل الطلب.</div>
+    </div>
+  </div>
+
+  <div class="card" data-search="حد أدنى حد أقصى مدة قبول رفض">
+    <h3><span class="ic">⏱️</span> ما المدة ومتى يُرفض الطلب؟ <span class="chev">▾</span></h3>
+    <div class="summary">كل ما تحتاج معرفته عن مواعيد المعالجة وحالات الطلبات.</div>
+    <div class="body">
+      <p>• <b>المدة:</b> عادة تُعالج الطلبات خلال دقائق، وتتوقف على تواجد المشرف.</p>
+      <p>• <b>الحد الأدنى:</b> لكل عملية إيداع/سحب حد أدنى محدد يظهر لك عند بدء العملية.</p>
+      <p>• <b>الرفض:</b> إذا رُفض طلبك ستصلك رسالة توضح السبب، وتُعاد أي مبالغ محجوزة تلقائياً.</p>
+      <p>• <b>حالة الطلب:</b> تابع طلباتك من زر <b>🔄 السجل</b> في القائمة.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3) حساب iChancy ============ -->
+<section id="sec-game">
+  <div class="section-title"><span class="n">3</span> ⚡ حساب iChancy <small>رصيد اللعبة</small></div>
+
+  <div class="card" data-search="إنشاء حساب iChancy لاعب player id اسم مستخدم">
+    <h3><span class="ic">🆕</span> إنشاء حساب iChancy <span class="chev">▾</span></h3>
+    <div class="summary">اربط حسابك باللعبة لتحصل على Player ID وتبدأ الشحن والسحب.</div>
+    <div class="body">
+      <div class="step"><span class="dot">1</span><span>من القائمة الرئيسية اختر <b>⚡ حساب iChancy</b>.</span></div>
+      <div class="step"><span class="dot">2</span><span>اضغط <b>إنشاء حساب</b> وأدخل اسم المستخدم وكلمة المرور المطلوبين.</span></div>
+      <div class="step"><span class="dot">3</span><span>ينشئ البوت الحساب تلقائياً عبر الوكيل ويربطه بك مع <b>Player ID</b>.</span></div>
+      <div class="step"><span class="dot">4</span><span>الآن يمكنك شحن رصيد اللعبة من رصيد البوت والعكس.</span></div>
+      <div class="tip">💡 احتفظ ببيانات حساب iChancy لديك — قد تحتاجها للدخول لمنصة اللعب.</div>
+    </div>
+  </div>
+
+  <div class="card" data-search="شحن اللعبة تحويل رصيد البوت إلى اللعبة NSP">
+    <h3><span class="ic">📥</span> الإيداع في اللعبة (شحن NSP) <span class="chev">▾</span></h3>
+    <div class="summary">من رصيد البوت إلى حساب اللعبة — 1 SYP = 1 NSP.</div>
+    <div class="body">
+      <div class="step"><span class="dot">1</span><span>من <b>⚡ حساب iChancy</b> اضغط <b>📥 شحن حساب اللعبة</b>.</span></div>
+      <div class="step"><span class="dot">2</span><span>أدخل المبلغ بالليرة السورية (SYP).</span></div>
+      <div class="step"><span class="dot">3</span><span>يُخصم من رصيد البوت وتُضاف نفس القيمة نقاط <b>NSP</b> لحساب اللعبة.</span></div>
+      <div class="step"><span class="dot">4</span><span>قد يُضاف <b>بونص لعب</b> إضافي حسب إعدادات المشرف والعروض.</span></div>
+      <div class="tip">💡 التحويل يُتحقق تلقائياً من البوت قبل إعلامك بالنجاح (إجراء أمان).</div>
+    </div>
+  </div>
+
+  <div class="card" data-search="سحب اللعبة تحويل NSP إلى رصيد البوت بونص لعب">
+    <h3><span class="ic">📤</span> السحب من اللعبة (تحويل NSP) <span class="chev">▾</span></h3>
+    <div class="summary">من رصيد اللعبة إلى رصيد البوت — 1 NSP = 1 SYP.</div>
+    <div class="body">
+      <div class="step"><span class="dot">1</span><span>من <b>⚡ حساب iChancy</b> اضغط <b>📤 سحب من حساب اللعبة</b>.</span></div>
+      <div class="step"><span class="dot">2</span><span>أدخل عدد نقاط NSP التي تريد تحويلها.</span></div>
+      <div class="step"><span class="dot">3</span><span>تُضاف قيمتها لرصيد البوت فوراً.</span></div>
+      <div class="step"><span class="dot">4</span><span>ملاحظة: أي <b>بونص لعب نشط</b> يُخصم أولاً قبل إضافة الرصيد النقدي.</span></div>
+      <div class="tip">💡 يمكنك لاحقاً سحب رصيد البوت عبر أي بوابة متاحة من قسم السحب.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4) المكافآت والعروض ============ -->
+<section id="sec-rewards">
+  <div class="section-title"><span class="n">4</span> 🎁 المكافآت والعروض <small>اربح أكثر</small></div>
+
+  <div class="card" data-search="بونص عرض إيداع نسبة">
+    <h3><span class="ic">🎉</span> بونص الإيداع والعروض <span class="chev">▾</span></h3>
+    <div class="summary">عروض تلقائية على طرق إيداع محددة — يُطبق أفضل عرض فقط.</div>
+    <div class="body">
+      <p>• عند إيداعك، يتحقق البوت من العروض المفعلة ويتحقق أن مبلغك يطابق شروط العرض.</p>
+      <p>• إذا انطبق أكثر من عرض، <b>يُطبق الأعلى قيمة فقط</b> — لا تُجمع العروض.</p>
+      <p>• زر <b>🎁 العروض والبونصات</b> في القائمة يعرض كل العروض المتاحة حالياً.</p>
+    </div>
+  </div>
+
+  <div class="card" data-search="إحالة أصدقاء عمولة نسبة">
+    <h3><span class="ic">👥</span> نظام الإحالات <span class="chev">▾</span></h3>
+    <div class="summary">ادعُ أصدقاءك واربح عمولة على إيداعاتهم الأولى.</div>
+    <div class="body">
+      <table class="tbl">
+        <tr><td>3 إحالات نشطة</td><td>3%</td></tr>
+        <tr><td>5 إحالات نشطة</td><td>5%</td></tr>
+        <tr><td>10 إحالات نشطة</td><td>10%</td></tr>
+      </table>
+      <p>• تُحسب الإحالة <b>نشطة</b> عند أول إيداع مقبول للمدعو.</p>
+      <p>• العمولة على مبلغ الإيداع الأساسي فقط (بدون البونص)، وتُضاف لرصيدك.</p>
+      <p>• رابطك الخاص تجده في زر <b>💰 الإحالات</b> من القائمة الرئيسية.</p>
+    </div>
+  </div>
+
+  <div class="card" data-search="هدية كود إهداء رصيد استرداد">
+    <h3><span class="ic">🎫</span> أكواد الهدايا وإهداء الرصيد <span class="chev">▾</span></h3>
+    <div class="summary">أرسل رصيداً لأي لاعب عبر كود، أو استخدم كوداً استلمته.</div>
+    <div class="body">
+      <p>• <b>إهداء رصيد:</b> من زر <b>🎁 إهداء رصيد</b> أنشئ كوداً بصيغة <code>CAESAR-XXXXXXXX</code> — يُخصم المبلغ من رصيدك، وأي لاعب آخر يستطيع استرداده.</p>
+      <p>• <b>كود هدية:</b> من زر <b>🎫 كود هدية</b> استرجع الأكواد التي يصدرها المشرف بصيغة <code>CAESAR-BOT-XXXXXXXX</code>.</p>
+      <p>• كل كود <b>يُستخدم مرة واحدة فقط</b>، وعمليات الإنشاء والاسترداد محمية (ذرّية) ضد التكرار.</p>
+    </div>
+  </div>
+
+  <div class="card" data-search="مسابقة توقع مباراة جائزة فائز">
+    <h3><span class="ic">🏆</span> مسابقات القيصر وبطاقات التوقع <span class="chev">▾</span></h3>
+    <div class="summary">توقع النتائج وشارك في المسابقات لتربح جوائز.</div>
+    <div class="body">
+      <p>• <b>بطاقات التوقع:</b> من زر <b>🎫 بطاقات التوقع</b> اختر البطاقة، ثبّت توقعك قبل إغلاق البطاقة، وعند الحسم تُوزّع الجوائز تلقائياً.</p>
+      <p>• <b>مسابقات القيصر:</b> من زر <b>👑 مسابقات القيصر</b> شارك بإثباتك، ويسحب البوت الفائزين بعد انتهاء المسابقة.</p>
+    </div>
+  </div>
+
+  <div class="card" data-search="شيك ان يومي عجلة حظ vip كاش باك خصم">
+    <h3><span class="ic">✨</span> مكافآت يومية وأسبوعية إضافية <span class="chev">▾</span></h3>
+    <div class="summary">شيك-إن يومي، عجلة حظ، مستويات VIP، وكاش باك أسبوعي.</div>
+    <div class="body">
+      <div class="step"><span class="dot">📅</span><span><b>الشيك-إن اليومي:</b> ادخل يومياً واستلم مكافأتك من صفحة المستخدم.</span></div>
+      <div class="step"><span class="dot">🎡</span><span><b>عجلة الحظ:</b> بعد إيداع مؤهل يمكنك تدوير العجلة وكسب جوائز من صفحة المستخدم.</span></div>
+      <div class="step"><span class="dot">👑</span><span><b>مستويات VIP:</b> يرتفع مستواك حسب مجموع إيداعاتك، وتفتح لك مزايا إضافية.</span></div>
+      <div class="step"><span class="dot">💸</span><span><b>الكاش باك الأسبوعي:</b> حسب نشاطك في اللعبة أسبوعياً، يُحتسب خصم ويُعاد لك تلقائياً.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5) Robert VIP ============ -->
+<section id="sec-robert">
+  <div class="section-title"><span class="n">5</span> 👑 Robert VIP <small>المنصة الثانية</small></div>
+
+  <div class="card" data-search="robert vip منصة دخول تسجيل راهن توقعات">
+    <h3><span class="ic">👑</span> دخول إلى منصة Robert VIP <span class="chev">▾</span></h3>
+    <div class="summary">منصة مستقلة داخل البوت — الدخول والتسجيل والرهان والتوقعات.</div>
+    <div class="body">
+      <p>• من زر <b>👑 Robert.VIP</b> في القائمة الرئيسية تُفتح منصة Robert VIP.</p>
+      <p>• <b>دخول إلى المنصة:</b> الزر الرئيسي الموحد — الموقع يقرر إن كانت جلستك محفوظة.</p>
+      <p>• <b>تسجيل / تبديل حساب:</b> رابط ثانوي لحساب جديد أو تغيير الحساب.</p>
+      <p>• <b>راهن مع روبيرت</b> و <b>باقات التوقعات:</b> مسارات مباشرة من داخل المنصة.</p>
+      <div class="tip">🔒 ملاحظة خصوصية: لا يخزّن البوت كلمات مرورك أو توكنات الدخول الخاصة بمنصة Robert.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6) أسئلة شائعة ============ -->
+<section id="sec-faq">
+  <div class="section-title"><span class="n">6</span> ❓ أسئلة شائعة <small>إجابات سريعة</small></div>
+
+  <div class="faq">
+    <div class="card" data-search="لماذا رصيدي صفر جديد لا يظهر">
+      <h3><span class="ic">❓</span> رصيدي 0 أو لا يتحدث — لماذا؟ <span class="chev">▾</span></h3>
+      <div class="summary">أعد فتح القائمة الرئيسية لتحديث الأرصدة.</div>
+      <div class="body">
+        <b>السبب والحل:</b>
+        <p>الأرصدة تُحدّث عند كل عملية وفتح للقائمة. اضغط <b>🏠</b> أو أرسل <b>/start</b> مجدداً. إذا كان رصيد اللعبة ناقصاً، تأكد من قبول عملية التحويل من سجل المعاملات.</p>
+      </div>
+    </div>
+    <div class="card" data-search="كم نسبة تحويل اللعبة NSP سوري">
+      <h3><span class="ic">❓</span> نسبة التحويل بين رصيد البوت واللعبة؟ <span class="chev">▾</span></h3>
+      <div class="summary">1:1 — ليرة واحدة = نقطة واحدة.</div>
+      <div class="body">
+        <b>الإجابة:</b>
+        <p>شحن اللعبة: <code>1 SYP = 1 NSP</code> — سحب اللعبة: <code>1 NSP = 1 SYP</code>، مع خصم أي بونص لعب نشط عند السحب.</p>
+      </div>
+    </div>
+    <div class="card" data-search="طلبي معلق متى يوافق المشرف">
+      <h3><span class="ic">❓</span> طلبي معلق منذ وقت طويل؟ <span class="chev">▾</span></h3>
+      <div class="summary">تُعالج الطلبات يدوياً من المشرف.</div>
+      <div class="body">
+        <b>الإجابة:</b>
+        <p>الإيداعات والسحوبات تُراجع يدوياً من فريق الدعم، وتُعالج عادة خلال دقائق في أوقات العمل. يمكنك سؤال الإدارة عبر زر <b>🗳️ رسالة للإدارة</b>.</p>
+      </div>
+    </div>
+    <div class="card" data-search="تم رفض طلبي ماذا أفعل">
+      <h3><span class="ic">❓</span> رُفض طلبي، ماذا أفعل؟ <span class="chev">▾</span></h3>
+      <div class="summary">ستصلك رسالة بالسبب، وأي حجز يُلغى تلقائياً.</div>
+      <div class="body">
+        <b>الإجابة:</b>
+        <p>تصل رسالة توضح سبب الرفض (بيانات خاطئة، إثبات غير مطابق…). صحّح السبب وأعد المحاولة، أو تواصل مع الدعم إن كان السبب غير واضح.</p>
+      </div>
+    </div>
+    <div class="card" data-search="هل البوت آمن بياناتي حسابي خصوصية">
+      <h3><span class="ic">❓</span> هل بياناتي وحسابي آمنان؟ <span class="chev">▾</span></h3>
+      <div class="summary">نعم — تعاملاتك ذرّية ومحمية بقاعدة بيانات.</div>
+      <div class="body">
+        <b>الإجابة:</b>
+        <p>كل الأرصدة والمعاملات محفوظة في قاعدة بيانات محمية، وعمليات الهدايا والاسترداد محمية ضد التكرار. لا تشارك كود الهدية أو بيانات حساب iChancy مع أي أحد.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7) الدعم ============ -->
+<section id="sec-support">
+  <div class="section-title"><span class="n">7</span> 🛟 الدعم والأمان <small>نحن معك</small></div>
+
+  <div class="card" data-search="دعم تواصل مشكلة رسالة إدارة">
+    <h3><span class="ic">🛟</span> طرق التواصل مع الإدارة <span class="chev">▾</span></h3>
+    <div class="summary">رسالة داخلية أو قناة الدعم المباشرة.</div>
+    <div class="body">
+      <div class="step"><span class="dot">✉️</span><span>من القائمة الرئيسية: <b>✉️ تواصل معنا</b> → فتح الدعم.</span></div>
+      <div class="step"><span class="dot">🗳️</span><span>أو <b>🗳️ رسالة للإدارة</b> لإرسال رسالة داخل البوت والرد عليك مباشرة.</span></div>
+      <div class="tip">⚠️ الإدارة لن تطلب كلمة مرور حسابك أو رموز الهدايا أبداً — احذر من أي حساب ينتحل صفة الدعم.</div>
+    </div>
+  </div>
+
+  <div class="card" data-search="أمان نصائح حماية احتيال">
+    <h3><span class="ic">🔒</span> نصائح الأمان الذهبية <span class="chev">▾</span></h3>
+    <div class="summary">قواعد تحفظ حسابك ورصيدك.</div>
+    <div class="body">
+      <p>• لا تعطِ أحداً <b>رقم العملية</b> أو <b>صورة الإثبات</b> لأغراض أخرى.</p>
+      <p>• استخدم حسابات <b>Telegram الرسمية فقط</b> للتواصل مع البوت.</p>
+      <p>• تأكد من أرقام الدفع وعناوين USDT المعروضة داخل البوت قبل التحويل.</p>
+      <p>• أي عرض «بونص» من خارج البوت هو احتيال محتمل.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div class="actions">
+  <button class="btn btn-primary" id="btnBack">🏠 العودة للقائمة الرئيسية</button>
+  <button class="btn btn-ghost" id="btnClose">🔒 إغلاق</button>
 </div>
+<div class="note">👑 Caesar Bot — دليل الاستخدام • آخر تحديث: 1 أغسطس 2026</div>
+
 </div>
 
-<div class="card" onclick="this.classList.toggle('active')">
-<h3><span class="icon">📥</span> الإيداع في اللعبة</h3>
-<div class="summary">من رصيد البوت → حساب اللعبة (1 SYP = 1 NSP).</div>
-<div class="detail">
-<b>• توجه إلى ⚡ حساب iChancy من القائمة الرئيسية.</b><br>
-<b>• اضغط على 📥 شحن حساب اللعبة.</b><br>
-<b>• أدخل المبلغ بالليرة السورية (SYP).</b><br>
-<b>• النسبة ثابتة: 1 SYP = 1 NSP.</b><br>
-<b>• قد يُضاف بونص لعب حسب إعدادات المشرف.</b>
-</div>
-</div>
+<script>
+(function(){
+  "use strict";
 
-<div class="card" onclick="this.classList.toggle('active')">
-<h3><span class="icon">📤</span> السحب من اللعبة</h3>
-<div class="summary">من رصيد اللعبة → رصيد البوت (1 NSP = 1 SYP).</div>
-<div class="detail">
-<b>• توجه إلى ⚡ حساب iChancy من القائمة الرئيسية.</b><br>
-<b>• اضغط على 📤 سحب من حساب اللعبة.</b><br>
-<b>• أدخل المبلغ بنقاط NSP التي تريد سحبها.</b><br>
-<b>• النسبة ثابتة: 1 NSP = 1 SYP.</b><br>
-<b>• يُخصم بونص اللعب النشط أولاً قبل إضافة الرصيد النقدي للبوت.</b>
-</div>
-</div>
+  /* ---------- Telegram WebApp integration ---------- */
+  var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+  if (tg) {
+    try { tg.ready(); } catch(e){}
+    try { tg.expand(); } catch(e){}
+    try { tg.setHeaderColor('#0a0e1a'); } catch(e){}
+    try { tg.setBackgroundColor('#070b16'); } catch(e){}
+    /* شخصنة الترحيب */
+    try {
+      var u = (tg.initDataUnsafe && tg.initDataUnsafe.user) || null;
+      if (u && u.first_name) {
+        document.getElementById('greet').innerHTML = 'أهلاً <b>' + u.first_name + '</b> 👋 — إليك كل ما تحتاجه';
+      }
+    } catch(e){}
+    /* مطابقة ألوان النظام إذا كان الفاتح */
+    try {
+      if (tg.colorScheme === 'light') {
+        var tp = tg.themeParams || {};
+        if (tp.bg_color) document.documentElement.style.setProperty('--bg', tp.bg_color);
+        if (tp.text_color) document.documentElement.style.setProperty('--text', tp.text_color);
+        if (tp.hint_color) document.documentElement.style.setProperty('--muted', tp.hint_color);
+      }
+    } catch(e){}
+  }
 
-<div class="card" onclick="this.classList.toggle('active')">
-<h3><span class="icon">🎁</span> المكافآت والعروض</h3>
-<div class="summary">بونص الإيداع + مسابقات القيصر + إحالات + أكواد هدايا.</div>
-<div class="detail">
-<b>عروض الإيداع (البونص):</b> تُطبّق تلقائياً عند قبول الإيداع إذا كانت شروط العرض مطابقة. إذا انطبق أكثر من عرض، يُطبّق الأعلى فقط.<br><br>
-<b>مسابقات القيصر:</b> اختر بطاقة التوقع من القائمة → ثبّت توقعك قبل الإغلاق → عند انتهاء المباراة تُرسل الجوائز تلقائياً للفائزين.<br><br>
-<b>نظام الإحالات:</b> 3 إحالات نشطة = 1%، 5 = 1.5%، 10 = 2%. الإحالة نشطة عند أول إيداع مقبول للمدعو. الأرباح تُحسب أسبوعياً.<br><br>
-<b>أكواد الهدايا:</b> يمكن إنشاؤها من رصيدك عبر 🎁 إهداء رصيد، أو من المشرف بدون خصم من رصيده. تُستخدم مرة واحدة فقط.<br><br>
-<b>بونص اللعب:</b> يُضاف مع بعض الإيداعات حسب إعداد المشرف، ويُخصم أولاً عند السحب من اللعبة.
-</div>
-</div>
+  /* ---------- Cards expand/collapse ---------- */
+  var cards = document.querySelectorAll('.card');
+  for (var i = 0; i < cards.length; i++) {
+    (function(card){
+      card.addEventListener('click', function(){
+        card.classList.toggle('open');
+      });
+    })(cards[i]);
+  }
 
-<a href="#" onclick="window.Telegram.WebApp.close(); window.Telegram.WebApp.sendData('/start');" class="btn-back">🏠 العودة للقائمة الرئيسية</a>
-</div>
+  /* ---------- Section chips ---------- */
+  var chips = document.querySelectorAll('.chip');
+  for (var j = 0; j < chips.length; j++) {
+    (function(chip){
+      chip.addEventListener('click', function(){
+        var target = document.getElementById(chip.getAttribute('data-target'));
+        if (target) target.scrollIntoView({behavior:'smooth', block:'start'});
+        var all = document.querySelectorAll('.chip');
+        for (var k = 0; k < all.length; k++) all[k].classList.remove('active');
+        chip.classList.add('active');
+      });
+    })(chips[j]);
+  }
+
+  /* ---------- Live search filter ---------- */
+  var input = document.getElementById('searchInput');
+  input.addEventListener('input', function(){
+    var q = input.value.trim().toLowerCase();
+    for (var c = 0; c < cards.length; c++) {
+      var hay = (cards[c].getAttribute('data-search') || '') + ' ' +
+                (cards[c].querySelector('h3') ? cards[c].querySelector('h3').textContent : '') + ' ' +
+                (cards[c].querySelector('.summary') ? cards[c].querySelector('.summary').textContent : '');
+      var show = !q || hay.toLowerCase().indexOf(q) !== -1;
+      cards[c].style.display = show ? '' : 'none';
+    }
+    var sections = document.querySelectorAll('section');
+    for (var s = 0; s < sections.length; s++) {
+      var any = Array.prototype.some.call(sections[s].querySelectorAll('.card'), function(cd){ return cd.style.display !== 'none'; });
+      sections[s].style.display = any ? '' : 'none';
+    }
+  });
+
+  /* ---------- Back / close buttons ---------- */
+  function backToMenu(){
+    if (tg) {
+      /* sendData يغلق الـ Mini App تلقائياً ويرسل الأمر للبوت ليعرض القائمة */
+      try { tg.sendData('/start'); } catch(e){}
+      /* احتياط: أغلق بعد 150ms إن لم يُغلق */
+      setTimeout(function(){ try { tg.close(); } catch(e){} }, 150);
+    } else {
+      /* خارج Telegram: محاولة إغلاق النافذة */
+      window.close();
+    }
+  }
+
+  function closeApp(){
+    if (tg) {
+      try { tg.close(); } catch(e){}
+    } else {
+      window.close();
+    }
+  }
+
+  document.getElementById('btnBack').addEventListener('click', backToMenu);
+  document.getElementById('btnClose').addEventListener('click', closeApp);
+})();
+</script>
 </body>
 </html>

@@ -20,6 +20,7 @@ from telegram_bot.keyboards.inline import (
     get_contest_submit_keyboard,
     get_prediction_card_options_keyboard,
     get_prediction_cards_list_keyboard,
+    get_guides_url,
 )
 
 router = Router()
@@ -2183,15 +2184,20 @@ async def contact_us_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data == "guides_menu")
 async def guides_menu_callback(callback: CallbackQuery):
-    base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
-    url = f"{base}/guides.html"
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💭 فتح الشروحات", web_app=WebAppInfo(url=url))],
+        [InlineKeyboardButton(text="💭 فتح دليل الشروحات", web_app=WebAppInfo(url=get_guides_url()))],
         [InlineKeyboardButton(text="🏠 القائمة الرئيسية", callback_data="back_to_main_menu")]
     ])
     await safe_edit_text(
         callback.message,
-        "💭 <b>الشروحات — Caesar 👑</b>\n\nاختر ما تريد الاطلاع عليه من خلال فتح دليل الشروحات أدناه 👇",
+        "💭 <b>الشروحات — Caesar 👑</b>\n\n"
+        "📖 دليل شامل لاستخدام البوت:\n"
+        "• 🚀 التسجيل والبدء\n"
+        "• 💰 الشحن والسحب\n"
+        "• ⚡ حساب iChancy واللعبة\n"
+        "• 🎁 المكافآت والإحالات\n"
+        "• ❓ أسئلة شائعة\n\n"
+        "اضغط الزر أدناه لفتح الدليل 👇",
         reply_markup=keyboard,
         parse_mode="HTML"
     )

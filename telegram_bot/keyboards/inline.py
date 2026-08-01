@@ -23,6 +23,12 @@ def get_robert_vip_hub_url():
     return f"{base}/robert-vip?v=robert-hub-v2-20260719"
 
 
+def get_guides_url():
+    """💭 رابط Mini App الشروحات (مع cache-buster لكسر كاش Telegram WebView)."""
+    base = getattr(settings, 'RENDER_EXTERNAL_URL', 'https://ichancy100.onrender.com')
+    return f"{base}/guides.html?v=guides-miniapp-v1-20260801"
+
+
 def get_main_menu_keyboard(is_admin=False):
     keyboard = []
 

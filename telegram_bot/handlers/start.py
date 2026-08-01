@@ -224,3 +224,26 @@ async def delete_confirm_callback(callback: CallbackQuery):
 async def delete_cancel_callback(callback: CallbackQuery):
     await show_main_menu(callback.message, callback.from_user.id, edit=True)
     await callback.answer("تم الإلغاء.")
+
+
+# ================================================================
+# ✅ بيانات Mini App (web_app_data) — زر "العودة للقائمة الرئيسية"
+# ================================================================
+# عندما يضغط المستخدم زر "🏠 العودة للقائمة الرئيسية" داخل Mini App
+# الشروحات، يرسل الـ Mini App البيانات '/start' عبر WebApp.sendData()،
+# فيستقبلها البوت هنا كرسالة من نوع web_app_data ويعرض القائمة مباشرة.
+
+@router.message(F.web_app_data)
+async def handle_web_app_data(message: Message):
+    data = ""
+    try:
+        data = (message.web_app_data.data or "").strip()
+    except Exception:
+        pass
+    telegram_id = str(message.from_user.id)
+    user = repo.get_user(telegram_id)
+    if data in ("/start", "main_menu"):
+        if user and user.get("terms_accepted"):
+            await show_main_menu(message, telegram_id, edit=False)
+        else:
+            await message.answer(get_terms_text(), reply_markup=get_terms_keyboard(), parse_mode="HTML")

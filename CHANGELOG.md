@@ -1,3 +1,32 @@
+# 📦 Update 21 — 💭 Mini App الشروحات الكاملة (2026-08-01)
+
+## 🎯 تحويل زر "الشروحات" إلى Mini App حقيقية متكاملة
+
+### ✨ صفحة الشروحات الجديدة (`webapp/guides.html` + `guides.html` في الجذر)
+- تكامل كامل مع Telegram WebApp API: `ready()` + `expand()` + تلوين الهيدر والخلفية + ترحيب شخصي باسم المستخدم + تكيّف مع الثيم الفاتح/الداكن.
+- محتوى شامل ومنظم بـ7 أقسام: 🚀 البدء → 💰 الشحن والسحب → ⚡ حساب iChancy → 🎁 المكافآت والإحالات → 👑 Robert VIP → ❓ أسئلة شائعة → 🛟 الدعم والأمان.
+- بطاقات خطوة-بخطوة مرقمة، جداول نسب الإحالات، نصائح ذهبية وتنبيهات لكل عملية.
+- شريط بحث فوري يفلتر البطاقات والأقسام أثناء الكتابة + أزرار تنقّل سريع (Chips).
+- تصميم فاخر بنفس هوية المشروع (أسود داكن + ذهبي متوهج + Glassmorphism + خط Cairo).
+- إصلاح زر العودة: `sendData('/start')` ثم `close()` احتياطياً (الترتيب الصحيح الذي كان معكوساً سابقاً).
+
+### 🔧 معالِج جديد في البوت (`telegram_bot/handlers/start.py`)
+- معالِج `web_app_data`: عند الضغط على "🏠 العودة للقائمة الرئيسية" داخل الـ Mini App، يُرسل `/start` ويعرض البوت القائمة الرئيسية مباشرة (كان مفقوداً بالكامل).
+
+### 🔗 تحديث زر الشروحات (`telegram_bot/handlers/menu.py` + `telegram_bot/keyboards/inline.py`)
+- دالة `get_guides_url()` مع cache-buster لكسر كاش Telegram WebView.
+- رسالة وسيطة تسرد محتويات الدليل.
+
+### 📋 الملفات المعدّلة
+- `webapp/guides.html` — إعادة بناء كاملة (519 سطر)
+- `guides.html` — نسخة مطابقة للجذر (Copy to Root)
+- `telegram_bot/handlers/start.py` — معالِج web_app_data
+- `telegram_bot/handlers/menu.py` — تحديث guides_menu
+- `telegram_bot/keyboards/inline.py` — دالة get_guides_url
+- `CHANGELOG.md` — هذا المدخل
+
+---
+
 # 📦 Update 20 — 👑 ثورة بصرية كاملة للداشبورد (2026-07-03)
 
 ## 🎨 إعادة تصميم CSS بالكامل
