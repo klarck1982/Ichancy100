@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from contextlib import suppress
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import settings
