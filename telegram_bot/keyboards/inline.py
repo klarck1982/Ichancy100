@@ -72,6 +72,7 @@ def get_main_menu_keyboard(is_admin=False):
             InlineKeyboardButton(text="🎮 ألعاب iChancy", web_app=WebAppInfo(url=repo.get_button_link('games_url')))
         ],
         [InlineKeyboardButton(text="🎁 العروض والبونصات", callback_data="offers_menu")],
+        [InlineKeyboardButton(text="🏆 المتصدرون الأسبوعيون", callback_data="weekly_leaderboard_menu")],
         [InlineKeyboardButton(text="🎫 بطاقات التوقع", callback_data="prediction_cards_menu")],
         [
             InlineKeyboardButton(text="🌐 فتح الموقع", web_app=WebAppInfo(url=repo.get_button_link('website_url'))),

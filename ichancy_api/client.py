@@ -579,6 +579,55 @@ class IChancyClient:
         return await asyncio.to_thread(self._check_session_validity)
 
     # ================================================================
+    # 🆕 (Update 18) جلب إحصائيات كل اللاعبين دفعة واحدة للوحة المتصدرين
+    # ================================================================
+
+    def _get_all_players_stats_bulk(self, field_name='totalBet', max_pages=40, page_size=500):
+        """جلب إجمالي المراهنات التراكمي لكل لاعبي الوكيل عبر التصفح (Pagination).
+
+        بديل كفء عن استدعاء get_player_turnover لكل لاعب على حدة:
+        طلب واحد لكل 500 لاعب، ويتوقف عند صفحة غير مكتملة.
+        تعيد: {player_id: {'username': str, 'turnover': int}} أو {} عند الفشل.
+        """
+        results = {}
+        safe_field = str(field_name or 'totalBet')
+        page_size = max(50, min(int(page_size or 500), 1000))
+        for page in range(max(1, int(max_pages or 1))):
+            payload = {
+                "start": page * page_size,
+                "limit": page_size,
+                "filter": {}
+            }
+            try:
+                data = self._fetch_player_statistics_page(payload)
+            except Exception as e:
+                logger.error(f"[Caesar_Bot] Bulk stats fetch failed on page {page}: {e}")
+                break
+            result = data.get('result') if isinstance(data, dict) else None
+            records = result.get('records') if isinstance(result, dict) else None
+            if not records:
+                break
+            for row in records:
+                if not isinstance(row, dict):
+                    continue
+                player_id = row.get('playerId') or row.get('playerID') or row.get('id')
+                if not player_id:
+                    continue
+                username = row.get('username') or row.get('login') or ''
+                try:
+                    turnover = int(float(row.get(safe_field) or 0))
+                except (TypeError, ValueError):
+                    turnover = 0
+                results[str(player_id)] = {'username': str(username), 'turnover': turnover}
+            if len(records) < page_size:
+                break
+        logger.info(f"[Caesar_Bot] Bulk stats fetched: {len(results)} players (field={safe_field})")
+        return results
+
+    async def get_all_players_stats_bulk(self, field_name='totalBet', max_pages=40, page_size=500):
+        return await asyncio.to_thread(self._get_all_players_stats_bulk, field_name, max_pages, page_size)
+
+    # ================================================================
     # 🆕 دوال الـ API القياسية (تعيد dict بـ success/message)
     # لكي تتوافق مع ما تتوقعه معالجات الإيداع/السحب التلقائي في اللعبة
     # ================================================================

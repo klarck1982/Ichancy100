@@ -213,6 +213,9 @@ async def cmd_delete(message: Message):
 async def delete_confirm_callback(callback: CallbackQuery):
     telegram_id = str(callback.from_user.id)
     repo.delete_user_completely(telegram_id)
+    # 🆕 (Update 20 / Perf) إبطال كاش قبول الشروط فوراً حتى لا يمر حساب محذوف من الميدلوير
+    from telegram_bot.middlewares.terms_check import invalidate_terms_cache
+    invalidate_terms_cache(telegram_id)
     await callback.message.edit_text(
         "🗑️ <b>تم حذف حسابك بنجاح.</b>\n\nللبدء من جديد اضغط على /start",
         parse_mode="HTML"

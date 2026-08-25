@@ -2430,6 +2430,87 @@ async def offers_menu_callback(callback: CallbackQuery):
 
 
 
+@router.callback_query(F.data == "weekly_leaderboard_menu")
+async def weekly_leaderboard_menu_callback(callback: CallbackQuery):
+    """🆕 (Update 18) لوحة المتصدرين الأسبوعية حسب دوران المراهنات في iChancy."""
+    back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 تحديث العرض", callback_data="weekly_leaderboard_menu")],
+        [InlineKeyboardButton(text="🏠 العودة للقائمة الرئيسية", callback_data="back_to_main_menu")],
+    ])
+    try:
+        feats = repo.get_user_features_settings()
+        enabled = bool(feats.get('leaderboard_enabled', True))
+        weekly_mode = str(feats.get('leaderboard_type') or 'all_time') == 'weekly'
+        cfg = repo.get_lb_config()
+
+        if not enabled or not weekly_mode:
+            text = (
+                "🏆 <b>لوحة المتصدرين الأسبوعية</b>\n\n"
+                "المسابقة الأسبوعية غير مفعّلة حالياً.\n"
+                "ترقّب إعلان الإدارة لانطلاق جولات الدوران 🎲"
+            )
+            await safe_edit_text(callback.message, text, reply_markup=back_keyboard, parse_mode="HTML")
+            await safe_answer_callback(callback)
+            return
+
+        lb = repo.get_weekly_turnover_leaderboard(limit=10, telegram_id=callback.from_user.id)
+        last_refresh = repo.get_lb_last_refresh()
+        refresh_txt = last_refresh.strftime('%Y-%m-%d %H:%M') if last_refresh else 'قريباً بعد أول تحديث'
+
+        rank_emoji = {1: '🥇', 2: '🥈', 3: '🥉'}
+        text = (
+            "🏆 <b>المتصدرون الأسبوعيون — دوران المراهنات 🎲</b>\n"
+            f"🕒 آخر تحديث: <code>{refresh_txt}</code>\n"
+        )
+        if cfg['min_weekly_turnover'] > 0:
+            text += f"🎯 حد التأهل: <code>{cfg['min_weekly_turnover']:,}</code> نقطة دوران\n"
+
+        prizes = []
+        if cfg['prize_1'] > 0:
+            prizes.append(f"🥇 {cfg['prize_1']:,}")
+        if cfg['prize_2'] > 0:
+            prizes.append(f"🥈 {cfg['prize_2']:,}")
+        if cfg['prize_3'] > 0:
+            prizes.append(f"🥉 {cfg['prize_3']:,}")
+        if prizes:
+            text += f"🎁 جوائز الأسبوع: <b>{' | '.join(prizes)}</b> SYP 💵\n"
+
+        top = lb.get('top') or []
+        if not top:
+            text += (
+                "\nلا يوجد متسابقون متتبَّعون بعد.\n"
+                "أنشئ حساب iChancy والعب — سيظهر اسمك هنا تلقائياً ✨\n"
+            )
+        else:
+            text += "\n"
+            for entry in top[:10]:
+                medal = rank_emoji.get(entry['rank'], f"#{entry['rank']}")
+                text += f"{medal} <b>{entry['username']}</b> — <code>{entry['weekly_turnover']:,}</code>\n"
+
+        my_rank = lb.get('my_rank')
+        if my_rank:
+            qualify_txt = "✅ متأهل" if lb.get('qualifies') else "⏳ دون حد التأهل"
+            text += f"\n📍 <b>مركزك:</b> #{my_rank} — <code>{lb.get('my_score', 0):,}</code> ({qualify_txt})"
+        elif lb.get('my_score') is not None:
+            text += "\n📍 لم تدخل السباق بعد — العب في iChancy لتحجز مقعدك!"
+
+        last = repo.get_lb_last_results(limit=3)
+        if last.get('results'):
+            wk = last['week_start']
+            wk_txt = wk.strftime('%Y-%m-%d') if hasattr(wk, 'strftime') else str(wk)
+            text += f"\n\n━━━━ 🏅 نتائج الأسبوع الماضي ({wk_txt}) ━━━━\n"
+            for r in last['results']:
+                medal = rank_emoji.get(r['rank'], f"#{r['rank']}")
+                prize_txt = f" (+{int(r['prize_syp']):,} 💵)" if r.get('prize_syp') else ""
+                text += f"{medal} {r['username']} — <code>{int(r['weekly_turnover']):,}</code>{prize_txt}\n"
+
+        await safe_edit_text(callback.message, text, reply_markup=back_keyboard, parse_mode="HTML")
+        await safe_answer_callback(callback)
+    except Exception as e:
+        logger.error(f"weekly_leaderboard_menu error: {e}", exc_info=True)
+        await safe_answer_callback(callback, "⚠️ تعذّر تحميل اللوحة الآن، حاول لاحقاً.", show_alert=True)
+
+
 @router.callback_query(F.data == "prediction_cards_menu")
 async def prediction_cards_menu_callback(callback: CallbackQuery):
     """عرض بطاقات التوقع المفتوحة للمستخدم."""

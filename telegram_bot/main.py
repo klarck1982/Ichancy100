@@ -43,6 +43,7 @@ from config import settings
 from database.connection import DatabaseManager
 from telegram_bot.middlewares.terms_check import TermsCheckMiddleware
 from telegram_bot.handlers import start, menu, admin
+from telegram_bot import leaderboard as lb_engine
 from ichancy_api.client import ichancy_api_client
 import database.repository as repo
 from neon_metrics import get_neon_metrics
@@ -57,6 +58,7 @@ WEBAPP_PORT = int(os.getenv("PORT", 8080))
 watchdog_task = None
 ensure_webhook_task = None
 daily_report_task = None
+leaderboard_task = None
 routers_registered = False
 last_cookie_warning_sent = None  # 🆕 يمنع تكرار تنبيه الكوكيز
 SERVER_START_TS = time.time()
@@ -155,9 +157,14 @@ async def cookie_watchdog_task(bot: Bot):
 
             logger.info("🔍 Watchdog: checking session validity...")
             is_valid = await ichancy_api_client.check_session_validity()
+            # 🆕 (Update 20 / Perf) يُحدِّث كاش حالة الجلسة لخدمته للوحات دون شبكة داخل الطلب
+            _COOKIE_STATUS_CACHE['alive'] = bool(is_valid)
+            _COOKIE_STATUS_CACHE['checked_at'] = time.time()
             if not is_valid:
                 logger.warning("💀 Watchdog: session DEAD! Attempting auto-login...")
                 success = await ichancy_api_client.login_agent()
+                _COOKIE_STATUS_CACHE['alive'] = bool(success)
+                _COOKIE_STATUS_CACHE['checked_at'] = time.time()
                 if success:
                     logger.info("✅ Watchdog: session refreshed!")
                     repo.update_cookie_timestamp()
@@ -429,6 +436,219 @@ async def daily_report_scheduler(bot: Bot):
             await asyncio.sleep(60)  # إعادة المحاولة بعد دقيقة
 
 
+# ================================================================
+# 🆕 (Update 18) لوحة المتصدرين الأسبوعية — تحديث الإحصائيات والتسوية
+# ================================================================
+# الوضع الأسبوعي يُفعّل من لوحة الميزات (leaderboard_type = 'weekly').
+# هذا النظام يزوّده ببيانات "دوران المراهنات" الحقيقية من iChancy ويصرف
+# جوائز المراكز الثلاثة آلياً كل أسبوع (اثنين 00:05 بتوقيت سوريا).
+
+LEADERBOARD_REFRESH_MINUTES = max(30, int(os.getenv('LEADERBOARD_REFRESH_MINUTES', '180')))
+LEADERBOARD_REFRESH_SECONDS = LEADERBOARD_REFRESH_MINUTES * 60
+
+
+async def refresh_turnover_leaderboard():
+    """جلب إجمالي مراهنات اللاعبين من iChancy وتحديث لقطات الدوران.
+    يعيد عدد السجلات المحدّثة، أو 0 عند الفشل (لا شيء يُمسح عند الفشل)."""
+    try:
+        users = repo.get_users_with_player_ids()
+        if not users:
+            logger.info("🏆 Leaderboard refresh: no linked players yet.")
+            return 0
+        bot_settings = repo.get_bot_settings()
+        field_name = str(bot_settings.get('turnover_field_name') or 'totalBet')
+        bulk = await ichancy_api_client.get_all_players_stats_bulk(field_name=field_name)
+        if not bulk:
+            logger.warning("🏆 Leaderboard refresh: bulk stats empty — skipped (بيانات البارحة تبقى سارية).")
+            return 0
+        cycle = lb_engine.week_monday()
+        records = []
+        for u in users:
+            pid = str(u.get('player_id') or '').strip()
+            if not pid or pid not in bulk:
+                continue
+            records.append({
+                'player_id': pid,
+                'telegram_id': str(u.get('telegram_id')),
+                'username': u.get('ichancy_username') or bulk[pid].get('username') or 'لاعب',
+                'turnover': bulk[pid].get('turnover', 0),
+            })
+        updated = repo.upsert_leaderboard_snapshot_records(records, cycle)
+        logger.info(f"🏆 Leaderboard refresh: {updated} records updated.")
+        return updated
+    except Exception as e:
+        logger.error(f"🏆 Leaderboard refresh error: {e}", exc_info=True)
+        return 0
+
+
+async def _notify_leaderboard_winners(bot: Bot, credited_credits):
+    """إشعار الفائزين الذين أُضيفت جوائزهم."""
+    if not bot:
+        return
+    rank_emoji = {1: '🥇', 2: '🥈', 3: '🥉'}
+    for c in credited_credits:
+        try:
+            await bot.send_message(
+                chat_id=c['telegram_id'],
+                text=(
+                    f"🏆 <b>مبروك! فزت بالمركز {rank_emoji.get(c['rank'], c['rank'])} في لوحة المتصدرين الأسبوعية</b>\n\n"
+                    f"🎲 دورانك الأسبوعي: <code>{c['weekly_turnover']:,}</code>\n"
+                    f"💰 تمت إضافة جائزتك <code>{c['prize_syp']:,} SYP</code> إلى رصيدك في البوت تلقائياً.\n\n"
+                    "👑 تابع اللعب لتبقى في القمة!"
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"🏆 Failed to notify winner {c.get('telegram_id')}: {e}")
+
+
+async def _notify_admins_leaderboard(bot: Bot, text):
+    """إشعار المشرفين بملخص التسوية (نفس نمط التقرير اليومي)."""
+    if not bot:
+        return
+    admin_ids = [item.strip() for item in str(getattr(settings, "ADMIN_IDS", settings.ADMIN_ID)).split(",") if item.strip()]
+    targets = list(admin_ids)
+    log_channel_id = getattr(settings, "LOG_CHANNEL_ID", None)
+    if log_channel_id:
+        targets.append(str(log_channel_id))
+    for target in targets:
+        try:
+            await bot.send_message(chat_id=target, text=text, parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"🏆 Failed to send leaderboard summary to {target}: {e}")
+
+
+async def settle_weekly_leaderboard(bot: Bot = None, manual=False):
+    """تسوية الأسبوع الـمنصرم: أرشفة النتائج + صرف الجوائز + تدوير خطوط الأساس.
+
+    مُصمّمة لتكون آمنة عند إعادة التشغيل الجزئي:
+      - lb_last_settled_week يمنع تسوية نفس الأسبوع مرتين.
+      - ON CONFLICT في الأرشفة يحمي من تكرار السجلات.
+      - claim_lb_result_credit يمنع الدفع المزدوج حتى لو حدث انقطاع وسط التسوية.
+    تعيد dict بنتيجة العملية لعرضها في لوحة الأدمن عند التشغيل اليدوي.
+    """
+    try:
+        now = repo.get_syria_now()
+        settled_monday = lb_engine.week_monday(now) - timedelta(days=7)
+        settled_label = lb_engine.week_label(settled_monday)
+        new_cycle = lb_engine.week_monday(now)
+        cfg = repo.get_lb_config()
+
+        if not manual and str(cfg.get('last_settled_week') or '') == settled_label:
+            return {'ok': True, 'skipped': 'already_settled', 'week_start': settled_label}
+
+        refreshed = await refresh_turnover_leaderboard()
+        if refreshed == 0:
+            logger.warning(f"🏆 Weekly settlement aborted ({settled_label}): refresh failed.")
+            return {'ok': False, 'reason': 'refresh_failed', 'week_start': settled_label}
+
+        snapshots = repo.get_leaderboard_snapshots(cycle_start=settled_monday)
+        if not snapshots:
+            logger.info(f"🏆 Weekly settlement ({settled_label}): no participants, skipping rollover.")
+            return {'ok': False, 'reason': 'no_participants', 'week_start': settled_label}
+
+        standings = lb_engine.compute_standings(snapshots, min_weekly_turnover=cfg['min_weekly_turnover'], limit=50)
+        winners = lb_engine.assign_prizes(standings, cfg['prize_1'], cfg['prize_2'], cfg['prize_3'])
+
+        # 1) الأرشفة أولاً (محمية بـ ON CONFLICT → إعادة المحاولة آمنة)
+        for w in winners:
+            repo.insert_leaderboard_result(
+                week_start=settled_monday,
+                rank=w['rank'],
+                player_id=w['player_id'],
+                telegram_id=w['telegram_id'],
+                username=w['username'],
+                weekly_turnover=w['weekly_turnover'],
+                prize_syp=w['prize_syp'],
+            )
+
+        # 2) الصرف عند الطلب، مع حارس الدفع المزدوج على مستوى الصف
+        credited = []
+        if cfg.get('auto_credit', True):
+            for row in repo.get_uncredited_lb_results(settled_monday):
+                if not repo.claim_lb_result_credit(row['id']):
+                    continue  # مسوّاة بالفعل في معاملة منافسة
+                new_balance = repo.credit_balance_atomic(row['telegram_id'], row['prize_syp'])
+                if new_balance is None:
+                    # فشل الصرف: نتراجع عن التعليم ليُعاد المحاولة لاحقاً بلا فقدان
+                    DatabaseManager.execute_query(
+                        "UPDATE turnover_leaderboard_results SET credited = FALSE WHERE id = %s",
+                        (int(row['id']),)
+                    )
+                    logger.error(f"🏆 Prize credit FAILED for user {row.get('telegram_id')} (result {row['id']})")
+                    continue
+                row['new_balance'] = new_balance
+                credited.append(row)
+                logger.info(f"🏆 Prize credited: user={row['telegram_id']} rank={row['rank']} prize={row['prize_syp']:,}")
+        else:
+            logger.info(f"🏆 Auto credit disabled — winners archived only ({settled_label}).")
+
+        # 3) تدوير خطوط الأساس + تثبيت التسوية (بعد نجاح الأرشفة/الصرف فقط)
+        repo.rollover_leaderboard_baselines(new_cycle)
+        repo.mark_lb_week_settled(settled_label)
+
+        # 4) الإشعارات
+        await _notify_leaderboard_winners(bot, credited)
+        rank_emoji = {1: '🥇', 2: '🥈', 3: '🥉'}
+        lines = []
+        for w in winners:
+            prize_txt = f" — 💰 {w['prize_syp']:,} SYP" if w['prize_syp'] else ""
+            lines.append(f"{rank_emoji.get(w['rank'], w['rank'])} {w['username']}: <code>{w['weekly_turnover']:,}</code>{prize_txt}")
+        summary = (
+            "🏆 <b>تسوية لوحة المتصدرين الأسبوعية</b>\n"
+            f"📅 الأسبوع الـمنتهي: <code>{settled_label}</code>\n"
+            f"👥 متأهلون: <code>{len(standings)}</code> | متتبَّعون: <code>{len(snapshots)}</code>\n\n"
+            + ("\n".join(lines) if lines else "لا فائزين هذا الأسبوع (لم يتجاوز أحد الحد الأدنى).")
+            + (f"\n\n🤖 القيد التلقائي: {'مفعّل — أُضيفت الجوائز ✅' if cfg.get('auto_credit', True) else 'موقّف — أرشفة فقط'}")
+        )
+        await _notify_admins_leaderboard(bot, summary)
+
+        return {'ok': True, 'week_start': settled_label, 'winners': len(winners), 'credited': len(credited)}
+    except Exception as e:
+        logger.error(f"🏆 Weekly settlement error: {e}", exc_info=True)
+        return {'ok': False, 'reason': 'exception', 'error': str(e)}
+
+
+async def weekly_leaderboard_task(bot: Bot):
+    """مجدول لوحة المتصدرين الأسبوعية (خفيف على Neon):
+    - تنبيه كل 10 دقائق فقط، بدون عمل DB بالوضع الخامل.
+    - تحديث الإحصائيات كل LEADERBOARD_REFRESH_MINUTES (افتراضي 180 دقيقة) عند تفعيل الوضع الأسبوعي.
+    - تسوية الجوائز بتوقيت سوريا بعد منتصف ليل الأحد (اثنين 00:05) مع تعويض انقطاع حتى 48 ساعة.
+    """
+    await asyncio.sleep(45)  # اترك الإقلاع ومسبح الاتصالات يكتملان
+    last_refresh_ts = 0.0
+    logger.info(f"🏆 Weekly leaderboard scheduler started (refresh: {LEADERBOARD_REFRESH_MINUTES} min).")
+    while True:
+        try:
+            now_ts = time.time()
+            refresh_due = (now_ts - last_refresh_ts) >= LEADERBOARD_REFRESH_SECONDS
+
+            cfg = repo.get_lb_config()
+            settle_due = lb_engine.settlement_due(cfg.get('last_settled_week'))
+
+            # لا نقرأ إعدادات الميزات إلا عند الحاجة لتخفيف الحمل على Neon المجاني
+            if refresh_due or settle_due:
+                feats = repo.get_user_features_settings()
+                weekly_on = bool(feats.get('leaderboard_enabled', True)) and str(feats.get('leaderboard_type') or 'all_time') == 'weekly'
+            else:
+                weekly_on = False
+
+            if weekly_on and settle_due:
+                await settle_weekly_leaderboard(bot)
+                last_refresh_ts = time.time()
+            elif weekly_on and refresh_due:
+                await refresh_turnover_leaderboard()
+                last_refresh_ts = time.time()
+
+            await asyncio.sleep(600)  # فحص خفيف كل 10 دقائق
+        except asyncio.CancelledError:
+            logger.info("🏆 Weekly leaderboard task cancelled.")
+            raise
+        except Exception as e:
+            logger.error(f"🏆 Weekly leaderboard task error: {e}", exc_info=True)
+            await asyncio.sleep(120)
+
+
 # مراقب رصيد الكاشيرة (يتم فحصه مع الـ watchdog الرئيسي كل 5 دقائق)
 last_agent_balance_alert_sent = None
 last_agent_balance_value = None  # 🆕 لتخزين آخر رصيد معروف
@@ -513,7 +733,7 @@ async def notify_agent_balance_increase(bot: Bot, old_balance: int, new_balance:
 
 async def on_startup(dispatcher: Dispatcher, bot: Bot):
     """تهيئة البوت عند بدء التشغيل."""
-    global watchdog_task, ensure_webhook_task, daily_report_task, routers_registered
+    global watchdog_task, ensure_webhook_task, daily_report_task, leaderboard_task, routers_registered
 
     logger.info("🚀 Caesar_Bot is starting...")
 
@@ -561,12 +781,17 @@ async def on_startup(dispatcher: Dispatcher, bot: Bot):
         daily_report_task = asyncio.create_task(daily_report_scheduler(bot))
         logger.info("📊 Daily financial report scheduler started.")
 
+    # 🆕 (Update 18) بدء مهمة لوحة المتصدرين الأسبوعية
+    if leaderboard_task is None or leaderboard_task.done():
+        leaderboard_task = asyncio.create_task(weekly_leaderboard_task(bot))
+        logger.info("🏆 Weekly leaderboard task started.")
+
 
 async def on_shutdown(dispatcher: Dispatcher, bot: Bot):
     """تنظيف الموارد عند إيقاف البوت."""
     logger.info("🛑 Shutting down...")
 
-    for task in [watchdog_task, ensure_webhook_task, daily_report_task]:
+    for task in [watchdog_task, ensure_webhook_task, daily_report_task, leaderboard_task]:
         if task and not task.done():
             task.cancel()
             with suppress(asyncio.CancelledError):
@@ -666,198 +891,231 @@ def _is_admin(init_data_raw):
 
 
 
+# ================================================================
+# 🆕 (Update 20 / Perf) كاشات اللوحات والحالة — فتح الميني آب خلال ميلي ثوانٍ
+# ================================================================
+_DASHBOARD_CACHE = {'data': None, 'expires_at': 0.0}
+DASHBOARD_CACHE_TTL = 30.0
+_COOKIE_STATUS_CACHE = {'alive': None, 'checked_at': 0.0}
+_BOT_USERNAME_CACHE = {'username': None}
+_TOTAL_BALANCE_MEMO = {'value': 0, 'expires_at': 0.0}
+
+
+def _sum_bot_balance_sync():
+    """مجموع أرصدة البوت مع مذكّرة 60 ثانية (الاسم القديم '_get_total_bot_balance_cached' كان بلا كاش فعلي)."""
+    now = time.time()
+    if _TOTAL_BALANCE_MEMO['expires_at'] > now:
+        return _TOTAL_BALANCE_MEMO['value']
+    conn = None
+    cur = None
+    total = 0
+    try:
+        conn = DatabaseManager.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COALESCE(SUM(bot_balance), 0) FROM users")
+        result = cur.fetchone()
+        total = int(result[0]) if result else 0
+    except Exception as e:
+        logger.error(f"Bot balance query error: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+    _TOTAL_BALANCE_MEMO['value'] = total
+    _TOTAL_BALANCE_MEMO['expires_at'] = now + 60
+    return total
+
+
+async def _get_total_bot_balance_cached():
+    return _sum_bot_balance_sync()
+
+
+def _collect_dashboard_payload_sync():
+    """جمع حمولة لوحة تحكم الأدمن — استعلامات DB فقط (صفر شبكة iChancy).
+    يُستدعى عبر asyncio.to_thread حتى لا يجمّد الـ event loop طوال الجمع.
+    🆕 استعلامات «اليوم» الأربعة دمجت في مسح واحد، وعداد التذاكر COUNT خفيف."""
+    bot_settings = repo.get_bot_settings()
+    pending = repo.get_pending_requests()
+    recent = repo.get_all_transactions(10)
+
+    pending_deposits = [{
+        'id': t['id'], 'amount': float(t['amount']),
+        'created_at_str': t['created_at'].strftime('%m-%d %H:%M') if t.get('created_at') else ''
+    } for t in pending if t['type'] == 'deposit_bot']
+    pending_withdraws = [{
+        'id': t['id'], 'amount': float(t['amount']),
+        'created_at_str': t['created_at'].strftime('%m-%d %H:%M') if t.get('created_at') else ''
+    } for t in pending if t['type'] == 'withdraw_bot']
+    oldest_pending = None
+    if pending:
+        candidates = [t for t in pending if t.get('created_at')]
+        if candidates:
+            oldest = min(candidates, key=lambda x: x.get('created_at'))
+            age_minutes = max(0, int((datetime.now(oldest['created_at'].tzinfo) - oldest['created_at']).total_seconds() / 60))
+            oldest_pending = {
+                'id': oldest.get('id'),
+                'type': oldest.get('type'),
+                'age_minutes': age_minutes,
+            }
+    open_support_count = repo.get_open_support_tickets_count()
+    active_cashier = repo.get_active_cashier_profile()
+    service_gates = repo.get_service_gates()
+    recent_transactions = [{
+        'id': t['id'], 'type': t['type'], 'amount': float(t['amount']), 'status': t['status']
+    } for t in recent[:5]]
+
+    # 🆕 (Update 20) مجاميع «اليوم» في مسح واحد مفهرس بدل 4 مسحات —
+    # مسند نطاقي SARGable يستفيد من idx_tx_created_at (نفس دلالة created_at::date = CURRENT_DATE تماماً)
+    today_agg = DatabaseManager.execute_query_dict(
+        """SELECT
+             COALESCE(SUM(CASE WHEN type = 'deposit_bot' AND status = 'approved' THEN amount END), 0) as today_deposits,
+             COALESCE(SUM(CASE WHEN type = 'withdraw_bot' AND status = 'approved' THEN amount END), 0) as today_withdraws,
+             COALESCE(SUM(CASE WHEN type = 'deposit_to_game' AND status IN ('completed', 'approved') THEN amount END), 0) as today_game_deposits,
+             COALESCE(SUM(CASE WHEN type IN ('deposit_to_game', 'deposit_bot') AND status IN ('completed', 'approved') AND transfer_number LIKE '%%Bonus%%' THEN amount END), 0) as today_bonus_paid
+           FROM transactions
+           WHERE created_at >= CURRENT_DATE AND created_at < (CURRENT_DATE + INTERVAL '1 day')""",
+        fetch='one'
+    ) or {}
+    dep_total = float(today_agg.get('today_deposits', 0))
+    wd_total = float(today_agg.get('today_withdraws', 0))
+    game_dep = float(today_agg.get('today_game_deposits', 0))
+    bonus_paid = float(today_agg.get('today_bonus_paid', 0))
+    agent_rev_pct = float(bot_settings.get('agent_revenue_percent') or 30)
+    estimated_burn = game_dep * 0.70
+    estimated_revenue = estimated_burn * (agent_rev_pct / 100.0)
+    net_profit = dep_total - wd_total - bonus_paid + estimated_revenue
+
+    withdraw_comm_pct = float(bot_settings.get('withdraw_commission') or 10)
+    chart_data = DatabaseManager.execute_query_dict(
+        """SELECT
+            d::date as date,
+            COALESCE(SUM(CASE WHEN t.type = 'deposit_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as deposits,
+            COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as withdraws,
+            COALESCE(SUM(CASE WHEN t.type = 'deposit_to_game' AND t.status IN ('completed', 'approved') THEN COALESCE(t.original_amount, t.amount) ELSE 0 END), 0) as game_dep,
+            COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount * %s / 100.0 ELSE 0 END), 0) as withdraw_comm
+           FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') as d
+           LEFT JOIN transactions t ON t.created_at >= d::date AND t.created_at < (d::date + INTERVAL '1 day')
+           GROUP BY d::date ORDER BY d::date""",
+        (withdraw_comm_pct,),
+        fetch='all'
+    ) or []
+    chart_labels = [r.get('date', '').strftime('%m-%d') if hasattr(r.get('date'), 'strftime') else str(r.get('date', '')) for r in chart_data]
+    chart_deposits = [float(r.get('deposits') or 0) for r in chart_data]
+    chart_withdraws = [float(r.get('withdraws') or 0) for r in chart_data]
+    chart_burn_rev = [float(r.get('game_dep') or 0) * 0.70 * (agent_rev_pct / 100.0) for r in chart_data]
+    chart_comm_rev = [float(r.get('withdraw_comm') or 0) for r in chart_data]
+
+    wheel_stats = {}
+    try:
+        wheel_stats = repo.get_wheel_stats()
+    except Exception:
+        pass
+
+    cashback_stats = {}
+    try:
+        cashback_stats = repo.get_cashback_stats()
+    except Exception:
+        pass
+
+    checkin_stats = {}
+    try:
+        checkin_stats = repo.get_checkin_stats()
+    except Exception:
+        pass
+
+    inactive_users = DatabaseManager.execute_query(
+        """SELECT COUNT(*) FROM users
+           WHERE terms_accepted = TRUE
+           AND telegram_id NOT IN (
+               SELECT DISTINCT user_telegram_id FROM transactions
+               WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+           )""",
+        fetch='one'
+    )
+    inactive_count = int(inactive_users[0]) if inactive_users else 0
+
+    # 🆕 (Update 20) رصيد الوكيل من الإعداد المحدَّث خلفياً من الـ watchdog (لا شبكة داخل الطلب).
+    # التحديث الحي يدوياً متاح بزر «تحديث السيولة» في لوحة البوت.
+    agent_balance_val = int(bot_settings.get('agent_balance', 0))
+    agent_balance_alert = agent_balance_val < int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
+
+    return {
+        'total_users': repo.get_total_users_count(),
+        'new_users_today': repo.get_new_users_today(),
+        'today_tx_count': repo.get_today_transactions_count(),
+        'approved_volume': repo.get_transactions_volume('approved'),
+        'total_bot_balance': _sum_bot_balance_sync(),
+        'agent_balance': agent_balance_val,
+        'agent_balance_alert_threshold': int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)),
+        'usd_buy_rate': float(bot_settings['usd_buy_rate']),
+        'usd_sell_rate': float(bot_settings['usd_sell_rate']),
+        'exchange_rate': int(bot_settings['exchange_rate']),
+        'withdraw_commission': float(bot_settings['withdraw_commission']),
+        'game_min_deposit_syp': int(bot_settings.get('game_min_deposit_syp') or 20000),
+        'agent_revenue_percent': agent_rev_pct,
+        'min_deposit_syp': int(bot_settings.get('min_deposit_syp') or 20000),
+        'min_deposit_usd': int(bot_settings.get('min_deposit_usd') or 5),
+        'min_withdraw_syp': int(bot_settings.get('min_withdraw_syp') or 25000),
+        'min_withdraw_usd': int(bot_settings.get('min_withdraw_usd') or 10),
+        'syp_version': str(bot_settings.get('syp_version') or 'old'),
+        'is_cookie_alive': None,  # تُحقن من الكاش في المعالج
+        'cookie_age_minutes': repo.get_cookie_age_minutes(),
+        'pending_deposits': pending_deposits,
+        'pending_withdraws': pending_withdraws,
+        'recent_transactions': recent_transactions,
+        'today_deposits': dep_total,
+        'today_withdraws': wd_total,
+        'today_game_deposits': game_dep,
+        'today_bonus_paid': bonus_paid,
+        'estimated_burn': estimated_burn,
+        'estimated_revenue': estimated_revenue,
+        'net_profit': net_profit,
+        'chart_labels': chart_labels,
+        'chart_deposits': chart_deposits,
+        'chart_withdraws': chart_withdraws,
+        'chart_burn_rev': chart_burn_rev,
+        'chart_comm_rev': chart_comm_rev,
+        'wheel_stats': wheel_stats,
+        'cashback_stats': cashback_stats,
+        'checkin_stats': checkin_stats,
+        'inactive_users': inactive_count,
+        'agent_balance_alert': agent_balance_alert,
+        'pending_count': len(pending_deposits) + len(pending_withdraws),
+        'open_support_count': open_support_count,
+        'oldest_pending': oldest_pending,
+        'service_gates': service_gates,
+        'active_cashier_profile': _cashier_profile_json(active_cashier),
+    }
+
+
 async def dashboard_api_handler(request):
-    """🆕 API يغذّي لوحة التحكم بالبيانات (للمشرفين فقط)."""
-    global last_agent_balance_db_value, last_agent_balance_db_update_ts
+    """🆕 API لوحة التحكم — مكاشن 30 ثانية، وعند الفقد يجمّع بخيط جانبي غير حاجز للبوت."""
     init_data_raw = request.headers.get('X-Telegram-Init-Data', '')
     if not _is_admin(init_data_raw):
         return web.json_response({'error': 'غير مصرّح'}, status=403)
 
+    now = time.time()
+    cached = _DASHBOARD_CACHE['data']
+    if cached is not None and _DASHBOARD_CACHE['expires_at'] > now:
+        return web.json_response(cached)
+
     try:
-        bot_settings = repo.get_bot_settings()
-        is_cookie_alive = await ichancy_api_client.check_session_validity()
-        pending = repo.get_pending_requests()
-        recent = repo.get_all_transactions(10)
-
-        pending_deposits = [{
-            'id': t['id'], 'amount': float(t['amount']),
-            'created_at_str': t['created_at'].strftime('%m-%d %H:%M') if t.get('created_at') else ''
-        } for t in pending if t['type'] == 'deposit_bot']
-        pending_withdraws = [{
-            'id': t['id'], 'amount': float(t['amount']),
-            'created_at_str': t['created_at'].strftime('%m-%d %H:%M') if t.get('created_at') else ''
-        } for t in pending if t['type'] == 'withdraw_bot']
-        oldest_pending = None
-        if pending:
-            candidates = [t for t in pending if t.get('created_at')]
-            if candidates:
-                oldest = min(candidates, key=lambda x: x.get('created_at'))
-                age_minutes = max(0, int((datetime.now(oldest['created_at'].tzinfo) - oldest['created_at']).total_seconds() / 60))
-                oldest_pending = {
-                    'id': oldest.get('id'),
-                    'type': oldest.get('type'),
-                    'age_minutes': age_minutes,
-                }
-        open_support_count = len(repo.get_support_tickets(status='open', limit=200))
-        active_cashier = repo.get_active_cashier_profile()
-        service_gates = repo.get_service_gates()
-        recent_transactions = [{
-            'id': t['id'], 'type': t['type'], 'amount': float(t['amount']), 'status': t['status']
-        } for t in recent[:5]]
-
-        # 🆕 (Update 19) بيانات مالية حية للوحة القيادة
-        today_deposits = DatabaseManager.execute_query_dict(
-            """SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-               WHERE type = 'deposit_bot' AND status = 'approved'
-               AND created_at::date = CURRENT_DATE""",
-            fetch='one'
-        )
-        today_withdraws = DatabaseManager.execute_query_dict(
-            """SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-               WHERE type = 'withdraw_bot' AND status = 'approved'
-               AND created_at::date = CURRENT_DATE""",
-            fetch='one'
-        )
-        today_game_deposits = DatabaseManager.execute_query_dict(
-            """SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-               WHERE type = 'deposit_to_game' AND status IN ('completed', 'approved')
-               AND created_at::date = CURRENT_DATE""",
-            fetch='one'
-        )
-        today_bonus_paid = DatabaseManager.execute_query_dict(
-            """SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-               WHERE type IN ('deposit_to_game', 'deposit_bot') AND status IN ('completed', 'approved')
-               AND created_at::date = CURRENT_DATE
-               AND transfer_number LIKE '%%Bonus%%'""",
-            fetch='one'
-        )
-        dep_total = float(today_deposits.get('total', 0)) if today_deposits else 0
-        wd_total = float(today_withdraws.get('total', 0)) if today_withdraws else 0
-        game_dep = float(today_game_deposits.get('total', 0)) if today_game_deposits else 0
-        bonus_paid = float(today_bonus_paid.get('total', 0)) if today_bonus_paid else 0
-        agent_rev_pct = float(bot_settings.get('agent_revenue_percent') or 30)
-        estimated_burn = game_dep * 0.70  # تقدير: 70% من شحنات اللعبة تُحرق
-        estimated_revenue = estimated_burn * (agent_rev_pct / 100.0)
-        net_profit = dep_total - wd_total - bonus_paid + estimated_revenue
-
-        # 🆕 بيانات الرسوم البيانية (7 أيام - 4 منحنيات)
-        withdraw_comm_pct = float(bot_settings.get('withdraw_commission') or 10)
-        chart_data = DatabaseManager.execute_query_dict(
-            """SELECT
-                d::date as date,
-                COALESCE(SUM(CASE WHEN t.type = 'deposit_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as deposits,
-                COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount ELSE 0 END), 0) as withdraws,
-                COALESCE(SUM(CASE WHEN t.type = 'deposit_to_game' AND t.status IN ('completed', 'approved') THEN COALESCE(t.original_amount, t.amount) ELSE 0 END), 0) as game_dep,
-                COALESCE(SUM(CASE WHEN t.type = 'withdraw_bot' AND t.status = 'approved' THEN t.amount * %s / 100.0 ELSE 0 END), 0) as withdraw_comm
-               FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') as d
-               LEFT JOIN transactions t ON t.created_at::date = d::date
-               GROUP BY d::date ORDER BY d::date""",
-            (withdraw_comm_pct,),
-            fetch='all'
-        ) or []
-        chart_labels = [r.get('date', '').strftime('%m-%d') if hasattr(r.get('date'), 'strftime') else str(r.get('date', '')) for r in chart_data]
-        chart_deposits = [float(r.get('deposits') or 0) for r in chart_data]
-        chart_withdraws = [float(r.get('withdraws') or 0) for r in chart_data]
-        chart_burn_rev = [float(r.get('game_dep') or 0) * 0.70 * (agent_rev_pct / 100.0) for r in chart_data]
-        chart_comm_rev = [float(r.get('withdraw_comm') or 0) for r in chart_data]
-
-        # 🆕 إحصائيات الميزات
-        wheel_stats = {}
-        try:
-            wheel_stats = repo.get_wheel_stats()
-        except Exception:
-            pass
-
-        cashback_stats = {}
-        try:
-            cashback_stats = repo.get_cashback_stats()
-        except Exception:
-            pass
-
-        checkin_stats = {}
-        try:
-            checkin_stats = repo.get_checkin_stats()
-        except Exception:
-            pass
-
-        # 🆕 عداد المستخدمين الخاملين
-        inactive_users = DatabaseManager.execute_query(
-            """SELECT COUNT(*) FROM users
-               WHERE terms_accepted = TRUE
-               AND telegram_id NOT IN (
-                   SELECT DISTINCT user_telegram_id FROM transactions
-                   WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
-               )""",
-            fetch='one'
-        )
-        inactive_count = int(inactive_users[0]) if inactive_users else 0
-
-        agent_balance_val = int(bot_settings.get('agent_balance', 0))
-        if agent_balance_val == 0 or (time.time() - last_agent_balance_db_update_ts > 120):
-            try:
-                live_bal = await ichancy_api_client.get_admin_balance()
-                if live_bal is not None:
-                    agent_balance_val = int(live_bal)
-                    repo.update_bot_settings(agent_balance=agent_balance_val)
-                    last_agent_balance_db_value = agent_balance_val
-                    last_agent_balance_db_update_ts = time.time()
-            except Exception as e:
-                logger.warning(f"Could not live refresh agent balance in dashboard API: {e}")
-
-        agent_balance_alert = agent_balance_val < int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000))
-
-        data = {
-            'total_users': repo.get_total_users_count(),
-            'new_users_today': repo.get_new_users_today(),
-            'today_tx_count': repo.get_today_transactions_count(),
-            'approved_volume': repo.get_transactions_volume('approved'),
-            'total_bot_balance': await _get_total_bot_balance_cached(),
-            'agent_balance': agent_balance_val,
-            'agent_balance_alert_threshold': int(bot_settings.get('agent_balance_alert_threshold') or getattr(settings, 'AGENT_BALANCE_ALERT_THRESHOLD', 100000)),
-            'usd_buy_rate': float(bot_settings['usd_buy_rate']),
-            'usd_sell_rate': float(bot_settings['usd_sell_rate']),
-            'exchange_rate': int(bot_settings['exchange_rate']),
-            'withdraw_commission': float(bot_settings['withdraw_commission']),
-            'game_min_deposit_syp': int(bot_settings.get('game_min_deposit_syp') or 20000),
-            'agent_revenue_percent': agent_rev_pct,
-            'min_deposit_syp': int(bot_settings.get('min_deposit_syp') or 20000),
-            'min_deposit_usd': int(bot_settings.get('min_deposit_usd') or 5),
-            'min_withdraw_syp': int(bot_settings.get('min_withdraw_syp') or 25000),
-            'min_withdraw_usd': int(bot_settings.get('min_withdraw_usd') or 10),
-            'syp_version': str(bot_settings.get('syp_version') or 'old'),
-            'is_cookie_alive': is_cookie_alive,
-            'cookie_age_minutes': repo.get_cookie_age_minutes(),
-            'pending_deposits': pending_deposits,
-            'pending_withdraws': pending_withdraws,
-            'recent_transactions': recent_transactions,
-            # 🆕 (Update 19)
-            'today_deposits': dep_total,
-            'today_withdraws': wd_total,
-            'today_game_deposits': game_dep,
-            'today_bonus_paid': bonus_paid,
-            'estimated_burn': estimated_burn,
-            'estimated_revenue': estimated_revenue,
-            'net_profit': net_profit,
-            'chart_labels': chart_labels,
-            'chart_deposits': chart_deposits,
-            'chart_withdraws': chart_withdraws,
-            'chart_burn_rev': chart_burn_rev,
-            'chart_comm_rev': chart_comm_rev,
-            'wheel_stats': wheel_stats,
-            'cashback_stats': cashback_stats,
-            'checkin_stats': checkin_stats,
-            'inactive_users': inactive_count,
-            'agent_balance_alert': agent_balance_alert,
-            'pending_count': len(pending_deposits) + len(pending_withdraws),
-            'open_support_count': open_support_count,
-            'oldest_pending': oldest_pending,
-            'service_gates': service_gates,
-            'active_cashier_profile': _cashier_profile_json(active_cashier),
-        }
-        return web.json_response(data)
+        data = await asyncio.to_thread(_collect_dashboard_payload_sync)
     except Exception as e:
         logger.error(f"Dashboard API error: {e}", exc_info=True)
         return web.json_response({'error': 'خطأ داخلي'}, status=500)
+
+    # حالة جلسة iChancy من كاش الـ watchdog (يحدّث كل 30 دقيقة) — صفر شبكة داخل مسار الطلب
+    data['is_cookie_alive'] = _COOKIE_STATUS_CACHE['alive']
+    data['cookie_checked_at'] = (
+        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(_COOKIE_STATUS_CACHE['checked_at']))
+        if _COOKIE_STATUS_CACHE['checked_at'] else None
+    )
+
+    _DASHBOARD_CACHE['data'] = data
+    _DASHBOARD_CACHE['expires_at'] = time.time() + DASHBOARD_CACHE_TTL
+    return web.json_response(data)
 
 
 
@@ -2356,23 +2614,7 @@ async def admin_support_handler(request):
         return web.json_response({'error': 'خطأ داخلي'}, status=500)
 
 
-async def _get_total_bot_balance_cached():
-    conn = None
-    cur = None
-    try:
-        conn = DatabaseManager.get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT COALESCE(SUM(bot_balance), 0) FROM users")
-        result = cur.fetchone()
-        return int(result[0]) if result else 0
-    except Exception as e:
-        logger.error(f"Bot balance query error: {e}")
-        return 0
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            DatabaseManager.put_connection(conn)
+# (الدالة القديمة حُذفت — البديل المكاشن يعرف في قسم الكاشات أعلاه)
 
 
 
@@ -2518,8 +2760,230 @@ async def serve_user_app_pingo_html(request):
     return _no_cache_file_response(html_path)
 
 
+def _collect_user_me_payload_sync(telegram_id, bot_username):
+    """جمع حمولة لوحة القيصر للمستخدم — يعمل بخيط جانبي، وبقراءة واحدة لكل كيان.
+    🆕 (Update 20) كان user_me ينفذ ~25 استعلاماً بلا تزامن: get_user_features_settings
+    4 مرات + get_user 3 مرات + get_me من تيليجرام. الآن كلها مرة واحدة (ومكاشنة)."""
+    user = repo.get_user(telegram_id)
+    if not user:
+        return {'_http_status': 404, 'error': 'المستخدم غير موجود. استخدم /start أولاً.'}
+
+    bot_balance = int(user.get('bot_balance') or 0)
+    game_balance = int(user['game_balance']) if user.get('game_balance') is not None else 0
+
+    history = repo.get_user_transactions_history(telegram_id, limit=30)
+    recent_transactions = []
+    for tx in history:
+        recent_transactions.append({
+            'id': tx.get('id'),
+            'type': tx.get('type'),
+            'amount': float(tx.get('amount') or 0),
+            'status': tx.get('status'),
+            'payment_method': tx.get('payment_method'),
+            'created_at': tx.get('created_at').strftime('%Y-%m-%d %H:%M') if tx.get('created_at') else '',
+        })
+
+    active_offers = []
+    try:
+        method_labels = {'all':'كل الطرق','syriatel':'سيريتل','mtn':'MTN','sham_syp':'شام SYP','sham_usd':'شام USD','usdt_trc':'USDT','usdt_bep':'USDT BEP'}
+        for rule in repo.get_active_bonus_rules()[:5]:
+            active_offers.append({
+                'title': rule.get('title'),
+                'percent': float(rule.get('percent') or 0),
+                'payment_method': rule.get('payment_method') or 'all',
+                'method_label': method_labels.get(rule.get('payment_method'), 'كل الطرق'),
+            })
+    except Exception:
+        pass
+
+    open_contests = []
+    try:
+        for c in repo.get_open_contests(limit=5):
+            open_contests.append({
+                'id': c.get('id'),
+                'title': c.get('title'),
+                'reward_type': c.get('reward_type'),
+                'reward_amount': int(c.get('reward_amount') or 0),
+            })
+    except Exception:
+        pass
+
+    # 🆕 قراءة واحدة لإعدادات الميزات تعوّض 4 قراءات كانت مكررة في هذا المعالج
+    fs = repo.get_user_features_settings()
+
+    referral = {}
+    try:
+        active_refs = repo.get_active_referrals_count(telegram_id)
+        total_refs = repo.get_referrals_count(telegram_id)
+        earnings = repo.get_total_referral_earnings(telegram_id)
+        affiliate_balance = int((user or {}).get('affiliate_balance') or 0)
+        pct = repo.get_affiliate_percent_by_active_count(active_refs)
+        ref_link = f"https://t.me/{bot_username}?start=ref_{telegram_id}" if bot_username else ""
+        referral = {
+            'active_referrals': active_refs,
+            'total_referrals': total_refs,
+            'percent': pct,
+            'total_earnings': earnings,
+            'affiliate_balance': affiliate_balance,
+            'ref_link': ref_link,
+        }
+    except Exception as e:
+        logger.warning(f"user_me referral error: {e}")
+
+    checkin = {}
+    try:
+        info = repo.get_checkin_info(telegram_id)
+        _min_dep = int(fs.get('checkin_min_deposit') or 50000)
+        _cycle_days = int(fs.get('checkin_cycle_days') or 30)
+        _completion_reward = int(fs.get('checkin_completion_reward') or 20000)
+        _recent = repo.get_user_recent_deposits_total(telegram_id, 30) if _min_dep > 0 else 0
+        _eligible = (_min_dep <= 0) or (_recent >= _min_dep)
+        _has_deposit = bool(DatabaseManager.execute_query(
+            "SELECT id FROM transactions WHERE user_telegram_id = %s AND type = 'deposit_bot' AND status = 'approved' LIMIT 1",
+            (telegram_id,), fetch='one'
+        ))
+        checkin = {
+            'can_checkin': repo.can_checkin_today(telegram_id) and _has_deposit,
+            'has_deposit': _has_deposit,
+            'eligible': _eligible,
+            'min_deposit': _min_dep,
+            'recent_deposits': _recent,
+            'cycle_days': _cycle_days,
+            'completion_reward': _completion_reward,
+            'pending_balance': int(user.get('checkin_pending_balance') or 0),
+            'current_streak': info['current_streak'],
+            'total_checkins': info['total_checkins'],
+            'total_rewards': info['total_rewards'],
+        }
+    except Exception as e:
+        logger.warning(f"user_me checkin error: {e}")
+
+    flash = None
+    try:
+        fb = repo.get_active_flash_bonus()
+        if fb:
+            flash = _serialize_flash_bonus(fb)
+    except Exception as e:
+        logger.warning(f"user_me flash error: {e}")
+
+    leaderboard = {}
+    try:
+        weekly_mode = (
+            fs.get('leaderboard_type') == 'weekly'
+            and fs.get('leaderboard_enabled', True)
+        )
+        if weekly_mode and repo.get_lb_tracked_count() > 0:
+            leaderboard = repo.get_weekly_turnover_leaderboard(limit=5, telegram_id=telegram_id)
+            leaderboard['mode'] = 'weekly_turnover'
+        else:
+            leaderboard = repo.get_leaderboard(limit=5, telegram_id=telegram_id)
+    except Exception as e:
+        logger.warning(f"user_me leaderboard error: {e}")
+
+    feat_settings = {
+        'checkin_enabled': fs.get('checkin_enabled', True),
+        'leaderboard_enabled': fs.get('leaderboard_enabled', True),
+    }
+
+    bonus_balance = 0
+    try:
+        bonus_balance = repo.get_user_bonus_balance(telegram_id)
+    except Exception:
+        pass
+
+    try:
+        ws = repo.get_wheel_settings()
+        feat_settings['wheel_enabled'] = ws.get('wheel_enabled', True)
+        feat_settings['wheel_segments'] = ws.get('segments', [])
+    except Exception as e:
+        logger.warning(f"user_me wheel error: {e}")
+
+    bonus_eligibility = {}
+    try:
+        bonus_eligibility = repo.check_bonus_eligibility(telegram_id)
+    except Exception as e:
+        logger.warning(f"user_me bonus_eligibility error: {e}")
+
+    spun_ids = []
+    try:
+        spun_ids = repo.get_spun_deposit_ids(telegram_id)
+        _bot_settings = repo.get_bot_settings()
+        _wheel_min = int(_bot_settings.get('min_deposit_syp') or 20000)
+        for tx in recent_transactions:
+            if tx.get('type') == 'deposit_bot' and tx.get('status') == 'approved':
+                tx_amount = int(float(tx.get('amount') or 0))
+                tx['can_spin_wheel'] = (tx.get('id') not in spun_ids) and (tx_amount >= _wheel_min)
+            else:
+                tx['can_spin_wheel'] = False
+    except Exception as e:
+        logger.warning(f"user_me wheel eligibility error: {e}")
+
+    vip_info = {}
+    try:
+        vip_settings = repo.get_vip_settings()
+        feat_settings['vip_enabled'] = vip_settings.get('vip_enabled', True)
+        feat_settings['vip_tiers'] = vip_settings.get('tiers', [])
+        total_deposits = repo.get_user_total_deposits(telegram_id)
+        vip_tier = repo.get_vip_tier_info(total_deposits, vip_settings.get('tiers', []))
+        vip_info = {
+            'total_deposits': total_deposits,
+            'tier_name': vip_tier['tier_names'][vip_tier['current_index']],
+            'tier_index': vip_tier['current_index'],
+            'current_bonus_pct': vip_tier['current_bonus_pct'],
+            'next_tier': vip_tier['next_tier'],
+            'tier_names': vip_tier['tier_names'],
+        }
+    except Exception as e:
+        logger.warning(f"user_me vip error: {e}")
+
+    cashback_info = {}
+    try:
+        cb_settings = repo.get_cashback_settings()
+        feat_settings['cashback_enabled'] = cb_settings.get('cashback_enabled', True)
+        feat_settings['cashback_pct'] = cb_settings.get('cashback_pct', 5)
+        feat_settings['cashback_min_loss'] = cb_settings.get('cashback_min_loss', 50000)
+        activity = repo.get_user_weekly_game_activity(telegram_id)
+        already_paid = repo.has_cashback_this_week(telegram_id)
+        expected = int(activity['net_loss'] * cb_settings.get('cashback_pct', 5) / 100.0)
+        cashback_info = {
+            'enabled': cb_settings.get('cashback_enabled', True),
+            'pct': cb_settings.get('cashback_pct', 5),
+            'min_loss': cb_settings.get('cashback_min_loss', 50000),
+            'week_deposited': activity['deposited'],
+            'week_withdrawn': activity['withdrawn'],
+            'week_net_loss': activity['net_loss'],
+            'expected_cashback': expected,
+            'already_paid': already_paid,
+        }
+    except Exception as e:
+        logger.warning(f"user_me cashback error: {e}")
+
+    return {
+        'telegram_id': telegram_id,
+        'username': user.get('telegram_username'),
+        'bot_balance': bot_balance,
+        'bonus_balance': bonus_balance,
+        'cashback_pending_balance': int(user.get('cashback_pending_balance') or 0),
+        'checkin_pending_balance': int(user.get('checkin_pending_balance') or 0),
+        'active_game_bonus': int(user.get('game_bonus_amount') or 0),
+        'game_balance': game_balance,
+        'recent_transactions': recent_transactions,
+        'active_offers': active_offers,
+        'open_contests': open_contests,
+        'referral': referral,
+        'checkin': checkin,
+        'flash_bonus': flash,
+        'leaderboard': leaderboard,
+        'features': feat_settings,
+        'bonus_eligibility': bonus_eligibility,
+        'vip': vip_info,
+        'cashback': cashback_info,
+        'service_gates': repo.get_service_gates(),
+    }
+
+
 async def user_me_api_handler(request):
-    """🆕 (Update 10) API يغذّي Mini App للمستخدم بالبيانات."""
+    """🆕 API لوحة القيصر للمستخدم — جمع كامل بخيط جانبي واحد غير حاجز للبوت."""
     user_obj = _verify_telegram_init_data(request.headers.get('X-Telegram-Init-Data', ''))
     if not user_obj:
         return web.json_response({'error': 'غير مصرّح'}, status=403)
@@ -2527,234 +2991,23 @@ async def user_me_api_handler(request):
     if not telegram_id:
         return web.json_response({'error': 'مستخدم غير صالح'}, status=400)
 
+    # username البوت لم يعد يُجلب من تيليجرام مع كل فتح — مرة واحدة فقط ثم مكاشن دائم
+    if not _BOT_USERNAME_CACHE['username']:
+        try:
+            me = await request.app['bot'].get_me()
+            if me and me.username:
+                _BOT_USERNAME_CACHE['username'] = me.username
+        except Exception as e:
+            logger.warning(f"user_me get_me cache failed: {e}")
+
     try:
-        user = repo.get_user(telegram_id)
-        if not user:
-            return web.json_response({'error': 'المستخدم غير موجود. استخدم /start أولاً.'}, status=404)
-
-        bot_balance = int(user.get('bot_balance') or 0)
-        game_balance = repo.get_user_game_balance(telegram_id)
-
-        # آخر المعاملات
-        history = repo.get_user_transactions_history(telegram_id, limit=30)
-        recent_transactions = []
-        for tx in history:
-            recent_transactions.append({
-                'id': tx.get('id'),
-                'type': tx.get('type'),
-                'amount': float(tx.get('amount') or 0),
-                'status': tx.get('status'),
-                'payment_method': tx.get('payment_method'),
-                'created_at': tx.get('created_at').strftime('%Y-%m-%d %H:%M') if tx.get('created_at') else '',
-            })
-
-        # العروض النشطة
-        active_offers = []
-        try:
-            method_labels = {'all':'كل الطرق','syriatel':'سيريتل','mtn':'MTN','sham_syp':'شام SYP','sham_usd':'شام USD','usdt_trc':'USDT','usdt_bep':'USDT BEP'}
-            for rule in repo.get_active_bonus_rules()[:5]:
-                active_offers.append({
-                    'title': rule.get('title'),
-                    'percent': float(rule.get('percent') or 0),
-                    'payment_method': rule.get('payment_method') or 'all',
-                    'method_label': method_labels.get(rule.get('payment_method'), 'كل الطرق'),
-                })
-        except Exception:
-            pass
-
-        # المسابقات المفتوحة
-        open_contests = []
-        try:
-            for c in repo.get_open_contests(limit=5):
-                open_contests.append({
-                    'id': c.get('id'),
-                    'title': c.get('title'),
-                    'reward_type': c.get('reward_type'),
-                    'reward_amount': int(c.get('reward_amount') or 0),
-                })
-        except Exception:
-            pass
-
-        # معلومات الإحالة
-        referral = {}
-        try:
-            active_refs = repo.get_active_referrals_count(telegram_id)
-            total_refs = repo.get_referrals_count(telegram_id)
-            earnings = repo.get_total_referral_earnings(telegram_id)
-            affiliate_balance = int((user or {}).get('affiliate_balance') or 0)
-            pct = repo.get_affiliate_percent_by_active_count(active_refs)
-            bot_user = await request.app['bot'].get_me()
-            ref_link = f"https://t.me/{bot_user.username}?start=ref_{telegram_id}"
-            referral = {
-                'active_referrals': active_refs,
-                'total_referrals': total_refs,
-                'percent': pct,
-                'total_earnings': earnings,
-                'affiliate_balance': affiliate_balance,
-                'ref_link': ref_link,
-            }
-        except Exception as e:
-            logger.warning(f"user_me referral error: {e}")
-
-        # 🆕 (Update 12) الحضور اليومي + فلاش البونص + لوحة الصدارة
-        checkin = {}
-        try:
-            info = repo.get_checkin_info(telegram_id)
-            _feat = repo.get_user_features_settings()
-            _min_dep = int(_feat.get('checkin_min_deposit') or 50000)
-            _cycle_days = int(_feat.get('checkin_cycle_days') or 30)
-            _completion_reward = int(_feat.get('checkin_completion_reward') or 20000)
-            _recent = repo.get_user_recent_deposits_total(telegram_id, 30) if _min_dep > 0 else 0
-            _eligible = (_min_dep <= 0) or (_recent >= _min_dep)
-            _has_deposit = bool(DatabaseManager.execute_query(
-                "SELECT id FROM transactions WHERE user_telegram_id = %s AND type = 'deposit_bot' AND status = 'approved' LIMIT 1",
-                (telegram_id,), fetch='one'
-            ))
-            checkin = {
-                'can_checkin': repo.can_checkin_today(telegram_id) and _has_deposit,
-                'has_deposit': _has_deposit,
-                'eligible': _eligible,
-                'min_deposit': _min_dep,
-                'recent_deposits': _recent,
-                'cycle_days': _cycle_days,
-                'completion_reward': _completion_reward,
-                'pending_balance': int(user.get('checkin_pending_balance') or 0),
-                'current_streak': info['current_streak'],
-                'total_checkins': info['total_checkins'],
-                'total_rewards': info['total_rewards'],
-            }
-        except Exception as e:
-            logger.warning(f"user_me checkin error: {e}")
-
-        flash = None
-        try:
-            fb = repo.get_active_flash_bonus()
-            if fb:
-                flash = _serialize_flash_bonus(fb)
-        except Exception as e:
-            logger.warning(f"user_me flash error: {e}")
-
-        leaderboard = {}
-        try:
-            lb = repo.get_leaderboard(limit=5, telegram_id=telegram_id)
-            leaderboard = lb
-        except Exception as e:
-            logger.warning(f"user_me leaderboard error: {e}")
-
-        # 🆕 (Update 13) تمرير إعدادات تفعيل الميزات للواجهة
-        feat_settings = {}
-        try:
-            fs = repo.get_user_features_settings()
-            feat_settings = {
-                'checkin_enabled': fs.get('checkin_enabled', True),
-                'leaderboard_enabled': fs.get('leaderboard_enabled', True),
-            }
-        except Exception:
-            feat_settings = {'checkin_enabled': True, 'leaderboard_enabled': True}
-
-        # 🆕 (Update 14) تمرير رصيد المكافآت وشروطه للواجهة
-        bonus_balance = 0
-        try:
-            bonus_balance = repo.get_user_bonus_balance(telegram_id)
-        except Exception:
-            pass
-
-        # 🆕 (Update 15) تمرير إعدادات العجلة
-        try:
-            ws = repo.get_wheel_settings()
-            feat_settings['wheel_enabled'] = ws.get('wheel_enabled', True)
-            feat_settings['wheel_segments'] = ws.get('segments', [])
-        except Exception as e:
-            logger.warning(f"user_me wheel error: {e}")
-
-        bonus_eligibility = {}
-        try:
-            bonus_eligibility = repo.check_bonus_eligibility(telegram_id)
-        except Exception as e:
-            logger.warning(f"user_me bonus_eligibility error: {e}")
-
-        # 🆕 (Update 15) الإيداعات المؤهلة للعجلة
-        spun_ids = []
-        try:
-            spun_ids = repo.get_spun_deposit_ids(telegram_id)
-            _bot_settings = repo.get_bot_settings()
-            _wheel_min = int(_bot_settings.get('min_deposit_syp') or 20000)
-            for tx in recent_transactions:
-                if tx.get('type') == 'deposit_bot' and tx.get('status') == 'approved':
-                    tx_amount = int(float(tx.get('amount') or 0))
-                    tx['can_spin_wheel'] = (tx.get('id') not in spun_ids) and (tx_amount >= _wheel_min)
-                else:
-                    tx['can_spin_wheel'] = False
-        except Exception as e:
-            logger.warning(f"user_me wheel eligibility error: {e}")
-
-        # 🆕 (Update 16) نظام VIP
-        vip_info = {}
-        try:
-            vip_settings = repo.get_vip_settings()
-            feat_settings['vip_enabled'] = vip_settings.get('vip_enabled', True)
-            feat_settings['vip_tiers'] = vip_settings.get('tiers', [])
-            total_deposits = repo.get_user_total_deposits(telegram_id)
-            vip_tier = repo.get_vip_tier_info(total_deposits, vip_settings.get('tiers', []))
-            vip_info = {
-                'total_deposits': total_deposits,
-                'tier_name': vip_tier['tier_names'][vip_tier['current_index']],
-                'tier_index': vip_tier['current_index'],
-                'current_bonus_pct': vip_tier['current_bonus_pct'],
-                'next_tier': vip_tier['next_tier'],
-                'tier_names': vip_tier['tier_names'],
-            }
-        except Exception as e:
-            logger.warning(f"user_me vip error: {e}")
-
-        # 🆕 (Update 17) الكاش باك الأسبوعي
-        cashback_info = {}
-        try:
-            cb_settings = repo.get_cashback_settings()
-            feat_settings['cashback_enabled'] = cb_settings.get('cashback_enabled', True)
-            feat_settings['cashback_pct'] = cb_settings.get('cashback_pct', 5)
-            feat_settings['cashback_min_loss'] = cb_settings.get('cashback_min_loss', 50000)
-            activity = repo.get_user_weekly_game_activity(telegram_id)
-            already_paid = repo.has_cashback_this_week(telegram_id)
-            expected = int(activity['net_loss'] * cb_settings.get('cashback_pct', 5) / 100.0)
-            cashback_info = {
-                'enabled': cb_settings.get('cashback_enabled', True),
-                'pct': cb_settings.get('cashback_pct', 5),
-                'min_loss': cb_settings.get('cashback_min_loss', 50000),
-                'week_deposited': activity['deposited'],
-                'week_withdrawn': activity['withdrawn'],
-                'week_net_loss': activity['net_loss'],
-                'expected_cashback': expected,
-                'already_paid': already_paid,
-            }
-        except Exception as e:
-            logger.warning(f"user_me cashback error: {e}")
-
-        return web.json_response({
-            'telegram_id': telegram_id,
-            'username': user.get('telegram_username'),
-            'bot_balance': bot_balance,
-            'bonus_balance': bonus_balance,
-            'cashback_pending_balance': int(user.get('cashback_pending_balance') or 0),
-            'checkin_pending_balance': int(user.get('checkin_pending_balance') or 0),
-            'active_game_bonus': int(user.get('game_bonus_amount') or 0),
-            'game_balance': game_balance,
-            'recent_transactions': recent_transactions,
-            'active_offers': active_offers,
-            'open_contests': open_contests,
-            'referral': referral,
-            'checkin': checkin,
-            'flash_bonus': flash,
-            'leaderboard': leaderboard,
-            'features': feat_settings,
-            'bonus_eligibility': bonus_eligibility,
-            'vip': vip_info,
-            'cashback': cashback_info,
-            'service_gates': repo.get_service_gates(),
-        })
+        data = await asyncio.to_thread(_collect_user_me_payload_sync, telegram_id, _BOT_USERNAME_CACHE['username'])
     except Exception as e:
         logger.error(f"user_me_api error: {e}", exc_info=True)
         return web.json_response({'error': 'خطأ داخلي'}, status=500)
+
+    status = data.pop('_http_status', 200)
+    return web.json_response(data, status=status)
 
 
 async def user_checkin_handler(request):
@@ -3168,6 +3421,15 @@ def main():
     dp = Dispatcher()
     app = web.Application()
     app['bot'] = bot
+
+    # 🆕 (Update 20 / Perf) إبطال كاش لوحة الأدمن فور أي تعديل إداري مسموح له بتغيير بياناتها
+    @web.middleware
+    async def admin_mutation_cache_buster(request, handler):
+        response = await handler(request)
+        if request.method == 'POST' and request.path.startswith('/api/admin/'):
+            _DASHBOARD_CACHE['data'] = None
+        return response
+    app.middlewares.append(admin_mutation_cache_buster)
 
     webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)

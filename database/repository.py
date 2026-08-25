@@ -2448,15 +2448,33 @@ def get_button_link_fallback(key):
     return mapping.get(key, '')
 
 
+# 🆕 (Update 20 / Perf) كاش روابط أزرار القائمة الرئيسية:
+# القائمة كانت تنفذ 4 SELECTs عند كل بناء (لكل /start ولكل "عودة للقائمة").
+_BUTTON_LINK_TTL = 300.0  # 5 دقائق
+_button_link_cache = {}   # key -> [expires_at, url]
+
+
+def invalidate_button_link_cache(key=None):
+    if key is None:
+        _button_link_cache.clear()
+    else:
+        _button_link_cache.pop(key, None)
+
+
 def get_button_link(key):
+    import time as _t
+    now = _t.time()
+    hit = _button_link_cache.get(key)
+    if hit and hit[0] > now:
+        return hit[1]
     row = DatabaseManager.execute_query_dict(
         "SELECT address FROM payment_settings WHERE payment_method = %s",
         (key,),
         fetch='one'
     )
-    if row and row.get('address'):
-        return row['address']
-    return get_button_link_fallback(key)
+    url = row['address'] if row and row.get('address') else get_button_link_fallback(key)
+    _button_link_cache[key] = [now + _BUTTON_LINK_TTL, url]
+    return url
 
 
 def get_button_link_source(key):
@@ -2497,6 +2515,7 @@ def set_button_link(key, url, updated_by=None):
         """,
         (key, url.strip(), str(updated_by) if updated_by else None)
     )
+    invalidate_button_link_cache(key)
     return True
 
 
@@ -2507,6 +2526,7 @@ def reset_button_link(key):
         "DELETE FROM payment_settings WHERE payment_method = %s",
         (key,)
     )
+    invalidate_button_link_cache(key)
     return True
 PAYMENT_METHOD_LABELS = {
     'syriatel': '🟢 سيريتل كاش',
@@ -3573,14 +3593,38 @@ def _fixed_wheel_segments_with_weights(saved=None):
         out.append([fixed[0], float(w), fixed[2]])
     return out
 
-def get_user_features_settings():
-    """جلب إعدادات ميزات المستخدم (الحضور، الصدارة، شروط المكافآت)."""
+# 🆕 (Update 20 / Perf) كاش صف إعدادات الميزات:
+# user_me كان يقرأ هذا الجدول 4 مرات في الطلب الواحد + في كل نقرة قائمة.
+_FEATS_ROW_TTL = 60.0
+_feats_row_cache = {'row': None, 'expires': 0.0}
+
+
+def invalidate_user_features_cache():
+    _feats_row_cache['row'] = None
+    _feats_row_cache['expires'] = 0.0
+
+
+def _get_user_features_row():
+    import time as _t
+    now = _t.time()
+    cached = _feats_row_cache['row']
+    if cached is not None and _feats_row_cache['expires'] > now:
+        return cached
     row = DatabaseManager.execute_query_dict("SELECT * FROM user_features_settings WHERE id = 1", fetch='one')
     if not row:
         DatabaseManager.execute_query(
             "INSERT INTO user_features_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;"
         )
         row = DatabaseManager.execute_query_dict("SELECT * FROM user_features_settings WHERE id = 1", fetch='one')
+    if row:
+        _feats_row_cache['row'] = row
+        _feats_row_cache['expires'] = now + _FEATS_ROW_TTL
+    return row
+
+
+def get_user_features_settings():
+    """جلب إعدادات ميزات المستخدم (الحضور، الصدارة، شروط المكافآت)."""
+    row = _get_user_features_row()
     # 🆕 الجدول الافتراضي = دورة شهرية (30 يوماً) مجموعها 20,000 ل.س بالضبط.
     rewards = [
         200, 200, 300, 300, 400, 400, 1200,
@@ -3645,6 +3689,7 @@ def update_user_features_settings(checkin_enabled=None, checkin_rewards=None, le
             bonus_min_transfer = %s, bonus_deposit_threshold = %s, bonus_deposit_days = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
     """, (bool(new_checkin_enabled), rewards_json, bool(new_lb_enabled), str(new_lb_type), new_checkin_min, new_checkin_cycle, new_checkin_reward, new_bonus_min, new_bonus_threshold, new_bonus_days))
+    invalidate_user_features_cache()
 
 
 def get_user_recent_deposits_total(telegram_id, days=30):
@@ -3805,6 +3850,7 @@ def update_wheel_settings(wheel_enabled=None, segments=None):
         SET wheel_enabled = %s, wheel_segments_json = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
     """, (bool(new_enabled), seg_json))
+    invalidate_user_features_cache()
 
 
 def can_spin_wheel_for_deposit(telegram_id, deposit_tx_id):
@@ -3990,6 +4036,7 @@ def update_vip_settings(vip_enabled=None, tiers=None):
         SET vip_enabled = %s, vip_tiers_json = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
     """, (bool(new_enabled), tiers_json))
+    invalidate_user_features_cache()
 
 
 def get_user_total_deposits(telegram_id):
@@ -4098,6 +4145,7 @@ def update_cashback_settings(enabled=None, pct=None, min_loss=None):
         SET cashback_enabled = %s, cashback_pct = %s, cashback_min_loss = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = 1
     """, (bool(new_enabled), float(new_pct), int(new_min)))
+    invalidate_user_features_cache()
 
 
 def get_user_weekly_game_activity(telegram_id, current_game_balance=None):
@@ -4334,3 +4382,256 @@ def get_recent_flash_bonuses(limit=10):
         "SELECT * FROM flash_bonuses ORDER BY id DESC LIMIT %s",
         (int(limit),), fetch='all'
     ) or []
+
+
+# ==================== 🏆 لوحة المتصدرين الأسبوعية (Update 18) ====================
+# ترتيب اللاعبين حسب "دوران المراهنات الأسبوعي" المأخوذ من إحصائيات iChancy.
+# دوران الأسبوع = الإجمالي التراكمي الحالي - خط الأساس المحفوظ بداية الأسبوع.
+# المنطق الخالص (حساب الأسابيع/الترتيب) في telegram_bot/leaderboard.py
+
+from telegram_bot import leaderboard as _lb_engine
+
+
+def get_lb_config():
+    """إعدادات لوحة المتصدرين من bot_settings مع افتراضيات آمنة (الميزة غير مكلفة عند الصفر)."""
+    s = get_bot_settings() or {}
+
+    def _i(key, default=0):
+        try:
+            return int(s.get(key) or default)
+        except Exception:
+            return default
+
+    return {
+        'prize_1': _i('lb_prize_1', 0),
+        'prize_2': _i('lb_prize_2', 0),
+        'prize_3': _i('lb_prize_3', 0),
+        'min_weekly_turnover': _i('lb_min_weekly_turnover', 0),
+        'auto_credit': True if s.get('lb_auto_credit') is None else bool(s.get('lb_auto_credit')),
+        'last_settled_week': str(s.get('lb_last_settled_week') or ''),
+    }
+
+
+def update_lb_settings(prize_1=None, prize_2=None, prize_3=None, min_weekly_turnover=None, auto_credit=None):
+    """تحديث جوائز/حدود لوحة المتصدرين (أعمدة bot_settings) مع كسر الكاش."""
+    sets = []
+    params = []
+    if prize_1 is not None:
+        sets.append("lb_prize_1 = %s")
+        params.append(int(prize_1))
+    if prize_2 is not None:
+        sets.append("lb_prize_2 = %s")
+        params.append(int(prize_2))
+    if prize_3 is not None:
+        sets.append("lb_prize_3 = %s")
+        params.append(int(prize_3))
+    if min_weekly_turnover is not None:
+        sets.append("lb_min_weekly_turnover = %s")
+        params.append(int(min_weekly_turnover))
+    if auto_credit is not None:
+        sets.append("lb_auto_credit = %s")
+        params.append(bool(auto_credit))
+    if not sets:
+        return
+    DatabaseManager.execute_query(f"UPDATE bot_settings SET {', '.join(sets)} WHERE id = 1", tuple(params))
+    if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+        DatabaseManager.invalidate_settings_cache()
+
+
+def mark_lb_week_settled(week_label_text):
+    """تسجيل آخر أسبوع تمت تسويته — حارس منع التكرار الأساسي."""
+    DatabaseManager.execute_query(
+        "UPDATE bot_settings SET lb_last_settled_week = %s WHERE id = 1",
+        (str(week_label_text),)
+    )
+    if hasattr(DatabaseManager, 'invalidate_settings_cache'):
+        DatabaseManager.invalidate_settings_cache()
+
+
+def get_users_with_player_ids():
+    """مستخدمو البوت المرتبطون بحسابات iChancy (المرشحون للتتبع الأسبوعي)."""
+    return DatabaseManager.execute_query_dict(
+        "SELECT telegram_id, ichancy_username, player_id FROM users WHERE player_id IS NOT NULL AND player_id <> ''",
+        fetch='all'
+    ) or []
+
+
+def upsert_leaderboard_snapshot_records(records, cycle_start):
+    """دمج دفعة إحصائيات iChancy مع لقطات الدوران (دفعة واحدة باتصال واحد).
+
+    - لاعب جديد: baseline = قيمته الحالية (رصيده الأسبوعي يبدأ من صفر) وcycle = الأسبوع الحالي.
+    - لاعب قديم: تحديث last_turnover والربط بالمستخدم فقط — بدون لمس baseline/cycle
+      حتى لا تضيع حصيلة أسبوعه الجاري.
+    """
+    if not records:
+        return 0
+    conn = None
+    cursor = None
+    try:
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
+        payload = [
+            (
+                str(r.get('player_id') or ''),
+                str(r.get('telegram_id') or ''),
+                str(r.get('username') or '')[:100],
+                int(r.get('turnover') or 0),
+                int(r.get('turnover') or 0),
+                cycle_start,
+            )
+            for r in records if r.get('player_id')
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO turnover_leaderboard_snapshots (player_id, telegram_id, username, baseline_turnover, last_turnover, cycle_start)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (player_id) DO UPDATE SET
+                telegram_id = EXCLUDED.telegram_id,
+                username = EXCLUDED.username,
+                last_turnover = EXCLUDED.last_turnover,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            payload
+        )
+        conn.commit()
+        return len(payload)
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"upsert_leaderboard_snapshot_records error: {e}")
+        return 0
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            DatabaseManager.put_connection(conn)
+
+
+def get_leaderboard_snapshots(cycle_start=None):
+    """لقطات اللاعبين لأسبوع قياس معيّن (افتراضياً: الأسبوع الجاري بتوقيت سوريا)."""
+    if cycle_start is None:
+        cycle_start = _lb_engine.week_monday()
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT player_id, telegram_id, username, baseline_turnover, last_turnover
+        FROM turnover_leaderboard_snapshots
+        WHERE cycle_start = %s
+        """,
+        (cycle_start,), fetch='all'
+    ) or []
+
+
+def get_weekly_turnover_leaderboard(limit=10, telegram_id=None):
+    """لوحة الأسبوع الحالي بشكل جاهز للعرض (يخدم زر البوت وMini App بنفس الشكل)."""
+    cfg = get_lb_config()
+    snapshots = get_leaderboard_snapshots()
+    ranked = _lb_engine.compute_standings(snapshots, min_weekly_turnover=0, limit=int(limit or 10))
+    top = []
+    for e in ranked:
+        top.append({
+            'rank': e['rank'],
+            'telegram_id': e['telegram_id'],
+            'username': e['username'],
+            'weekly_turnover': e['weekly_turnover'],
+            'score': e['weekly_turnover'],
+            # الحقل 'balance' يبقي Mini App الحالية تعمل بدون تعديل الواجهة
+            'balance': e['weekly_turnover'],
+        })
+    result = {'top': top, 'min_qualify_turnover': cfg['min_weekly_turnover']}
+    if telegram_id:
+        mine = _lb_engine.find_user_rank(snapshots, str(telegram_id), min_weekly_turnover=cfg['min_weekly_turnover'])
+        result['my_rank'] = mine['rank'] if mine['tracked'] else None
+        result['my_score'] = mine['weekly_turnover']
+        result['qualifies'] = mine['qualifies']
+    return result
+
+
+def get_lb_tracked_count():
+    row = DatabaseManager.execute_query("SELECT COUNT(*) FROM turnover_leaderboard_snapshots", fetch='one')
+    return int(row[0]) if row else 0
+
+
+def get_lb_last_refresh():
+    row = DatabaseManager.execute_query("SELECT MAX(updated_at) FROM turnover_leaderboard_snapshots", fetch='one')
+    return row[0] if row else None
+
+
+def insert_leaderboard_result(week_start, rank, player_id, telegram_id, username, weekly_turnover, prize_syp):
+    """أرشفة نتيجة لاعب لأسبوع معيّن. يعيد id عند الإدراج أو None لو موجودة مسبقاً (Idempotent)."""
+    row = DatabaseManager.execute_query(
+        """
+        INSERT INTO turnover_leaderboard_results (week_start, rank, player_id, telegram_id, username, weekly_turnover, prize_syp)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (week_start, telegram_id) DO NOTHING
+        RETURNING id
+        """,
+        (week_start, int(rank), str(player_id or ''), str(telegram_id), str(username or 'لاعب'), int(weekly_turnover or 0), int(prize_syp or 0)),
+        fetch='one'
+    )
+    return int(row[0]) if row else None
+
+
+def get_uncredited_lb_results(week_start):
+    """جوائز أسبوع مسوّى لم تُضف بعد لأرصدة الفائزين (لاستكمال الدفع بعد أي انقطاع)."""
+    return DatabaseManager.execute_query_dict(
+        """
+        SELECT id, telegram_id, username, rank, weekly_turnover, prize_syp
+        FROM turnover_leaderboard_results
+        WHERE week_start = %s AND credited = FALSE AND prize_syp > 0
+        ORDER BY rank ASC
+        """,
+        (week_start,), fetch='all'
+    ) or []
+
+
+def claim_lb_result_credit(result_id):
+    """🛡️ حارس الدفع المزدوج: تعليم الجائزة كمسوّاة بشرط ينجح مرة واحدة فقط (صف مقفول ذرّياً)."""
+    row = DatabaseManager.execute_query(
+        "UPDATE turnover_leaderboard_results SET credited = TRUE WHERE id = %s AND credited = FALSE RETURNING id",
+        (int(result_id),), fetch='one'
+    )
+    return bool(row)
+
+
+def rollover_leaderboard_baselines(new_cycle_start):
+    """بدء أسبوع قياس جديد: خط الأساس = آخر إجمالي لكل اللاعبين القدامى."""
+    DatabaseManager.execute_query(
+        """
+        UPDATE turnover_leaderboard_snapshots
+        SET baseline_turnover = last_turnover, cycle_start = %s, updated_at = CURRENT_TIMESTAMP
+        WHERE cycle_start IS DISTINCT FROM %s
+        """,
+        (new_cycle_start, new_cycle_start)
+    )
+
+
+def get_lb_last_results(week_start=None, limit=10):
+    """آخر أسبوع مؤرشف مع نتائجه (مرتبة).
+    إذا لم تُمرّر week_start نجلب أحدث أسبوع موجود في الأرشيف."""
+    if week_start is None:
+        row = DatabaseManager.execute_query("SELECT MAX(week_start) FROM turnover_leaderboard_results", fetch='one')
+        if not row or not row[0]:
+            return {'week_start': None, 'results': []}
+        week_start = row[0]
+    rows = DatabaseManager.execute_query_dict(
+        """
+        SELECT rank, player_id, telegram_id, username, weekly_turnover, prize_syp, credited
+        FROM turnover_leaderboard_results
+        WHERE week_start = %s
+        ORDER BY rank ASC
+        LIMIT %s
+        """,
+        (week_start, int(limit)), fetch='all'
+    ) or []
+    return {'week_start': week_start, 'results': rows}
+
+
+# ==================== 🆕 (Update 20 / Performance) عدّادات خفيفة ====================
+
+def get_open_support_tickets_count():
+    """عدّ التذاكر المفتوحة باستعلام COUNT خفيف — بدل جلب 200 صف كاملاً من لوحة الأدمن."""
+    row = DatabaseManager.execute_query(
+        "SELECT COUNT(*) FROM support_tickets WHERE status = 'open'",
+        fetch='one'
+    )
+    return int(row[0] or 0) if row else 0

@@ -609,6 +609,54 @@ class DatabaseManager:
         alter_feat_checkin_cycle_days = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_cycle_days INT DEFAULT 30;"
         alter_feat_checkin_completion_reward = "ALTER TABLE user_features_settings ADD COLUMN IF NOT EXISTS checkin_completion_reward BIGINT DEFAULT 20000;"
 
+        # 🆕 (Update 18) لوحة المتصدرين الأسبوعية حسب حجم المراهنات (Turnover Leaderboard)
+        # لقطات دورية من iChancy: baseline = الإجمالي عند بداية أسبوع القياس، last = آخر إجمالي مرصود.
+        turnover_snapshots_table = """
+        CREATE TABLE IF NOT EXISTS turnover_leaderboard_snapshots (
+            player_id VARCHAR(100) PRIMARY KEY,
+            telegram_id VARCHAR(50) NOT NULL,
+            username VARCHAR(100),
+            baseline_turnover BIGINT DEFAULT 0,
+            last_turnover BIGINT DEFAULT 0,
+            cycle_start DATE,
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+
+        # أرشيف نتائج الأسابيع + دفع الجوائز (UNIQUE يمنع أرشفة/دفع نفس الأسبوع مرتين)
+        turnover_results_table = """
+        CREATE TABLE IF NOT EXISTS turnover_leaderboard_results (
+            id SERIAL PRIMARY KEY,
+            week_start DATE NOT NULL,
+            rank INTEGER NOT NULL,
+            player_id VARCHAR(100),
+            telegram_id VARCHAR(50) NOT NULL,
+            username VARCHAR(100),
+            weekly_turnover BIGINT DEFAULT 0,
+            prize_syp BIGINT DEFAULT 0,
+            credited BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(week_start, telegram_id)
+        );
+        """
+
+        alter_settings_lb_prize_1 = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS lb_prize_1 BIGINT DEFAULT 0;"
+        alter_settings_lb_prize_2 = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS lb_prize_2 BIGINT DEFAULT 0;"
+        alter_settings_lb_prize_3 = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS lb_prize_3 BIGINT DEFAULT 0;"
+        alter_settings_lb_min_weekly = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS lb_min_weekly_turnover BIGINT DEFAULT 0;"
+        alter_settings_lb_auto_credit = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS lb_auto_credit BOOLEAN DEFAULT TRUE;"
+        alter_settings_lb_last_settled = "ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS lb_last_settled_week VARCHAR(20) DEFAULT ''"
+
+        # 🆕 (Update 20 / Performance) مؤشرات الأداء — IF NOT EXISTS آمنة للتكرار عند كل إقلاع.
+        # ملاحظة: لا نستخدم مؤشراً وظيفياً على created_at::date لأنه غير IMMUTABLE على timestamptz —
+        # بدلاً منه مسند نطاقي (created_at >= day AND < day+1) يستفيد من هذا المؤشر B-tree القياسي.
+        idx_tx_created_at = "CREATE INDEX IF NOT EXISTS idx_tx_created_at ON transactions(created_at);"
+        idx_tx_type_status = "CREATE INDEX IF NOT EXISTS idx_tx_type_status ON transactions(type, status);"
+        idx_tx_user = "CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_telegram_id);"
+        idx_support_status = "CREATE INDEX IF NOT EXISTS idx_support_status ON support_tickets(status);"
+        idx_tlb_snap_cycle = "CREATE INDEX IF NOT EXISTS idx_tlb_snap_cycle ON turnover_leaderboard_snapshots(cycle_start);"
+        idx_tlb_results_week = "CREATE INDEX IF NOT EXISTS idx_tlb_results_week ON turnover_leaderboard_results(week_start);"
+
         # 🆕 (Update 15) عجلة الحظ - جدول تتبع الدورات
         wheel_spins_table = """
         CREATE TABLE IF NOT EXISTS wheel_spins (
@@ -738,6 +786,15 @@ class DatabaseManager:
             alter_feat_checkin_min_deposit,
             alter_feat_checkin_cycle_days,
             alter_feat_checkin_completion_reward,
+            # 🆕 (Update 18) لوحة المتصدرين الأسبوعية
+            turnover_snapshots_table,
+            turnover_results_table,
+            alter_settings_lb_prize_1,
+            alter_settings_lb_prize_2,
+            alter_settings_lb_prize_3,
+            alter_settings_lb_min_weekly,
+            alter_settings_lb_auto_credit,
+            alter_settings_lb_last_settled,
             wheel_spins_table,
             alter_feat_wheel_enabled,
             alter_feat_wheel_segments,
@@ -764,6 +821,15 @@ class DatabaseManager:
             support_messages_table,
             daily_checkins_table,
             flash_bonuses_table,
+            # 🆕 (Update 20 / Performance) أول مؤشرات في قاعدة البيانات:
+            # دونها كل مجاميع اليوم والرسم البياني و«المستخدمون الخاملون» فحص تسلسلي كامل.
+            # المؤشر الوظيفي على created_at::date يحصر مجاميع «اليوم» في صفوف اليوم فقط.
+            idx_tx_created_at,
+            idx_tx_type_status,
+            idx_tx_user,
+            idx_support_status,
+            idx_tlb_snap_cycle,
+            idx_tlb_results_week,
         ]
 
         conn = None

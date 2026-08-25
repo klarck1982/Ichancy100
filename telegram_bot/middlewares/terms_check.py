@@ -1,3 +1,4 @@
+import time
 from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from typing import Callable, Dict, Any, Awaitable
@@ -7,6 +8,21 @@ from config import settings
 
 # 🔧 إصلاح: قائمة الأدمن ليتجاوزوا فحص الشروط
 ADMIN_IDS = [item.strip() for item in str(getattr(settings, "ADMIN_IDS", settings.ADMIN_ID)).split(",") if item.strip()]
+
+# 🆕 (Update 20 / Perf) كاش قبول الشروط الإيجابي:
+# كان الميدلوير ينفّذ get_user على كل رسالة وكل نقرة زر لأي مستخدم.
+# نخزّن القبول فقط (الاتجاه الآمن): غير المقبول يُفحص دائماً من القاعدة،
+# فلا يوجد أي تأخير على من وافق للتو، والحذف يُبطل الكاش صراحةً.
+_TERMS_TTL = 60.0
+_terms_accepted_cache = {}  # telegram_id -> expires_at
+
+
+def invalidate_terms_cache(telegram_id=None):
+    """إبطال كاش القبول (يُستدعى بعد حذف الحساب أو تصفير القاعدة)."""
+    if telegram_id is None:
+        _terms_accepted_cache.clear()
+    else:
+        _terms_accepted_cache.pop(str(telegram_id), None)
 
 
 def _is_admin(user_id) -> bool:
@@ -43,6 +59,10 @@ class TermsCheckMiddleware(BaseMiddleware):
 
         telegram_id = str(user.id)
         username = user.username
+
+        # 🆕 مسار الكاش السريع: مقبول مسبقاً خلال 60 ثانية → صفر استعلام
+        if _terms_accepted_cache.get(telegram_id, 0) > time.time():
+            return await handler(event, data)
 
         db_user = repo.get_user(telegram_id)
         if not db_user:
@@ -81,5 +101,9 @@ class TermsCheckMiddleware(BaseMiddleware):
                 await event.message.answer(terms_text, reply_markup=get_terms_keyboard(), parse_mode="HTML")
                 await event.answer("يرجى الموافقة على الشروط أولاً!", show_alert=True)
             return
+
+        # 🆕 المستخدم مقبول → خزّن القبول في الكاش لتتخطى الأحداث التالية الاستعلام
+        if db_user and db_user.get('terms_accepted'):
+            _terms_accepted_cache[telegram_id] = time.time() + _TERMS_TTL
 
         return await handler(event, data)

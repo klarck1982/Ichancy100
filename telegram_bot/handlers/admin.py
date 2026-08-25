@@ -174,6 +174,11 @@ class AdminStates(StatesGroup):
     # 🆕 إدارة المستخدمين
     searching_user = State()
     setting_balance = State()
+    # 🆕 (Update 18) لوحة المتصدرين الأسبوعية
+    entering_lb_prize_1 = State()
+    entering_lb_prize_2 = State()
+    entering_lb_prize_3 = State()
+    entering_lb_min_turnover = State()
 
 
 
@@ -229,6 +234,7 @@ def get_admin_dashboard_keyboard(refresh_callback="caesar_control_panel"):
             InlineKeyboardButton(text="🎁 البونصات", callback_data="adm_bonus_menu")
         ],
         [InlineKeyboardButton(text="🤝 الإحالات", callback_data="adm_referrals_toggle")],
+        [InlineKeyboardButton(text="🏆 لوحة المتصدرين الأسبوعية", callback_data="adm_lb_menu")],
         [InlineKeyboardButton(text="❌ إغلاق", callback_data="back_to_main_menu")]
     ])
 
@@ -2359,3 +2365,248 @@ async def contest_reject_reason_callback(callback: CallbackQuery, state: FSMCont
         f"📝 السبب: {reason}\n"
         f"👤 المشرف: <code>{callback.from_user.id}</code>"
     )
+
+
+# ================================================================
+# 🆕 (Update 18) قسم لوحة المتصدرين الأسبوعية (Turnover Leaderboard)
+# ================================================================
+
+def _lb_status_text():
+    """نص لوحة إدارة المتصدرين: الحالة + الجوائز + آخر تحديث/تسوية."""
+    feats = repo.get_user_features_settings()
+    cfg = repo.get_lb_config()
+    enabled = bool(feats.get('leaderboard_enabled', True))
+    lb_type = str(feats.get('leaderboard_type') or 'all_time')
+    type_label = {'weekly': '🗓️ أسبوعي (دوران مراهنات حقيقي)', 'monthly': '📆 شهري', 'all_time': '♾️ كلي (رصيد البوت)'}.get(lb_type, lb_type)
+    tracked = repo.get_lb_tracked_count()
+    last_refresh = repo.get_lb_last_refresh()
+    refresh_txt = last_refresh.strftime('%Y-%m-%d %H:%M') if last_refresh else 'لم يتم بعد'
+    last_done = cfg['last_settled_week'] or 'لا شيء بعد'
+    qualified_hint = f"{cfg['min_weekly_turnover']:,}" if cfg['min_weekly_turnover'] > 0 else "بدون حد"
+
+    return (
+        "🏆 <b>إدارة لوحة المتصدرين الأسبوعية</b>\n\n"
+        f"🔌 ظهور اللوحة للمستخدمين: <b>{'🟢 مفعّل' if enabled else '🔴 متوقف'}</b>\n"
+        f"📊 نوع الترتيب: <b>{type_label}</b>\n"
+        f"👥 لاعبون متتبَّعون: <code>{tracked}</code>\n"
+        f"🕒 آخر تحديث إحصائيات: <code>{refresh_txt}</code>\n"
+        f"🏁 آخر أسبوع مُسوّى: <code>{last_done}</code>\n\n"
+        "🎁 <b>الجوائز (SYP):</b>\n"
+        f"🥇 الأول: <code>{cfg['prize_1']:,}</code>\n"
+        f"🥈 الثاني: <code>{cfg['prize_2']:,}</code>\n"
+        f"🥉 الثالث: <code>{cfg['prize_3']:,}</code>\n"
+        f"🎯 حد التأهل الأسبوعي: <code>{qualified_hint}</code>\n"
+        f"🤖 قيد الجوائز تلقائياً: <b>{'🟢 مفعّل' if cfg['auto_credit'] else '🔴 متوقف (أرشفة فقط)'}</b>\n\n"
+        "💡 الترتيب بالوضع الأسبوعي يعتمد على دوران المراهنات الفعلي في iChancy، "
+        "وتُسوّى الجوائز آلياً اثنين 00:05 بتوقيت سوريا. التفعيل والنوع يُداران أيضاً "
+        "من لوحة الميزات في الـ Mini App."
+    )
+
+
+def _lb_menu_keyboard():
+    feats = repo.get_user_features_settings()
+    cfg = repo.get_lb_config()
+    enabled = bool(feats.get('leaderboard_enabled', True))
+    weekly_mode = str(feats.get('leaderboard_type') or 'all_time') == 'weekly'
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🔴 إيقاف الظهور" if enabled else "🟢 تفعيل الظهور",
+                callback_data="adm_lb_toggle_visible"
+            ),
+            InlineKeyboardButton(
+                text="🔀 إلغاء الوضع الأسبوعي" if weekly_mode else "🗓️ تفعيل الوضع الأسبوعي",
+                callback_data="adm_lb_toggle_type"
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="🥇 جائزة الأول", callback_data="adm_lb_set_p1"),
+            InlineKeyboardButton(text="🥈 جائزة الثاني", callback_data="adm_lb_set_p2"),
+            InlineKeyboardButton(text="🥉 جائزة الثالث", callback_data="adm_lb_set_p3"),
+        ],
+        [
+            InlineKeyboardButton(text="🎯 حد التأهل", callback_data="adm_lb_set_min"),
+            InlineKeyboardButton(
+                text="🤖 إيقاف القيد التلقائي" if cfg['auto_credit'] else "🤖 تفعيل القيد التلقائي",
+                callback_data="adm_lb_toggle_autocredit"
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="🔄 تحديث الإحصائيات الآن", callback_data="adm_lb_refresh_now"),
+            InlineKeyboardButton(text="🏅 تسوية الأسبوع الآن", callback_data="adm_lb_settle_now"),
+        ],
+        [InlineKeyboardButton(text="📜 آخر النتائج", callback_data="adm_lb_history")],
+        [InlineKeyboardButton(text="🔙 لوحة التحكم", callback_data="caesar_control_panel")],
+    ])
+
+
+@router.callback_query(F.data == "adm_lb_menu")
+async def adm_lb_menu_callback(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_admin_callback(callback):
+        return
+    await state.clear()
+    await safe_edit_text(callback.message, _lb_status_text(), reply_markup=_lb_menu_keyboard(), parse_mode="HTML")
+    await safe_answer_callback(callback)
+
+
+@router.callback_query(F.data == "adm_lb_toggle_visible")
+async def adm_lb_toggle_visible_callback(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_admin_callback(callback):
+        return
+    feats = repo.get_user_features_settings()
+    repo.update_user_features_settings(leaderboard_enabled=not bool(feats.get('leaderboard_enabled', True)))
+    await safe_answer_callback(callback, "تم تحديث حالة الظهور ✅")
+    await adm_lb_menu_callback(callback, state)
+
+
+@router.callback_query(F.data == "adm_lb_toggle_type")
+async def adm_lb_toggle_type_callback(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_admin_callback(callback):
+        return
+    feats = repo.get_user_features_settings()
+    weekly_mode = str(feats.get('leaderboard_type') or 'all_time') == 'weekly'
+    new_type = 'all_time' if weekly_mode else 'weekly'
+    repo.update_user_features_settings(leaderboard_type=new_type)
+    if new_type == 'weekly':
+        await safe_answer_callback(callback, "🗓️ الوضع الأسبوعي مفعّل — سيبدأ التتبع عند أول تحديث إحصائيات")
+    else:
+        await safe_answer_callback(callback, "🔀 عدنا للترتيب الكلي (رصيد البوت)")
+    await adm_lb_menu_callback(callback, state)
+
+
+@router.callback_query(F.data == "adm_lb_toggle_autocredit")
+async def adm_lb_toggle_autocredit_callback(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_admin_callback(callback):
+        return
+    cfg = repo.get_lb_config()
+    repo.update_lb_settings(auto_credit=not cfg['auto_credit'])
+    await safe_answer_callback(callback, "تم تحديث القيد التلقائي 🤖")
+    await adm_lb_menu_callback(callback, state)
+
+
+@router.callback_query(F.data.in_({"adm_lb_set_p1", "adm_lb_set_p2", "adm_lb_set_p3", "adm_lb_set_min"}))
+async def adm_lb_prompt_value_callback(callback: CallbackQuery, state: FSMContext):
+    if not await ensure_admin_callback(callback):
+        return
+    prompts = {
+        "adm_lb_set_p1": ("🥇 جائزة المركز الأول", AdminStates.entering_lb_prize_1),
+        "adm_lb_set_p2": ("🥈 جائزة المركز الثاني", AdminStates.entering_lb_prize_2),
+        "adm_lb_set_p3": ("🥉 جائزة المركز الثالث", AdminStates.entering_lb_prize_3),
+        "adm_lb_set_min": ("🎯 الحد الأدنى لنقاط الدوران الأسبوعية للتأهل", AdminStates.entering_lb_min_turnover),
+    }
+    label, target_state = prompts[callback.data]
+    await state.set_state(target_state)
+    await safe_edit_text(
+        callback.message,
+        f"{label}\n\nأرسل القيمة الجديدة بالليرة السورية (رقم صحيح، 0 للإلغاء/بدون):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ إلغاء", callback_data="adm_lb_menu")]
+        ]),
+        parse_mode="HTML"
+    )
+    await safe_answer_callback(callback)
+
+
+async def _process_lb_value(message: Message, state: FSMContext, apply_func, success_label):
+    if not is_admin_user(message.from_user.id):
+        return
+    try:
+        value = int(str(message.text or "").strip().replace(",", ""))
+        if value < 0:
+            raise ValueError("negative")
+    except (ValueError, TypeError):
+        await message.answer("⚠️ أدخل رقماً صحيحاً موجباً فقط. أعد المحاولة أو /cancel")
+        return
+    apply_func(value)
+    await state.clear()
+    await message.answer(f"✅ {success_label}: <code>{value:,}</code>", parse_mode="HTML")
+
+
+@router.message(AdminStates.entering_lb_prize_1)
+async def process_lb_prize_1(message: Message, state: FSMContext):
+    await _process_lb_value(message, state, lambda v: repo.update_lb_settings(prize_1=v), "🥇 جائزة المركز الأول")
+
+
+@router.message(AdminStates.entering_lb_prize_2)
+async def process_lb_prize_2(message: Message, state: FSMContext):
+    await _process_lb_value(message, state, lambda v: repo.update_lb_settings(prize_2=v), "🥈 جائزة المركز الثاني")
+
+
+@router.message(AdminStates.entering_lb_prize_3)
+async def process_lb_prize_3(message: Message, state: FSMContext):
+    await _process_lb_value(message, state, lambda v: repo.update_lb_settings(prize_3=v), "🥉 جائزة المركز الثالث")
+
+
+@router.message(AdminStates.entering_lb_min_turnover)
+async def process_lb_min_turnover(message: Message, state: FSMContext):
+    await _process_lb_value(message, state, lambda v: repo.update_lb_settings(min_weekly_turnover=v), "🎯 حد التأهل الأسبوعي")
+
+
+@router.callback_query(F.data == "adm_lb_refresh_now")
+async def adm_lb_refresh_now_callback(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    await safe_answer_callback(callback, "🔄 جاري جلب إحصائيات iChancy...")
+    from telegram_bot.main import refresh_turnover_leaderboard  # استيراد مؤجّل لتفادي الدورية
+    updated = await refresh_turnover_leaderboard()
+    await safe_edit_text(
+        callback.message,
+        _lb_status_text() + f"\n\n✅ <b>آخر تحديث الآن:</b> <code>{updated}</code> سجل" if updated else
+        _lb_status_text() + "\n\n⚠️ <b>فشل التحديث الآن</b> — راجع الجلسة/السجلات",
+        reply_markup=_lb_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "adm_lb_settle_now")
+async def adm_lb_settle_now_callback(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    await safe_answer_callback(callback, "🏅 جاري التسوية اليدوية للأسبوع الـمنصرم...")
+    from telegram_bot.main import settle_weekly_leaderboard  # استيراد مؤجّل لتفادي الدورية
+    result = await settle_weekly_leaderboard(bot=callback.bot, manual=True)
+    if result.get('ok'):
+        note = (
+            f"✅ تمت التسوية — فائزون: {result.get('winners', 0)} | مدفوعات: {result.get('credited', 0)}"
+            if not result.get('skipped') else
+            f"ℹ️ الأسبوع {result.get('week_start')} مُسوّى مسبقاً — لا شيء جديد."
+        )
+    else:
+        reasons = {
+            'refresh_failed': 'تعذّر جلب الإحصائيات من iChancy (تحقق من الجلسة).',
+            'no_participants': 'لا يوجد متتبَّعون في دورة الأسبوع الـمنصرم.',
+        }
+        note = f"⚠️ لم تكتمل التسوية: {reasons.get(result.get('reason'), result.get('reason') or 'خطأ غير متوقع')}"
+    await safe_edit_text(
+        callback.message,
+        _lb_status_text() + f"\n\n<b>{note}</b>",
+        reply_markup=_lb_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "adm_lb_history")
+async def adm_lb_history_callback(callback: CallbackQuery):
+    if not await ensure_admin_callback(callback):
+        return
+    rank_emoji = {1: '🥇', 2: '🥈', 3: '🥉'}
+    last = repo.get_lb_last_results(limit=10)
+    if not last.get('results'):
+        text = "📜 <b>أرشيف المتصدرين</b>\n\nلا توجد أسابيع مؤرشفة بعد."
+    else:
+        wk = last['week_start']
+        wk_txt = wk.strftime('%Y-%m-%d') if hasattr(wk, 'strftime') else str(wk)
+        text = f"📜 <b>آخر نتائج مؤرشفة — أسبوع {wk_txt}</b>\n\n"
+        for r in last['results']:
+            medal = rank_emoji.get(r['rank'], f"#{r['rank']}")
+            prize_txt = f" | 💰 {int(r['prize_syp']):,} SYP {'✅' if r.get('credited') else '⏳'}" if r.get('prize_syp') else ""
+            text += f"{medal} {r['username']} — <code>{int(r['weekly_turnover']):,}</code>{prize_txt}\n"
+    await safe_edit_text(
+        callback.message,
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 قسم المتصدرين", callback_data="adm_lb_menu")]
+        ]),
+        parse_mode="HTML"
+    )
+    await safe_answer_callback(callback)
